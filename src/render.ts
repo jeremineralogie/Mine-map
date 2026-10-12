@@ -26,7 +26,7 @@ export interface View {
   showLines: number[];
   /** état d'un bâtiment (pastille d'alerte sur la carte) */
   status?: (b: Building) => { level: 'good' | 'info' | 'warn' | 'bad' };
-  draft: { pts: { x: number; y: number }[]; cursor: { x: number; y: number } | null; valid: boolean } | null;
+  draft: { pts: { x: number; y: number }[]; cursor: { x: number; y: number } | null; valid: boolean; snap?: 'building' | 'node' | 'edge' | null } | null;
   ghost: { type: BType; x: number; y: number; ok: boolean } | null;
   hoverEdge: number | null;
 }
@@ -372,17 +372,29 @@ export class Renderer {
     this.world();
   }
   private drawDraft(v: View) {
-    const d = v.draft; if (!d || !d.pts.length) return;
+    const d = v.draft; if (!d) return;
     const ctx = this.ctx;
-    ctx.beginPath(); d.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
-    ctx.strokeStyle = '#e8590c'; ctx.lineWidth = this.px(4); ctx.stroke();
-    if (d.cursor) {
-      const l = d.pts[d.pts.length - 1];
-      ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(d.cursor.x, d.cursor.y);
-      ctx.setLineDash([this.px(6), this.px(4)]); ctx.strokeStyle = d.valid ? '#e8590c' : '#c92a2a'; ctx.lineWidth = this.px(3); ctx.stroke(); ctx.setLineDash([]);
+    if (d.pts.length) {
+      ctx.beginPath(); d.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+      ctx.strokeStyle = '#e8590c'; ctx.lineWidth = this.px(4); ctx.stroke();
+      if (d.cursor) {
+        const l = d.pts[d.pts.length - 1];
+        ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(d.cursor.x, d.cursor.y);
+        ctx.setLineDash([this.px(6), this.px(4)]); ctx.strokeStyle = d.valid ? '#e8590c' : '#c92a2a'; ctx.lineWidth = this.px(3); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.fillStyle = '#e8590c';
+      for (const p of d.pts) { ctx.beginPath(); ctx.arc(p.x, p.y, this.px(4), 0, Math.PI * 2); ctx.fill(); }
     }
-    ctx.fillStyle = '#e8590c';
-    for (const p of d.pts) { ctx.beginPath(); ctx.arc(p.x, p.y, this.px(4), 0, Math.PI * 2); ctx.fill(); }
+    // point d'accroche sous le curseur : bâtiment, carrefour ou route existante
+    if (d.cursor && d.snap) {
+      ctx.beginPath(); ctx.arc(d.cursor.x, d.cursor.y, this.px(d.snap === 'building' ? 13 : 8), 0, Math.PI * 2);
+      ctx.fillStyle = d.snap === 'edge' ? 'rgba(25,113,194,.25)' : 'rgba(47,158,68,.25)'; ctx.fill();
+      ctx.strokeStyle = d.snap === 'edge' ? '#1971c2' : '#2f9e44'; ctx.lineWidth = this.px(2.5); ctx.stroke();
+      if (d.snap === 'edge') {
+        this.screen(); const [sx, sy] = this.cam.toScreen(d.cursor.x, d.cursor.y);
+        ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'center'; halo(ctx, 'carrefour', sx, sy - 14, '#1971c2'); this.world();
+      }
+    }
   }
   private drawGhost(s: GameState, v: View) {
     const g = v.ghost; if (!g) return;

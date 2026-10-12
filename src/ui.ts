@@ -6,12 +6,15 @@ import {
 import type { Geo } from './geo';
 import { bIconUrl, resImg, vIconUrl } from './icons';
 import { Camera, Renderer, type View } from './render';
-import { addEdge, addNode, findPath, quoteSegment, removeEdge } from './roads';
+import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import {
   DAYS_PER_SEC, Sim, attachNode, buildingStatus, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type GameState, type Line, type RNode, type Stock } from './state';
+
+/** Point d'accroche d'une route : bâtiment, carrefour, milieu d'une route existante, ou terrain libre */
+interface Snap { node: RNode | null; x: number; y: number; bid?: number; edge?: number; }
 
 type Mode =
   | { kind: 'start' } | { kind: 'select' } | { kind: 'build'; type: BType } | { kind: 'road' }
@@ -39,7 +42,7 @@ export class Game {
     selected: null, selectedLine: null, showLines: [], draft: null, ghost: null, hoverEdge: null,
   };
   roadType: RoadType = 'chemin';
-  private roadFrom: { node: RNode | null; x: number; y: number; bid?: number } | null = null;
+  private roadFrom: Snap | null = null;
   private panel: (() => string) | null = null;
   private panelKey = '';
   private last = performance.now();
@@ -210,7 +213,7 @@ export class Game {
     else if (m.kind === 'build') html = `Place : <b>${BUILD[m.type].name}</b>. ${BUILD[m.type].deposit ? 'Sur un gisement de ' + RES[BUILD[m.type].deposit!].name.toLowerCase() + '. ' : ''}<button data-a="cancel">Annuler</button>`;
     else if (m.kind === 'road') {
       const types = (Object.keys(ROADS) as RoadType[]).map(t => `<button data-a="${t}" class="${this.roadType === t ? 'on' : ''}" ${hasTech(this.s, ROADS[t].tech) ? '' : 'disabled'}>${ROADS[t].name} (${ROADS[t].perKm}/km)</button>`).join('');
-      html = `${types} <span class="sep"></span>${this.roadFrom ? 'Touche le point suivant (bâtiment, carrefour ou terrain).' : 'Touche un bâtiment ou une route pour commencer.'} <span id="quote"></span> ${this.roadFrom ? '<button data-a="end" class="primary">Terminer</button>' : ''}<button data-a="cancel">Fermer</button>`;
+      html = `${types} <span class="sep"></span>${this.roadFrom ? 'Touche le point suivant : bâtiment, route existante (crée un carrefour) ou terrain.' : 'Touche un bâtiment, une route existante ou le terrain pour commencer.'} <span id="quote"></span> ${this.roadFrom ? '<button data-a="end" class="primary">Terminer</button>' : ''}<button data-a="cancel">Fermer</button>`;
     }
     else if (m.kind === 'demolish') html = 'Touche une route ou un bâtiment à démolir. <button data-a="cancel">Terminer</button>';
     else if (m.kind === 'pickStop') html = 'Touche un bâtiment pour l\'ajouter comme arrêt de la ligne. <button data-a="cancel">Terminer</button>';
@@ -262,10 +265,14 @@ export class Game {
       const type: BType = m.kind === 'build' ? m.type : 'entrepot';
       this.view.ghost = { type, x, y, ok: checkPlace(this.s, this.geo, type, x, y, m.kind === 'start').ok };
     }
+    if (m.kind === 'road' && !this.roadFrom) {
+      const snap = this.snap(sx, sy);
+      this.view.draft = { pts: [], cursor: { x: snap.x, y: snap.y }, valid: true, snap: this.snapKind(snap) };
+    }
     if (m.kind === 'road' && this.roadFrom) {
       const snap = this.snap(sx, sy);
       const q = quoteSegment(this.geo, this.roadFrom.x, this.roadFrom.y, snap.x, snap.y, this.roadType, this.foreign(snap));
-      this.view.draft = { pts: [{ x: this.roadFrom.x, y: this.roadFrom.y }], cursor: { x: snap.x, y: snap.y }, valid: !q.error && q.cost <= this.s.money };
+      this.view.draft = { pts: [{ x: this.roadFrom.x, y: this.roadFrom.y }], cursor: { x: snap.x, y: snap.y }, valid: !q.error && q.cost <= this.s.money, snap: this.snapKind(snap) };
       const el = document.getElementById('quote');
       if (el) el.innerHTML = q.error ? `<span class="bad">${esc(q.error)}</span>` : `${q.len.toFixed(1)} km · pente ${Math.round(q.grad)} m/km${q.bridges ? ` · ${q.bridges} pont${q.bridges > 1 ? 's' : ''}${q.rivers.length ? ' (' + esc(q.rivers.join(', ')) + ')' : ''}` : ''} · <b>${fmt(q.cost)} sesterces</b>`;
     }
@@ -324,10 +331,12 @@ export class Game {
   }
 
   // ---------- Routes ----------
-  private snap(sx: number, sy: number): { node: RNode | null; x: number; y: number; bid?: number } {
+  private snap(sx: number, sy: number): Snap {
     const s = this.s;
     const p = this.ren.pick(s, sx, sy);
-    if (p?.kind === 'building') {
+    // en mode route, seul le cœur de l'icône accroche le bâtiment : on peut ainsi viser une route qui passe à côté
+    const near = p?.kind === 'building' && (() => { const b = getB(s, p.id)!, [bx, by] = this.cam.toScreen(b.x, b.y); return Math.hypot(bx - sx, by - sy) < this.ren.iconSize() * 0.38 || this.ren.pickEdge(s, sx, sy) === null; })();
+    if (p?.kind === 'building' && near) {
       const b = getB(s, p.id)!;
       const n = b.node !== null ? s.nodes.find(n => n.id === b.node) ?? null : null;
       return { node: n, x: b.x, y: b.y, bid: b.id };
@@ -335,8 +344,14 @@ export class Game {
     let best: RNode | null = null, bd = 14;
     for (const n of s.nodes) { const [x, y] = this.cam.toScreen(n.x, n.y), d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; best = n; } }
     if (best) return { node: best, x: best.x, y: best.y, bid: best.b };
+    // sur une route existante : on s'y branche (un carrefour sera créé)
+    const eid = this.ren.pickEdge(s, sx, sy);
+    if (eid !== null) { const e = s.edges.find(x => x.id === eid)!; const p = projectOnEdge(s, e, ...this.cam.toWorld(sx, sy)); return { node: null, x: p.x, y: p.y, edge: eid }; }
     const [x, y] = this.cam.toWorld(sx, sy);
     return { node: null, x, y };
+  }
+  private snapKind(p: Snap): 'building' | 'node' | 'edge' | null {
+    return p.bid !== undefined ? 'building' : p.node ? 'node' : p.edge !== undefined ? 'edge' : null;
   }
   private foreign(p: { bid?: number }) {
     const isPost = (id?: number) => id !== undefined && getB(this.s, id)?.type === 'poste';
@@ -358,17 +373,33 @@ export class Game {
     const a = this.ensureNode(from), b = this.ensureNode(snap);
     if (s.edges.some(e => (e.a === a.id && e.b === b.id) || (e.a === b.id && e.b === a.id))) { this.toast('Cette route existe déjà.'); }
     else {
-      addEdge(s, a.id, b.id, this.roadType, q.len, q.bridges);
+      // le nouveau tronçon crée un carrefour à chaque route existante qu'il croise
+      let prev = a, junctions = 0;
+      for (let guard = 0; guard < 50; guard++) {
+        const c = firstCrossing(s, prev, b);
+        if (!c) break;
+        const n = splitEdge(s, this.geo, c.edge, c.x, c.y);
+        addEdge(s, prev.id, n.id, this.roadType, Math.hypot(n.x - prev.x, n.y - prev.y), this.geo.riverCrossings(prev.x, prev.y, n.x, n.y).n);
+        prev = n; junctions++;
+      }
+      addEdge(s, prev.id, b.id, this.roadType, Math.hypot(b.x - prev.x, b.y - prev.y), this.geo.riverCrossings(prev.x, prev.y, b.x, b.y).n);
       s.money -= q.cost; s.stats.expenses += q.cost;
       if (q.bridges) this.toast(`Pont${q.bridges > 1 ? 's' : ''} construit${q.bridges > 1 ? 's' : ''}${q.rivers.length ? ' sur : ' + q.rivers.join(', ') : ''}.`);
+      if (junctions) this.toast(`${junctions} carrefour${junctions > 1 ? 's' : ''} créé${junctions > 1 ? 's' : ''} avec les routes croisées.`);
     }
     this.roadFrom = { node: b, x: b.x, y: b.y, bid: b.b };
     this.view.draft = { pts: [{ x: b.x, y: b.y }], cursor: null, valid: true };
     this.rerouteAll();
     this.updateHint();
   }
-  private ensureNode(p: { node: RNode | null; x: number; y: number; bid?: number }): RNode {
+  private ensureNode(p: Snap): RNode {
     if (p.node) return p.node;
+    if (p.edge !== undefined) {
+      // le tronçon a pu être coupé entre-temps : on cherche celui qui passe par le point
+      const e = this.s.edges.find(e => e.id === p.edge) ?? this.s.edges.find(e => { const q = projectOnEdge(this.s, e, p.x, p.y); return Math.hypot(q.x - p.x, q.y - p.y) < 0.05; });
+      p.edge = undefined;
+      if (e) { const n = splitEdge(this.s, this.geo, e.id, p.x, p.y); p.node = n; return n; }
+    }
     if (p.bid !== undefined) { const b = getB(this.s, p.bid)!; return attachNode(this.s, b); }
     const n = addNode(this.s, p.x, p.y); p.node = n; return n;
   }

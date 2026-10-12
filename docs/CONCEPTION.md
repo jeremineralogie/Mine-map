@@ -66,7 +66,9 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 - **Électricité** (à partir de l'époque IV) : chaque centrale couvre une zone (portée).
 
 ## 7. Transport
-- Routes **dessinées à la main** (et supprimables).
+- Routes **dessinées à la main** (et supprimables). Une route peut partir d'un bâtiment, d'un carrefour,
+  du terrain ou **du milieu d'une route existante** (un carrefour y est créé). Deux routes qui se croisent
+  forment automatiquement un carrefour. Les véhicules empruntent le chemin le plus rapide du réseau.
 - **Chaque ligne est créée à la main** : véhicule, arrêts dans l'ordre (départ → étapes → arrivée, puis retour),
   et à chaque arrêt de chargement **une ou plusieurs ressources** : un véhicule peut transporter plusieurs
   matériaux à la fois, dans la limite de sa capacité.

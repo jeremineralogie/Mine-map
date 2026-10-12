@@ -119,3 +119,41 @@ export function components(s: GameState) {
   }
   return comp;
 }
+
+// ---- Carrefours ----
+
+/** Point d'un tronçon le plus proche de (x, y) */
+export function projectOnEdge(s: GameState, e: Edge, x: number, y: number) {
+  const a = nodeById(s, e.a)!, b = nodeById(s, e.b)!;
+  const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1e-9;
+  const t = Math.max(0.02, Math.min(0.98, ((x - a.x) * dx + (y - a.y) * dy) / L2));
+  return { x: a.x + dx * t, y: a.y + dy * t };
+}
+
+/** Coupe un tronçon en deux pour y créer un carrefour (sans frais) */
+export function splitEdge(s: GameState, geo: Geo, edgeId: number, x: number, y: number): RNode {
+  const e = s.edges.find(x => x.id === edgeId)!;
+  const p = projectOnEdge(s, e, x, y);
+  const n = addNode(s, p.x, p.y);
+  s.edges = s.edges.filter(x => x.id !== e.id);
+  for (const [u, v] of [[e.a, n.id], [n.id, e.b]]) {
+    const A = nodeById(s, u)!, B = nodeById(s, v)!;
+    s.edges.push({ id: s.nextId++, a: u, b: v, type: e.type, len: Math.hypot(B.x - A.x, B.y - A.y), bridges: geo.riverCrossings(A.x, A.y, B.x, B.y).n });
+  }
+  invalidate();
+  return n;
+}
+
+/** Premier croisement entre le segment A→B et une route existante (hors routes touchant A ou B) */
+export function firstCrossing(s: GameState, a: RNode, b: RNode) {
+  let best: { edge: number; t: number; x: number; y: number } | null = null;
+  for (const e of s.edges) {
+    if (e.a === a.id || e.b === a.id || e.a === b.id || e.b === b.id) continue;
+    const c = nodeById(s, e.a)!, d = nodeById(s, e.b)!;
+    const rx = b.x - a.x, ry = b.y - a.y, sx = d.x - c.x, sy = d.y - c.y, den = rx * sy - ry * sx;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den, u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+    if (t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999 && (!best || t < best.t)) best = { edge: e.id, t, x: a.x + rx * t, y: a.y + ry * t };
+  }
+  return best;
+}
