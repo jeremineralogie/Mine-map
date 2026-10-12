@@ -48,7 +48,7 @@ export interface Vehicle {
   line: number;          // -1 pour un convoi de chantier
   stop: number;
   cargo: Stock;          // chargement, éventuellement plusieurs ressources
-  state: 'go' | 'load' | 'unload' | 'lost';
+  state: 'go' | 'load' | 'unload' | 'lost' | 'parked';   // parked : ligne en pause, véhicule à l'arrêt
   path: { x: number; y: number }[];
   speeds: number[];
   seg: number;

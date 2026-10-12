@@ -79,7 +79,9 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
   navire, etc.
 - **Navigation fluviale** : ports fluviaux au bord des grands fleuves ; les barges (12 t) relient deux ports
   par le fleuve, sans route.
-- Production d'un bâtiment et lignes **mises en pause** à volonté ; suppression de toutes les lignes en une fois.
+- **Pause d'un atelier** : ses ouvriers sont libérés et réaffectés aux ateliers qui en manquent.
+- **Pause d'une ligne** : les véhicules chargés terminent leur livraison, puis s'arrêtent (frais de
+  fonctionnement maintenus). Suppression de toutes les lignes en une fois.
 
 ## 8. Économie
 - Les **habitants** achètent ce dont la ville a besoin pour grandir.

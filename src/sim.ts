@@ -419,7 +419,11 @@ export class Sim {
     const s = this.s;
     const paused = new Set(s.lines.filter(l => l.paused).map(l => l.id));
     for (const v of [...s.vehicles]) {
-      if (paused.has(v.line)) continue; // ligne en pause : les véhicules s'arrêtent sur place
+      if (paused.has(v.line)) {
+        // ligne en pause : un véhicule chargé termine sa livraison ; vide, il s'arrête où il est
+        if (v.state === 'parked') continue;
+        if (cargoTotal(v.cargo) < 0.5 && v.state !== 'unload') { v.state = 'parked'; continue; }
+      } else if (v.state === 'parked') { v.state = 'lost'; v.timer = 0; } // reprise : recalcule l'itinéraire
       if (v.state === 'go' || v.state === 'lost') this.move(v, dt);
       else this.atStop(v, dt);
     }
@@ -502,6 +506,7 @@ export class Sim {
     if (!b) { this.next(v); return; }
     v.timer += dt;
     const cap = VEH[v.type].cap;
+    if (v.state === 'load' && l.paused) { if (v.timer >= 0.5) this.next(v); return; } // en pause : ne charge plus rien
     if (v.state === 'load') {
       // charge les ressources demandées à tour de rôle, tonne par tonne, jusqu'à remplir le véhicule
       if (!b.city) {

@@ -431,7 +431,7 @@ export class Game {
     if (sel.kind === 'vehicle') {
       const v = s.vehicles.find(x => x.id === sel.id); if (!v) return '';
       const l = s.lines.find(x => x.id === v.line);
-      const st = { go: 'En route', load: 'Chargement', unload: 'Déchargement', lost: 'Aucun itinéraire !' }[v.state];
+      const st = { go: 'En route', load: 'Chargement', unload: 'Déchargement', lost: 'Aucun itinéraire !', parked: 'À l\'arrêt (ligne en pause)' }[v.state];
       return `<h2><img class="ic" src="${vIconUrl(v.type)}">${VEH[v.type].name}</h2>
         ${l ? this.lineCard(l) : `<p>Convoi de chantier vers <b>${esc(getB(s, v.target!)?.name ?? '?')}</b></p>`}
         <p>État : <b>${st}</b></p><p>Chargement (${fmt(cargoTotal(v.cargo))} / ${VEH[v.type].cap} t) : ${cargoList(v.cargo) || '<span class="muted">vide</span>'}</p>
@@ -661,7 +661,7 @@ export class Game {
       <h3>Arrêts</h3>${stops || '<p class="muted">Ajoute au moins deux arrêts.</p>'}
       <div class="actions"><button data-act="pickstop">+ Ajouter un arrêt sur la carte</button></div>
       <h3>Véhicules (${vs.length})</h3>
-      ${vs.map(v => `<button class="row" data-act="selv" data-id="${v.id}"><img class="vic" src="${vIconUrl(v.type)}"><span>${{ go: 'En route', load: 'Chargement', unload: 'Déchargement', lost: 'Aucun itinéraire !' }[v.state]}</span><span class="chips">${cargoList(v.cargo) || '<small class="muted">vide</small>'}</span></button>`).join('')}
+      ${vs.map(v => `<button class="row" data-act="selv" data-id="${v.id}"><img class="vic" src="${vIconUrl(v.type)}"><span>${{ go: 'En route', load: 'Chargement', unload: 'Déchargement', lost: 'Aucun itinéraire !', parked: 'À l\'arrêt (ligne en pause)' }[v.state]}</span><span class="chips">${cargoList(v.cargo) || '<small class="muted">vide</small>'}</span></button>`).join('')}
       <p class="muted">${VEH[l.vtype].name} : ${fmt(VEH[l.vtype].price)} sesterces, frais ${VEH[l.vtype].upkeep}/mois.</p>
       <div class="actions"><button class="primary" data-act="buyv" ${l.stops.length >= 2 ? '' : 'disabled'}>+ Acheter un véhicule</button>${vs.length ? `<button data-act="sellv" data-id="${vs[vs.length - 1].id}">− Vendre un véhicule</button>` : ''}</div>
       <p class="muted">Recettes : ${fmt(vs.reduce((a, v) => a + v.income, 0))} sesterces</p>
@@ -843,8 +843,8 @@ export class Game {
       }
       case 'research': this.sim.research(t.dataset.id!); break;
       case 'nextera': this.notifier().chapter(); break;
-      case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; this.toast(b.paused ? `${b.name} : production en pause.` : `${b.name} : production relancée.`); } break; }
-      case 'pausel': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) l.paused = !l.paused; break; }
+      case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; const n = b.staff; this.sim.staffing(); this.toast(b.paused ? `${b.name} : production en pause, ${n} ouvrier${n > 1 ? 's' : ''} libéré${n > 1 ? 's' : ''} pour les autres ateliers.` : `${b.name} : production relancée.`); } break; }
+      case 'pausel': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) { l.paused = !l.paused; this.toast(l.paused ? 'Ligne en pause : les véhicules chargés terminent leur livraison, puis s\'arrêtent.' : 'Ligne relancée.'); } break; }
       case 'pauseall': { const all = s.lines.every(l => l.paused); for (const l of s.lines) l.paused = !all; break; }
       case 'delall': this.modal(`<h2>Supprimer toutes les lignes ?</h2><p>Les ${s.lines.length} lignes seront supprimées et leurs ${s.vehicles.filter(v => v.line >= 0).length} véhicules revendus à moitié prix. Les routes ne sont pas touchées.</p>`, [
         { label: 'Annuler' }, { label: 'Tout supprimer', primary: true, fn: () => { for (const v of s.vehicles.filter(x => x.line >= 0)) sellVehicle(s, v); s.lines = []; this.view.selectedLine = null; this.toast('Toutes les lignes ont été supprimées.'); this.refresh(); } }]); break;
