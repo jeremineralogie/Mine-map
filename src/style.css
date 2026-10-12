@@ -16,6 +16,11 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #b4d0e4; overscroll-behavior: none; }
+/* la page ne bouge jamais : seul le jeu réagit aux gestes */
+body { position: fixed; inset: 0; width: 100%; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+#panelBody, #modal .box { touch-action: pan-y; overscroll-behavior: contain; }
+#tools { touch-action: pan-x; overscroll-behavior: contain; }
+input, select { -webkit-user-select: text; user-select: text; }
 #app { position: fixed; inset: 0; }
 #map { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
 button { font: inherit; color: inherit; cursor: pointer; }

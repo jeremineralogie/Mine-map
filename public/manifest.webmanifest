@@ -1,0 +1,16 @@
+{
+  "name": "Mine Map",
+  "short_name": "Mine Map",
+  "description": "Bâtis l'économie de la France, de l'Antiquité romaine à aujourd'hui.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#2b2118",
+  "theme_color": "#2b2118",
+  "lang": "fr",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
