@@ -142,31 +142,25 @@ export class Renderer {
   }
   private drawDeposits(s: GameState, v: View) {
     const ctx = this.ctx, showLabels = this.cam.scale > 1.3;
-    for (const d of this.geo.deposits) {
-      if (v.depositFilter !== 'all' && d.res !== v.depositFilter) continue;
-      const future = RES[d.res].era > s.era;
-      if (d.res === 'cereales' && v.depositFilter !== 'cereales') continue; // les terres fertiles ont leur propre filtre
+    // seuls les gisements de l'époque en cours (ou passées) sont visibles : les autres se découvrent plus tard
+    const shown = this.geo.deposits.filter(d => RES[d.res].era <= s.era
+      && (v.depositFilter === 'all' ? d.res !== 'cereales' : d.res === v.depositFilter)); // les terres fertiles ont leur propre filtre
+    const fade = this.cam.scale > 4 ? 0.5 : 1; // plus discret quand on zoome, pour laisser voir le relief
+    for (const d of shown) {
       ctx.beginPath(); ctx.ellipse(d.x, d.y, d.rx, d.ry, 0, 0, Math.PI * 2);
       const col = RES[d.res].color;
-      // plus discret quand on zoome, pour laisser voir le relief
-      const fade = this.cam.scale > 4 ? 0.5 : 1;
-      ctx.globalAlpha = (future ? 0.12 : 0.18 + 0.12 * d.rich) * fade; ctx.fillStyle = col; ctx.fill();
-      ctx.globalAlpha = future ? 0.5 : 0.9; ctx.strokeStyle = col === '#f1f1f1' || col === '#f5f0e6' || col === '#fdfdfd' || col === '#eeeeee' ? '#9aa' : col;
-      ctx.lineWidth = this.px(future ? 1 : 1.6);
-      if (future) ctx.setLineDash([this.px(4), this.px(3)]);
-      ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      ctx.globalAlpha = (0.18 + 0.12 * d.rich) * fade; ctx.fillStyle = col; ctx.fill();
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = col === '#f1f1f1' ? '#9aa' : col;
+      ctx.lineWidth = this.px(1.6);
+      ctx.stroke(); ctx.globalAlpha = 1;
     }
     if (!showLabels) return;
     this.screen();
     ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
-    for (const d of this.geo.deposits) {
-      if (v.depositFilter !== 'all' && d.res !== v.depositFilter) continue;
-      if (d.res === 'cereales' && v.depositFilter !== 'cereales') continue;
+    for (const d of shown) {
       const [x, y] = this.cam.toScreen(d.x, d.y);
       if (x < -100 || y < -20 || x > this.cam.w + 100 || y > this.cam.h + 20) continue;
-      const future = RES[d.res].era > s.era;
-      const t = `${RES[d.res].name}${future ? ' (époque ' + ['', 'I', 'II', 'III', 'IV', 'V'][RES[d.res].era] + ')' : ''}`;
-      halo(ctx, t, x, y - 6, future ? '#666' : '#222');
+      halo(ctx, RES[d.res].name, x, y - 6, '#222');
       ctx.font = '10px system-ui, sans-serif'; halo(ctx, d.name, x, y + 7, '#555'); ctx.font = '600 11px system-ui, sans-serif';
     }
     this.world();

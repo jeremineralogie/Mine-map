@@ -43,7 +43,8 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 ### Gisements
 - Placés **approximativement à leur emplacement réel** (charbon du Nord et de Lorraine,
   fer lorrain, bauxite du Var, fluorine du Massif central, sel de Lorraine et du Jura, etc.).
-- Visibles grâce au **calque des gisements**.
+- Visibles grâce au **calque des gisements**, uniquement pour les ressources de l'époque en cours :
+  les gisements des époques suivantes se découvrent en changeant d'époque.
 - **Richesse variable** selon le gisement.
 - Ne s'épuisent pas, mais leur **rendement baisse** avec l'extraction cumulée ;
   certaines technologies relèvent le rendement.

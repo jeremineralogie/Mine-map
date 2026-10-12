@@ -551,14 +551,15 @@ export class Game {
 
   private layersPanel(): string {
     const L = this.view.layers, s = this.s;
-    const resList = [...new Set(this.geo.deposits.map(d => d.res))];
-    const opts = `<option value="all">Toutes les ressources (sauf terres fertiles)</option>` + resList.map(r => `<option value="${r}" ${this.view.depositFilter === r ? 'selected' : ''}>${RES[r].name}${RES[r].era > s.era ? ' (plus tard)' : ''}</option>`).join('');
-    const legend = resList.filter(r => r !== 'cereales').map(r => `<span class="res ${RES[r].era > s.era ? 'later' : ''}"><i style="background:${RES[r].color}"></i>${RES[r].name}</span>`).join(' ');
+    // les ressources des époques suivantes restent secrètes
+    const resList = [...new Set(this.geo.deposits.map(d => d.res))].filter(r => RES[r].era <= s.era);
+    const opts = `<option value="all">Toutes les ressources (sauf terres fertiles)</option>` + resList.map(r => `<option value="${r}" ${this.view.depositFilter === r ? 'selected' : ''}>${RES[r].name}</option>`).join('');
+    const legend = resList.filter(r => r !== 'cereales').map(r => `<span class="res"><i style="background:${RES[r].color}"></i>${RES[r].name}</span>`).join(' ');
     return `<h2>Calques</h2>
       <label class="tog"><input type="checkbox" data-layer="deposits" ${L.deposits ? 'checked' : ''}> Gisements</label>
       <p><select data-field="depfilter">${opts}</select></p>
       <div class="chips">${legend}</div>
-      <p class="muted">Les gisements en pointillés seront exploitables aux époques suivantes.</p>
+      <p class="muted">De nouveaux gisements apparaîtront à chaque nouvelle époque.</p>
       <label class="tog"><input type="checkbox" data-layer="water" ${L.water ? 'checked' : ''}> Accès à l'eau (fleuves, lacs, côte, aqueducs)</label>
       <label class="tog"><input type="checkbox" data-layer="workers" ${L.workers ? 'checked' : ''}> Main-d'œuvre (rayon des villes)</label>`;
   }
