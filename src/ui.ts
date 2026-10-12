@@ -5,6 +5,7 @@ import {
 } from './defs';
 import type { Geo } from './geo';
 import { bIconUrl, resImg, vIconUrl } from './icons';
+import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import {
@@ -138,6 +139,8 @@ export class Game {
     $('money').parentElement!.classList.toggle('neg', s.money < 0);
     $('rp').textContent = fmt(Math.floor(s.rp));
     document.querySelectorAll<HTMLButtonElement>('#speed button').forEach(b => b.classList.toggle('on', Number(b.dataset.s) === this.speed));
+    $('speedCycle').textContent = `×${this.speed || 1}`; $('speedCycle').classList.toggle('on', this.speed > 0);
+    if (!$('treeView').hidden) this.renderTree();
     if (this.panel) {
       const html = this.panel();
       if (html !== this.panelKey) {
@@ -150,7 +153,13 @@ export class Game {
   }
 
   private bindChrome() {
+    document.querySelectorAll<HTMLButtonElement>('#tools button').forEach(b => { const t = b.dataset.t!; b.innerHTML = `${IC[t]}<span class="lbl">${LABELS[t]}</span>`; b.title = LABELS[t]; });
+    document.querySelectorAll<HTMLElement>('[data-ic]').forEach(e => { e.innerHTML = IC[e.dataset.ic!]; });
+    $('rpBtn').onclick = () => this.openTree();
+    $('treeView').addEventListener('click', e => this.treeClick(e));
     document.querySelectorAll<HTMLButtonElement>('#speed button').forEach(b => b.onclick = () => { this.speed = Number(b.dataset.s); this.refresh(); });
+    // téléphone : un seul bouton qui fait défiler les vitesses
+    $('speedCycle').onclick = () => { const v = [1, 2, 4, 8]; this.speed = v[(v.indexOf(this.speed) + 1) % v.length] || 1; this.refresh(); };
     document.querySelectorAll<HTMLButtonElement>('#tools button').forEach(b => b.onclick = () => this.tool(b.dataset.t!));
     $('panelClose').onclick = () => this.closePanel();
     $('menuBtn').onclick = () => this.openPanel(() => this.menuPanel());
@@ -160,7 +169,7 @@ export class Game {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === ' ') { this.speed = this.speed ? 0 : 1; e.preventDefault(); this.refresh(); }
       else if (e.key >= '1' && e.key <= '4') { this.speed = [1, 2, 4, 8][Number(e.key) - 1]; this.refresh(); }
-      else if (e.key === 'Escape') this.cancel();
+      else if (e.key === 'Escape') { if (!$('treeView').hidden) this.closeTree(); else this.cancel(); }
       else if (e.key === 'r') this.tool('road');
       else if (e.key === 'b') this.tool('build');
       else if (e.key === 'Enter' && this.mode.kind === 'road') this.endRoad();
@@ -176,6 +185,7 @@ export class Game {
 
   tool(t: string) {
     if (t === 'menu') { this.openPanel(() => this.menuPanel()); return; }
+    if (t === 'research') { this.openTree(); return; }
     if (this.mode.kind === 'start') { this.toast('Choisis d\'abord l\'emplacement de ton entrepôt de départ.'); return; }
     this.view.draft = null; this.roadFrom = null; this.view.ghost = null;
     switch (t) {
@@ -184,7 +194,7 @@ export class Game {
       case 'road': this.setMode({ kind: 'road' }); break;
       case 'demolish': this.setMode({ kind: 'demolish' }); break;
       case 'lines': this.setMode({ kind: 'select' }); this.openPanel(() => this.linesPanel(), 'lines'); break;
-      case 'research': this.openPanel(() => this.researchPanel()); break;
+      case 'research': this.openTree(); break;
       case 'economy': this.openPanel(() => this.economyPanel()); break;
       case 'objectives': this.openPanel(() => this.objectivesPanel()); break;
       case 'layers': this.openPanel(() => this.layersPanel()); break;
@@ -579,7 +589,7 @@ export class Game {
         <img src="${bIconUrl(t)}"><span><b>${d.name}</b><small>${ok ? `${fmt(d.money)} sesterces · ${costList(d.cost)}` : `🔒 ${tech!.name}`}</small>
         <small class="muted">${d.recipe ? (Object.keys(d.recipe.in).length ? (Object.keys(d.recipe.in) as ResId[]).map(r => RES[r].name).join(' + ') + ' → ' : '') + (Object.keys(d.recipe.out) as ResId[]).map(r => RES[r].name).join(', ') : esc(d.desc)}</small></span></button>`;
     }).join('');
-    return `<h2>Construire</h2><p class="muted">Les matériaux sont livrés sur le chantier depuis un entrepôt relié par la route.</p><div class="cards">${items}</div>`;
+    return `<h2 class="ph">${IC.build}Construire</h2><p class="muted">Les matériaux sont livrés sur le chantier depuis un entrepôt relié par la route.</p><div class="cards">${items}</div>`;
   }
 
   private linesPanel(): string {
@@ -589,7 +599,7 @@ export class Game {
       if (l) return this.lineEditor(l);
     }
     const rows = s.lines.map(l => this.lineCard(l)).join('');
-    return `<h2>Lignes de transport</h2><p class="muted">Chaque ligne relie des arrêts : on y charge une ou plusieurs ressources, puis on les décharge plus loin (entrepôt, atelier, ville ou poste-frontière).</p>
+    return `<h2 class="ph">${IC.lines}Lignes de transport</h2><p class="muted">Chaque ligne relie des arrêts : on y charge une ou plusieurs ressources, puis on les décharge plus loin (entrepôt, atelier, ville ou poste-frontière).</p>
       ${rows || '<p>Aucune ligne pour l\'instant.</p>'}<div class="actions"><button class="primary" data-act="newline">Nouvelle ligne</button>
       ${s.lines.length ? `<button data-act="pauseall">${s.lines.every(l => l.paused) ? '▶ Reprendre toutes' : '⏸ Tout mettre en pause'}</button><button class="danger" data-act="delall">Supprimer toutes les lignes</button>` : ''}</div>`;
   }
@@ -675,7 +685,7 @@ export class Game {
     const L = s.ledger, months: { m: number; inc: number; exp: number }[] = [];
     for (let i = Math.max(1, L.length - 12); i < L.length; i++) months.push({ m: L[i].month, inc: L[i].income - L[i - 1].income, exp: L[i].expenses - L[i - 1].expenses });
     const last = months[months.length - 1];
-    let h = `<h2>📊 Économie</h2>`;
+    let h = `<h2 class="ph">${IC.economy}Économie</h2>`;
     h += this.kpis([[fmt(s.money), 'sesterces en caisse', s.money < 0 ? 'bad' : ''],
       [last ? `+${fmt(last.inc)}` : '—', 'revenus (mois dernier)'], [last ? `−${fmt(last.exp)}` : '—', 'dépenses (mois dernier)'],
       [last ? `${last.inc - last.exp >= 0 ? '+' : '−'}${fmt(Math.abs(last.inc - last.exp))}` : '—', 'résultat', last ? (last.inc - last.exp >= 0 ? 'good' : 'bad') : '']]);
@@ -729,36 +739,87 @@ export class Game {
     return h;
   }
 
-  private researchPanel(): string {
+  // ---------- Arbre de recherche (plein écran) ----------
+  private treeSel: string | null = null;
+  private treeKey = '';
+  openTree() { $('treeView').hidden = false; this.treeKey = ''; this.renderTree(); }
+  closeTree() { $('treeView').hidden = true; }
+  private treeClick(e: Event) {
+    const t = (e.target as HTMLElement).closest<HTMLElement>('[data-tv]');
+    if (!t) { if (e.target === $('treeView')) this.closeTree(); return; }
+    const a = t.dataset.tv;
+    if (a === 'close') this.closeTree();
+    else if (a === 'node') this.treeSel = t.dataset.id!;
+    else if (a === 'research') this.sim.research(t.dataset.id!);
+    else if (a === 'next') { this.closeTree(); this.notifier().chapter(); }
+    this.treeKey = ''; this.renderTree(); this.refresh();
+  }
+  private renderTree() {
     const s = this.s, techs = TECHS.filter(t => t.era === s.era);
-    const done = techs.filter(t => s.techs.includes(t.id)).length;
-    const unlocks = (id: string) => [
-      ...(Object.keys(BUILD) as BType[]).filter(b => BUILD[b].tech === id).map(b => BUILD[b].name),
-      ...(Object.keys(VEH) as VType[]).filter(v => VEH[v].tech === id).map(v => VEH[v].name),
-      ...(Object.keys(ROADS) as RoadType[]).filter(r => ROADS[r].tech === id).map(r => ROADS[r].name)];
-    // profondeur dans l'arbre : nombre de prérequis en chaîne
+    const key = `${s.techs.join(',')}|${Math.floor(s.rp)}|${this.treeSel}|${s.era}`;
+    if (key === this.treeKey) return;
+    this.treeKey = key;
+    // ---- disposition : colonnes = rang dans l'arbre, couloirs = branches ----
     const depth = (id: string): number => { const t = TECHS.find(x => x.id === id)!; return t.req.length ? 1 + Math.max(...t.req.map(depth)) : 0; };
-    const card = (t: typeof techs[number]) => {
-      const ok = s.techs.includes(t.id), reqOk = t.req.every(r => s.techs.includes(r)), u = unlocks(t.id);
-      const cls = ok ? 'done' : reqOk ? (s.rp >= t.cost ? 'ready' : 'avail') : 'locked';
-      return `<div class="tnode ${cls}" style="margin-left:${depth(t.id) * 14}px">
-        <div class="tn-head"><b>${ok ? '✓ ' : !reqOk ? '🔒 ' : ''}${t.name}</b><span class="cost">${ok ? 'découverte' : `${t.cost} pts`}</span></div>
-        <small>${esc(t.desc)}</small>${u.length ? `<small class="unl">Débloque : ${u.join(', ')}</small>` : ''}
-        ${!reqOk ? `<small class="muted">Après : ${t.req.map(r => TECHS.find(x => x.id === r)!.name).join(', ')}</small>` : ''}
-        ${!ok && reqOk ? `<button data-act="research" data-id="${t.id}" ${s.rp >= t.cost ? 'class="primary"' : 'disabled'}>Rechercher</button>` : ''}</div>`;
-    };
-    const cols = BRANCHES.map(br => {
-      const list = techs.filter(t => t.branch === br.id).sort((a, z) => depth(a.id) - depth(z.id));
-      if (!list.length) return '';
-      return `<div class="branch"><h3>${br.icon} ${br.name} <small class="muted">${list.filter(t => s.techs.includes(t.id)).length}/${list.length}</small></h3>${list.map(card).join('')}</div>`;
+    const NW = 168, NH = 74, CW = 192, RH = 90, LH = 36, PAD = 14;
+    const pos = new Map<string, { x: number; y: number }>();
+    let y0 = PAD; const lanes: { br: typeof BRANCHES[number]; y: number; h: number; n: number; d: number }[] = [];
+    for (const br of BRANCHES) {
+      const list = techs.filter(t => t.branch === br.id);
+      if (!list.length) continue;
+      const cols = new Map<number, typeof list>();
+      for (const t of list) { const d = depth(t.id); if (!cols.has(d)) cols.set(d, []); cols.get(d)!.push(t); }
+      const rowOf = new Map<string, number>(); let rows = 1;
+      for (const d of [...cols.keys()].sort((a, z) => a - z)) {
+        // range les nœuds près de leur parent pour limiter les croisements
+        const col = cols.get(d)!.sort((a, z) => avgRow(a) - avgRow(z));
+        const used = new Set<number>();
+        for (const t of col) { let r = Math.max(0, Math.round(avgRow(t))); while (used.has(r)) r++; used.add(r); rowOf.set(t.id, r); rows = Math.max(rows, r + 1); }
+      }
+      function avgRow(t: typeof list[number]) { const rs = t.req.map(r => rowOf.get(r)).filter((v): v is number => v !== undefined); return rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0; }
+      for (const t of list) pos.set(t.id, { x: PAD + 22 + depth(t.id) * CW, y: y0 + LH + rowOf.get(t.id)! * RH });
+      lanes.push({ br, y: y0, h: LH + rows * RH, n: list.length, d: list.filter(t => s.techs.includes(t.id)).length });
+      y0 += LH + rows * RH + 14;
+    }
+    const W = PAD + 22 + (Math.max(...techs.map(t => depth(t.id))) + 1) * CW, H = y0;
+    const state = (t: typeof techs[number]) => s.techs.includes(t.id) ? 'done' : !t.req.every(r => s.techs.includes(r)) ? 'locked' : s.rp >= t.cost ? 'ready' : 'avail';
+    const unlocks = (id: string) => [
+      ...(Object.keys(BUILD) as BType[]).filter(b => BUILD[b].tech === id).map(b => ({ name: BUILD[b].name, img: bIconUrl(b) })),
+      ...(Object.keys(VEH) as VType[]).filter(v => VEH[v].tech === id).map(v => ({ name: VEH[v].name, img: vIconUrl(v) })),
+      ...(Object.keys(ROADS) as RoadType[]).filter(r => ROADS[r].tech === id).map(r => ({ name: ROADS[r].name, img: '' }))];
+    // traits de dépendance
+    const edges = techs.flatMap(t => t.req.filter(r => pos.has(r)).map(r => {
+      const a = pos.get(r)!, b = pos.get(t.id)!, x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, mx = (x1 + x2) / 2;
+      const cls = s.techs.includes(t.id) ? 'done' : s.techs.includes(r) ? 'open' : '';
+      return `<path class="${cls}" d="M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/><circle class="${cls}" cx="${x2}" cy="${y2}" r="3.5"/>`;
+    })).join('');
+    const laneHtml = lanes.map(l => `<div class="tv-lane" style="top:${l.y}px;height:${l.h}px;width:${W - PAD}px"><div class="tv-lane-h">${IC[l.br.id]}<b>${l.br.name}</b><small>${l.d} / ${l.n}</small></div></div>`).join('');
+    const nodes = techs.map(t => {
+      const p = pos.get(t.id)!, st = state(t), u = unlocks(t.id);
+      return `<button class="tv-node ${st} ${this.treeSel === t.id ? 'sel' : ''}" data-tv="node" data-id="${t.id}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px">
+        <span class="tv-ic">${u[0]?.img ? `<img src="${u[0].img}" alt="">` : IC[t.branch]}</span>
+        <span class="tv-txt"><b>${t.name}</b><small>${st === 'done' ? `${IC.check} Découverte` : st === 'locked' ? `${IC.lock} Verrouillée` : `${t.cost} pts`}</small></span></button>`;
     }).join('');
-    return `<h2>📜 Recherche · ${ERAS[s.era]}</h2>
-      <p>Points de recherche : <b>${fmt(Math.floor(s.rp))}</b> <span class="muted">(produits par les villes et les objectifs)</span></p>
-      <p class="muted">Choisis librement l'ordre de tes recherches selon ta stratégie : routes ou fleuves, mines ou commerce… Quand tout l'arbre de l'époque est débloqué, l'époque suivante s'ouvre.</p>
-      <div class="kpis"><div class="kpi ${done === techs.length ? 'good' : ''}"><b>${done} / ${techs.length}</b><small>technologies de l'époque</small></div></div>
-      <div class="gauge big"><i style="width:${done / techs.length * 100}%"></i></div>
-      ${done === techs.length ? `<div class="actions"><button class="primary" data-act="nextera">Passer à l'époque suivante →</button></div>` : ''}
-      <div class="tree">${cols}</div>`;
+    const done = techs.filter(t => s.techs.includes(t.id)).length;
+    const sel = techs.find(t => t.id === this.treeSel) ?? techs.find(t => state(t) === 'ready') ?? techs.find(t => state(t) === 'avail') ?? techs[0];
+    const sst = state(sel), su = unlocks(sel.id);
+    const detail = `<div class="tv-d-head"><span class="tv-d-ic">${su[0]?.img ? `<img src="${su[0].img}" alt="">` : IC[sel.branch]}</span><div><small>${BRANCHES.find(b => b.id === sel.branch)!.name}</small><h3>${sel.name}</h3></div></div>
+      <p>${esc(sel.desc)}</p>
+      ${su.length ? `<div class="tv-unl">${su.map(x => `<span>${x.img ? `<img src="${x.img}" alt="">` : IC.road}${x.name}</span>`).join('')}</div>` : ''}
+      ${sel.req.length ? `<p class="tv-req">Prérequis : ${sel.req.map(r => `<span class="${s.techs.includes(r) ? 'ok' : ''}">${s.techs.includes(r) ? IC.check : IC.lock}${TECHS.find(x => x.id === r)!.name}</span>`).join('')}</p>` : ''}
+      <div class="tv-act">${sst === 'done' ? `<span class="pill good">Découverte</span>` : sst === 'locked' ? `<span class="pill info">Débloque d'abord les prérequis</span>`
+        : `<button class="primary" data-tv="research" data-id="${sel.id}" ${sst === 'ready' ? '' : 'disabled'}>Rechercher · ${sel.cost} pts</button>${sst === 'avail' ? `<small class="muted">Il manque ${Math.ceil(sel.cost - s.rp)} points</small>` : ''}`}</div>`;
+    $('treeView').innerHTML = `<div class="tv-box">
+      <header class="tv-head"><div class="tv-title">${IC.research}<div><h2>Arbre de recherche</h2><small>${ERAS[s.era]}</small></div></div>
+        <div class="tv-stats"><span class="tv-rp">${IC.scroll}<b>${fmt(Math.floor(s.rp))}</b> pts</span>
+        <span class="tv-prog"><span class="gauge"><i style="width:${done / techs.length * 100}%"></i></span><small>${done} / ${techs.length} découvertes</small></span>
+        ${done === techs.length ? `<button class="primary" data-tv="next">Époque suivante →</button>` : ''}</div>
+        <button class="tv-close" data-tv="close" title="Fermer">${IC.close}</button></header>
+      <div class="tv-body"><div class="tv-scroll"><div class="tv-canvas" style="width:${W}px;height:${H}px">${laneHtml}
+        <svg class="tv-edges" width="${W}" height="${H}">${edges}</svg>${nodes}</div></div>
+        <aside class="tv-detail">${detail}</aside></div>
+      <footer class="tv-legend"><span class="lg done"></span>Découverte <span class="lg ready"></span>Disponible <span class="lg avail"></span>Points insuffisants <span class="lg locked"></span>Verrouillée
+        <small class="muted">Choisis ton ordre de recherche ; l'époque suivante s'ouvre quand tout l'arbre est découvert.</small></footer></div>`;
   }
 
   private objectivesPanel(): string {
@@ -767,7 +828,7 @@ export class Game {
     const doneN = objs.filter(o => s.objectives.includes(o.id)).length, techN = TECHS.filter(t => t.era === s.era && s.techs.includes(t.id)).length, techT = TECHS.filter(t => t.era === s.era).length;
     const rows = objs.map(o => `<div class="obj ${s.objectives.includes(o.id) ? 'done' : ''}"><b>${s.objectives.includes(o.id) ? '✓ ' : ''}${o.name}</b><p>${esc(o.desc)} <small class="muted">+${fmt(o.money)} sesterces, +${o.rp} pts</small></p></div>`).join('');
     const log = s.log.slice(0, 12).map(e => `<li><small class="muted">${yearOf(e.day)}</small> ${esc(e.text)}</li>`).join('');
-    return `<h2>Chapitre I · ${ERAS[s.era]}</h2>
+    return `<h2 class="ph">${IC.objectives}Chapitre I · ${ERAS[s.era]}</h2>
       <p>Arbre de recherche : <b>${techN} / ${techT}</b> · Objectifs : <b>${doneN} / ${objs.length}</b></p>
       <div class="bar"><i style="width:${Math.round(techN / techT * 100)}%"></i></div>
       <p class="muted">L'époque s'achève quand tout son arbre de recherche est débloqué. Les objectifs historiques sont facultatifs : ils rapportent argent et points de recherche.</p>
@@ -780,7 +841,7 @@ export class Game {
     const resList = [...new Set(this.geo.deposits.map(d => d.res))].filter(r => RES[r].era <= s.era);
     const opts = `<option value="all">Toutes les ressources (sauf terres fertiles)</option>` + resList.map(r => `<option value="${r}" ${this.view.depositFilter === r ? 'selected' : ''}>${RES[r].name}</option>`).join('');
     const legend = resList.filter(r => r !== 'cereales').map(r => `<span class="res"><i style="background:${RES[r].color}"></i>${RES[r].name}</span>`).join(' ');
-    return `<h2>Calques</h2>
+    return `<h2 class="ph">${IC.layers}Calques</h2>
       <label class="tog"><input type="checkbox" data-layer="deposits" ${L.deposits ? 'checked' : ''}> Gisements</label>
       <p><select data-field="depfilter">${opts}</select></p>
       <div class="chips">${legend}</div>
@@ -791,13 +852,13 @@ export class Game {
 
   private menuPanel(): string {
     const s = this.s;
-    return `<h2>Menu</h2>
+    return `<h2 class="ph">${IC.menu}Menu</h2>
       <p class="muted">Partie en cours : ${dateLabel(s)} · ${fmt(s.money)} sesterces · ${s.buildings.filter(b => !b.partner).length} bâtiment(s)</p>
       <div class="actions col">
-      <button class="primary" data-act="new">🔄 Recommencer la partie</button>
-      <button data-act="save">💾 Sauvegarder maintenant</button>
-      <button data-act="export">📤 Exporter la sauvegarde (fichier)</button>
-      <button data-act="import">📥 Importer une sauvegarde</button></div>
+      <button class="primary" data-act="new">Recommencer la partie</button>
+      <button data-act="save">Sauvegarder maintenant</button>
+      <button data-act="export">Exporter la sauvegarde (fichier)</button>
+      <button data-act="import">Importer une sauvegarde</button></div>
       <h3>Commandes</h3><ul class="log">
       <li>Glisser : déplacer la carte · molette ou pincement : zoom</li>
       <li>Espace : pause · 1 à 4 : vitesse · Échap : annuler</li>

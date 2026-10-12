@@ -4,7 +4,7 @@ import { Game } from './ui';
 
 // Les gestes faits sur le jeu (glisser, pincer, double-toucher) ne doivent jamais faire défiler,
 // zoomer ou fermer la page qui l'affiche : seuls les panneaux à contenu long peuvent défiler.
-const scrollable = (t: EventTarget | null) => t instanceof Element && !!t.closest('#panelBody, #modal .box, #tools');
+const scrollable = (t: EventTarget | null) => t instanceof Element && !!t.closest('#panelBody, #modal .box, #tools, .tv-scroll, .tv-detail');
 document.addEventListener('touchmove', e => { if (e.touches.length > 1 || !scrollable(e.target)) e.preventDefault(); }, { passive: false });
 document.addEventListener('touchstart', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 for (const g of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(g, e => e.preventDefault(), { passive: false });
