@@ -24,6 +24,8 @@ export interface View {
   selectedLine: number | null;
   /** lignes à afficher sur la carte (tracé, sens, départ et arrivée) */
   showLines: number[];
+  /** état d'un bâtiment (pastille d'alerte sur la carte) */
+  status?: (b: Building) => { level: 'good' | 'info' | 'warn' | 'bad' };
   draft: { pts: { x: number; y: number }[]; cursor: { x: number; y: number } | null; valid: boolean } | null;
   ghost: { type: BType; x: number; y: number; ok: boolean } | null;
   hoverEdge: number | null;
@@ -316,17 +318,34 @@ export class Renderer {
         // marques de chantier
         ctx.fillStyle = '#f08c00'; ctx.beginPath(); ctx.arc(x + size * 0.42, y - size * 0.42, 6, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui'; ctx.fillText('⚒', x + size * 0.42, y - size * 0.42 + 3);
-      } else if (b.halted && b.halted > s.day) {
-        ctx.fillStyle = '#c92a2a'; ctx.beginPath(); ctx.arc(x + size * 0.42, y - size * 0.42, 6, 0, Math.PI * 2); ctx.fill();
-      } else if (BUILD[b.type].workers && b.staff < BUILD[b.type].workers && b.built) {
-        // manque de main-d'œuvre : pastille clignotante
-        if (Math.floor(time / 600) % 2) { ctx.fillStyle = '#e67700'; ctx.beginPath(); ctx.arc(x + size * 0.42, y - size * 0.42, 5, 0, Math.PI * 2); ctx.fill(); }
+      } else if (v.status) {
+        // pastille d'alerte : orange (attention), rouge (bloqué), clignotante
+        const lv = v.status(b).level;
+        if ((lv === 'warn' || lv === 'bad') && (lv === 'bad' || Math.floor(time / 700) % 2)) {
+          const px = x + size * 0.42, py = y - size * 0.42;
+          ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.fillStyle = lv === 'bad' ? '#d92d20' : '#f08c00'; ctx.fill();
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('!', px, py + 4);
+        }
       }
-      if (b.node === null && b.type !== 'poste') {
-        ctx.fillStyle = '#868e96'; ctx.beginPath(); ctx.arc(x - size * 0.42, y - size * 0.42, 5, 0, Math.PI * 2); ctx.fill();
+      if (b.node === null && b.type !== 'poste' && b.type !== 'pont_du_gard') {
+        // non relié par la route
+        const px = x - size * 0.42, py = y - size * 0.42;
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.fillStyle = '#868e96'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(px - 3, py + 3); ctx.lineTo(px + 3, py - 3); ctx.stroke();
+      }
+      // jauge de stock sous l'icône (production ou entrepôt) quand on zoome
+      const d = BUILD[b.type];
+      if (b.built && this.cam.scale > 2 && (d.recipe || b.type === 'entrepot')) {
+        let fill = 0, col = '#8a7a5c';
+        if (d.recipe) { const r = Object.keys(d.recipe.out)[0] as ResId; fill = (b.stock[r] ?? 0) / (d.storage * b.level); col = RES[r].color; }
+        else fill = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0) / (d.storage * b.level);
+        const gw = size * 0.8, gx = x - gw / 2, gy = y + size / 2 + 1;
+        ctx.fillStyle = 'rgba(255,255,255,.92)'; roundRect(ctx, gx - 1.5, gy - 1.5, gw + 3, 8, 4); ctx.fill();
+        ctx.fillStyle = fill >= 0.95 ? '#d92d20' : col; roundRect(ctx, gx, gy, Math.max(3, gw * Math.min(1, fill)), 5, 2.5); ctx.fill();
       }
       const label = b.city ? `${b.name} · ${Math.round(b.city.pop)} hab.` : b.partner ? b.name : this.cam.scale > 2.5 ? b.name : '';
-      if (label) { ctx.font = b.city || b.partner ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; halo(ctx, label, x, y + size / 2 + 12, b.partner ? '#7a1f2b' : '#1f1a14'); }
+      if (label) { ctx.font = b.city || b.partner ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; halo(ctx, label, x, y + size / 2 + (b.built && this.cam.scale > 2 && (BUILD[b.type].recipe || b.type === 'entrepot') ? 18 : 12), b.partner ? '#7a1f2b' : '#1f1a14'); }
     }
     this.world();
   }

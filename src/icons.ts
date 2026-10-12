@@ -1,5 +1,5 @@
 // Icônes vues du dessus (SVG), converties en images pour le canvas.
-import type { BType, VType } from './defs';
+import type { BType, ResId, VType } from './defs';
 
 const plate = (fill: string, inner: string) =>
   `<rect x="3" y="5" width="58" height="56" rx="12" fill="#000" opacity=".22"/>` +
@@ -111,3 +111,25 @@ export const VICON = Object.fromEntries(Object.entries(VSVG).map(([k, v]) => [k,
 /** URL d'icône pour l'interface HTML */
 export const bIconUrl = (t: BType) => BICON[t].src;
 export const vIconUrl = (t: VType) => VICON[t].src;
+
+// ---- Icônes de ressources (24×24) ----
+const RSVG: Partial<Record<ResId, string>> = {
+  bois: `<g stroke="#4a3320" stroke-width="1"><rect x="2" y="13" width="20" height="5" rx="2.5" fill="#a0723f"/><rect x="4" y="8" width="18" height="5" rx="2.5" fill="#b8854c"/><rect x="2" y="3" width="16" height="5" rx="2.5" fill="#a0723f"/></g><g fill="#e3c08a" stroke="#6b4a2a" stroke-width=".8"><circle cx="20" cy="15.5" r="2.2"/><circle cx="20" cy="10.5" r="2.2"/><circle cx="16" cy="5.5" r="2.2"/></g><rect x="3" y="19" width="18" height="2" rx="1" fill="#2f7d3a" opacity=".5"/>`,
+  pierre: `<path d="M3 9 L12 5 L21 9 L21 18 L12 21 L3 18 Z" fill="#b9b2a3" stroke="#5f594f" stroke-width="1.2"/><path d="M3 9 L12 13 L21 9 M12 13 V21" fill="none" stroke="#5f594f" stroke-width="1.2"/><path d="M3 9 L12 5 L21 9 L12 13 Z" fill="#d8d2c4"/>`,
+  argile: `<path d="M4 17 Q3 9 10 7 Q18 5 20 12 Q22 19 13 20 Q6 21 4 17 Z" fill="#b5653a" stroke="#6b3a1e" stroke-width="1.2"/><path d="M8 12 Q12 10 15 12" fill="none" stroke="#d18b5e" stroke-width="1.5"/>`,
+  briques: `<g fill="#c0583a" stroke="#6e2c1a" stroke-width="1"><rect x="2" y="14" width="9" height="5"/><rect x="12" y="14" width="10" height="5"/><rect x="6" y="8.5" width="10" height="5"/><rect x="2" y="3" width="9" height="5"/><rect x="12" y="3" width="10" height="5"/></g><rect x="17" y="8.5" width="5" height="5" fill="#a84e2c" stroke="#6e2c1a"/>`,
+  minerai_fer: `<path d="M3 16 L6 8 L12 5 L19 7 L21 14 L16 20 L7 20 Z" fill="#7a4632" stroke="#3b2218" stroke-width="1.2"/><g fill="#c0442c"><circle cx="9" cy="11" r="1.8"/><circle cx="15" cy="10" r="1.5"/><circle cx="13" cy="16" r="2"/></g>`,
+  fer: `<path d="M3 15 L7 9 L21 9 L17 15 Z" fill="#8a919b" stroke="#3a3f47" stroke-width="1.2"/><path d="M3 15 L17 15 L17 19 L3 19 Z" fill="#5a616b" stroke="#3a3f47" stroke-width="1.2"/><path d="M17 15 L21 9 L21 13 L17 19 Z" fill="#6b727c" stroke="#3a3f47" stroke-width="1.2"/>`,
+  plomb: `<path d="M3 15 L7 9 L21 9 L17 15 Z" fill="#a7adb5" stroke="#4b5059" stroke-width="1.2"/><path d="M3 15 L17 15 L17 19 L3 19 Z" fill="#7d838c" stroke="#4b5059" stroke-width="1.2"/><path d="M17 15 L21 9 L21 13 L17 19 Z" fill="#8f959e" stroke="#4b5059" stroke-width="1.2"/><circle cx="12" cy="12" r="1.5" fill="#e6e9ee"/>`,
+  sel: `<path d="M2 20 L12 5 L22 20 Z" fill="#f7f7f7" stroke="#9aa3ab" stroke-width="1.2"/><path d="M7 20 L12 12 L17 20" fill="#e6ebef"/><g fill="#fff" stroke="#c4ccd3" stroke-width=".6"><rect x="10" y="8" width="2" height="2"/><rect x="13" y="14" width="2" height="2"/></g>`,
+  cereales: `<path d="M12 22 V8" stroke="#8a6d1d" stroke-width="1.5"/><g fill="#e1b12c" stroke="#8a6d1d" stroke-width=".8"><ellipse cx="12" cy="5" rx="2" ry="3"/><ellipse cx="9" cy="9" rx="2" ry="3" transform="rotate(-30 9 9)"/><ellipse cx="15" cy="9" rx="2" ry="3" transform="rotate(30 15 9)"/><ellipse cx="9" cy="14" rx="2" ry="3" transform="rotate(-30 9 14)"/><ellipse cx="15" cy="14" rx="2" ry="3" transform="rotate(30 15 14)"/></g>`,
+  outils: `<path d="M5 20 L15 10" stroke="#7a5832" stroke-width="3" stroke-linecap="round"/><path d="M12 4 L20 4 L20 9 L17 9 L15 11 L12 8 Z" fill="#5a616b" stroke="#2c3036" stroke-width="1.1"/><path d="M19 15 L21 21 L15 19 Z" fill="#8a919b" stroke="#2c3036"/>`,
+};
+const RIMG: Partial<Record<ResId, HTMLImageElement>> = {};
+for (const [k, v] of Object.entries(RSVG)) {
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24">${v}</svg>`);
+  RIMG[k as ResId] = img;
+}
+/** Image d'une ressource, si elle a une icône dessinée */
+export const resImg = (r: ResId) => RIMG[r];

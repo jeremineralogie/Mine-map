@@ -4,11 +4,11 @@ import {
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
-import { bIconUrl, vIconUrl } from './icons';
+import { bIconUrl, resImg, vIconUrl } from './icons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, quoteSegment, removeEdge } from './roads';
 import {
-  DAYS_PER_SEC, Sim, attachNode, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
+  DAYS_PER_SEC, Sim, attachNode, buildingStatus, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type GameState, type Line, type RNode, type Stock } from './state';
@@ -19,8 +19,11 @@ type Mode =
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (t: string) => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+const MONTHS_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 const LINE_COLORS = ['#e8590c', '#1971c2', '#2f9e44', '#9c36b5', '#c2255c', '#0c8599', '#f08c00', '#5c940d'];
-const resChip = (r: ResId, q?: number) => `<span class="res"><i style="background:${RES[r].color}"></i>${RES[r].name}${q !== undefined ? ` <b>${fmt(q)}</b>` : ''}</span>`;
+/** Pictogramme d'une ressource : icône dessinée, ou pastille de couleur à défaut */
+const resIcon = (r: ResId, cls = 'ri') => { const im = resImg(r); return im ? `<img class="${cls}" src="${im.src}" alt="">` : `<i class="${cls} sw" style="background:${RES[r].color}"></i>`; };
+const resChip = (r: ResId, q?: number) => `<span class="res">${resIcon(r)}${RES[r].name}${q !== undefined ? ` <b>${fmt(q)}</b>` : ''}</span>`;
 const cargoList = (c: Stock) => (Object.entries(c) as [ResId, number][]).filter(([, q]) => q >= 0.5).map(([r, q]) => resChip(r, q)).join(' ');
 const costList = (c: Partial<Record<ResId, number>>) => (Object.entries(c) as [ResId, number][]).map(([r, q]) => resChip(r, q)).join(' ');
 
@@ -108,6 +111,7 @@ export class Game {
     this.saveTimer += dt;
     if (this.saveTimer > 20) { this.saveTimer = 0; this.save(); }
     this.view.showLines = this.visibleLines();
+    this.view.status ??= b => buildingStatus(this.sim, b);
     this.ren.draw(this.s, this.view, t);
     requestAnimationFrame(x => this.frame(x));
   }
@@ -177,6 +181,7 @@ export class Game {
       case 'demolish': this.setMode({ kind: 'demolish' }); break;
       case 'lines': this.setMode({ kind: 'select' }); this.openPanel(() => this.linesPanel(), 'lines'); break;
       case 'research': this.openPanel(() => this.researchPanel()); break;
+      case 'economy': this.openPanel(() => this.economyPanel()); break;
       case 'objectives': this.openPanel(() => this.objectivesPanel()); break;
       case 'layers': this.openPanel(() => this.layersPanel()); break;
     }
@@ -408,67 +413,110 @@ export class Game {
       <button class="danger" data-act="delroad" data-id="${e.id}">Démolir</button>`;
   }
 
+  /** Lignes de stock : pictogramme, quantité, jauge de remplissage et flux du mois */
+  private stockRows(b: Building, list: ResId[], cap: (r: ResId) => number) {
+    const f = b.flow;
+    return `<div class="stocks">${list.map(r => {
+      const q = b.stock[r] ?? 0, c = cap(r), pct = c ? Math.min(100, q / c * 100) : 0;
+      const inM = (f?.in[r] ?? 0), outM = (f?.out[r] ?? 0), pin = f?.pin[r] ?? 0, pout = f?.pout[r] ?? 0;
+      const flux = inM || outM || pin || pout
+        ? `<small class="flux">${Math.max(inM, pin) >= 0.5 ? `<span class="up">+${fmt(Math.max(inM, pin))} entrées</span> ` : ''}${Math.max(outM, pout) >= 0.5 ? `<span class="down">−${fmt(Math.max(outM, pout))} sorties</span>` : ''} <span class="muted">/ mois</span></small>` : '<small class="flux muted">aucun mouvement</small>';
+      return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${fmt(q)}${c ? ` <small class="muted">/ ${fmt(c)}</small>` : ''}</b></div>
+        ${c ? `<div class="gauge ${pct >= 95 ? 'full' : pct >= 80 ? 'high' : ''}"><i style="width:${pct}%;background:${RES[r].color}"></i></div>` : ''}${flux}</div></div>`;
+    }).join('')}</div>`;
+  }
+  private kpis(items: [string, string, string?][]) {
+    return `<div class="kpis">${items.map(([v, l, cls]) => `<div class="kpi ${cls ?? ''}"><b>${v}</b><small>${l}</small></div>`).join('')}</div>`;
+  }
+
   private buildingPanel(b: Building): string {
     const s = this.s, d = BUILD[b.type];
-    let h = `<h2><img class="ic" src="${bIconUrl(b.type)}"><input class="name" data-field="name" data-id="${b.id}" value="${esc(b.name)}"></h2><p class="muted">${esc(d.desc)}</p>`;
+    const st = buildingStatus(this.sim, b);
+    const sub = b.city ? `${TIERS[b.city.tier].name}` : b.partner ? 'Partenaire commercial' : `${d.name}${d.maxLevel > 1 ? ` · niveau ${b.level}` : ''}`;
+    let h = `<div class="bhead"><img class="bic" src="${bIconUrl(b.type)}"><div class="bt">
+      <input class="name" data-field="name" data-id="${b.id}" value="${esc(b.name)}"><small class="muted">${sub}</small>
+      <span class="pill ${st.level}">${st.label}</span></div></div>
+      ${st.hint ? `<p class="hint ${st.level}">${esc(st.hint)}</p>` : ''}<p class="muted desc">${esc(d.desc)}</p>`;
+
     if (b.partner) {
       const p = PARTNERS.find(x => x.id === b.partner)!;
-      const closed = s.mods.some(m => m.kind === 'closed' && m.partner === p.id && m.until > s.day);
-      h += closed ? '<p class="bad">Frontière fermée pour le moment.</p>' : '';
-      h += `<h3>Achète</h3><table>${p.buys.map(r => `<tr><td>${resChip(r)}</td><td class="num">${priceAt(s, b, r).toFixed(1)} /t</td></tr>`).join('')}</table>
-        <p class="muted">Volume acheté ce mois : ${fmt(s.stats.soldMonth[p.id] ?? 0)} / ${p.volume} t. Total vendu : ${fmt(s.stats.sold[p.id] ?? 0)} t.</p>`;
-      h += b.node === null ? '<p class="warn">Trace une route jusqu\'à ce poste pour y commercer.</p>' : '';
+      const sold = s.stats.soldMonth[p.id] ?? 0;
+      h += this.kpis([[`${fmt(sold)} / ${p.volume} t`, 'acheté ce mois'], [`${fmt(s.stats.sold[p.id] ?? 0)} t`, 'vendu au total']]);
+      h += `<div class="gauge"><i style="width:${Math.min(100, sold / p.volume * 100)}%"></i></div>`;
+      h += `<h3>Achète</h3><div class="stocks">${p.buys.map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${priceAt(s, b, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
       return h;
     }
+
     if (!b.built || b.upgrading) {
       const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
       h += `<h3>${b.upgrading ? `Amélioration vers le niveau ${b.level + 1}` : 'Chantier'}</h3>`;
       if (left > 0) {
-        h += `<p>Matériaux restant à livrer :</p><table>${(Object.entries(b.need) as [ResId, number][]).map(([r, q]) => `<tr><td>${resChip(r)}</td><td class="num">${fmt(q)}</td><td class="muted">${b.incoming[r] ? fmt(b.incoming[r]!) + ' en route' : ''}</td></tr>`).join('')}</table>`;
-        if (b.node === null) h += '<p class="warn">Ce chantier n\'est pas relié par la route : trace une route jusqu\'à un entrepôt.</p>';
-        else {
+        h += `<div class="stocks">${(Object.entries(b.need) as [ResId, number][]).map(([r, q]) => {
+          const full = (b.upgrading ? q : d.cost[r] ?? q), got = Math.max(0, full - q);
+          return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${fmt(got)} <small class="muted">/ ${fmt(full)}</small></b></div>
+            <div class="gauge"><i style="width:${full ? got / full * 100 : 0}%;background:${RES[r].color}"></i></div>${b.incoming[r] ? `<small class="flux">${fmt(b.incoming[r]!)} t en route</small>` : ''}</div></div>`;
+        }).join('')}</div>`;
+        if (b.node !== null) {
           const ok = s.buildings.some(w => w.type === 'entrepot' && w.built && w.node !== null && findPath(s, w.node, b.node!));
-          if (!ok) h += '<p class="warn">Aucun entrepôt relié par la route.</p>';
-          else if (!Object.keys(b.need).some(r => s.buildings.some(w => w.type === 'entrepot' && (w.stock[r as ResId] ?? 0) >= 1))) h += '<p class="warn">Les entrepôts n\'ont plus ces matériaux : apporte-les avec une ligne de charrettes.</p>';
+          if (!ok) h += '<p class="hint warn">Aucun entrepôt relié par la route.</p>';
+          else if (!Object.keys(b.need).some(r => s.buildings.some(w => w.type === 'entrepot' && (w.stock[r as ResId] ?? 0) >= 1))) h += '<p class="hint warn">Les entrepôts n\'ont plus ces matériaux : apporte-les avec une ligne de charrettes.</p>';
         }
-      } else h += `<div class="bar"><i style="width:${Math.round(this.sim.constructionProgress(b) * 100)}%"></i></div><p class="muted">Travaux en cours…</p>`;
+      } else h += `<div class="gauge big"><i style="width:${Math.round(this.sim.constructionProgress(b) * 100)}%"></i></div><p class="muted">Travaux : ${Math.round(this.sim.constructionProgress(b) * 100)} %</p>`;
     }
+
     if (b.city) {
-      const c = b.city, needs = cityNeeds(b);
-      const next = TIERS[c.tier + 1];
-      h += `<h3>${TIERS[c.tier].name} · ${fmt(c.pop)} habitants</h3>
-        <p>Main-d'œuvre : <b>${fmt(c.pop * 0.4)}</b> ouvriers (rayon ${WORK_RANGE} km)</p>
-        <p>Nourriture : ${satBar(c.foodSat)} Confort : ${satBar(c.sat)}</p>
-        <table><tr><th>Besoin</th><th class="num">par mois</th><th class="num">réserve</th><th class="num">prix</th></tr>
-        ${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => `<tr><td>${resChip(r)}</td><td class="num">${q.toFixed(1)}</td><td class="num">${fmt(c.stock[r] ?? 0)}</td><td class="num">${priceAt(s, b, r).toFixed(1)}</td></tr>`).join('')}</table>`;
+      const c = b.city, needs = cityNeeds(b), next = TIERS[c.tier + 1];
+      h += this.kpis([[fmt(c.pop), 'habitants'], [fmt(c.pop * 0.4), `ouvriers (${WORK_RANGE} km)`], [`${Math.round(c.foodSat * 100)} %`, 'nourriture', c.foodSat >= 0.9 ? 'good' : c.foodSat >= 0.5 ? 'warn' : 'bad'], [`${Math.round(c.sat * 100)} %`, 'confort', c.sat >= 0.9 ? 'good' : c.sat >= 0.5 ? 'warn' : 'bad']]);
+      if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
+      h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
+        const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 6 * 100);
+        return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${months >= 1 ? `${Math.floor(months)} mois` : have > 0.5 ? '< 1 mois' : '<span class="bad">rupture</span>'}</b></div>
+          <div class="gauge ${months < 1 ? 'low' : ''}"><i style="width:${pct}%;background:${RES[r].color}"></i></div>
+          <small class="flux muted">${q.toFixed(1)} t/mois · réserve ${fmt(have)} t · achète ${priceAt(s, b, r).toFixed(1)} sest./t</small></div></div>`;
+      }).join('')}</div>`;
       if (next) {
         const newGoods = (Object.keys(next.needs) as ResId[]).filter(r => !TIERS[c.tier].needs[r]);
-        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()} (${fmt(next.minPop)} hab.), la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}</p>`;
+        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()}, la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}</p>`;
       }
-      if (b.node === null) h += '<p class="warn">Relie la ville par la route pour la ravitailler.</p>';
     }
+
     if (d.recipe && b.built) {
-      const need = this.sim.workersNeeded(b);
-      const rate = this.sim.rate(b);
-      h += `<h3>Production · niveau ${b.level}</h3>
-        <p>Ouvriers : <b>${b.staff} / ${need}</b>${b.staff < need ? ' <span class="warn">— il faut une ville à moins de ' + WORK_RANGE + ' km</span>' : ''}</p>
-        <p>${(Object.entries(d.recipe.in) as [ResId, number][]).map(([r, q]) => resChip(r, q * LEVEL_MULT[b.level])).join(' + ')}${Object.keys(d.recipe.in).length ? ' → ' : ''}${(Object.keys(d.recipe.out) as ResId[]).map(r => resChip(r)).join(' ')} : <b>${rate.toFixed(1)} t / mois</b></p>`;
+      const need = this.sim.workersNeeded(b), rate = this.sim.rate(b), cap = d.storage * b.level;
+      const items: [string, string, string?][] = [[`${rate.toFixed(1)} t`, 'par mois', rate > 0 ? 'good' : 'bad'], [`${b.staff} / ${need}`, 'ouvriers', b.staff >= need ? 'good' : b.staff ? 'warn' : 'bad']];
+      if (d.deposit && b.dep !== null) items.push([`${Math.round(this.sim.depositFactor(b) / b.rich * 100)} %`, 'rendement du gisement']);
+      items.push([`${fmt(b.produced)} t`, 'produites au total']);
+      h += this.kpis(items);
+      // schéma de production : entrées → sorties, par mois au niveau actuel
+      const ins = Object.entries(d.recipe.in) as [ResId, number][], outs = Object.entries(d.recipe.out) as [ResId, number][];
+      const k = LEVEL_MULT[b.level];
+      h += `<div class="recipe">${ins.length ? ins.map(([r, q]) => `<span class="rc">${resIcon(r, 'ri big')}<small>${fmt(q * k)} t</small></span>`).join('<span class="plus">+</span>') + '<span class="arrow">➜</span>' : ''}
+        ${outs.map(([r, q]) => `<span class="rc out">${resIcon(r, 'ri big')}<small>${fmt(q * k)} t</small></span>`).join('')}<small class="muted per">par mois à plein régime</small></div>
+        <div class="gauge thin"><i style="width:${Math.min(100, b.acc * 100)}%"></i></div>`;
       if (d.deposit && b.dep !== null) {
         const dep = this.geo.deposits[b.dep];
-        h += `<p class="muted">Gisement : ${esc(dep.name)} · richesse ${Math.round(b.rich * 100)} % · rendement actuel ${Math.round(this.sim.depositFactor(b) / b.rich * 100)} % (${fmt(s.extracted[b.dep] ?? 0)} t extraites)</p>`;
+        h += `<p class="muted">Gisement : <b>${esc(dep.name)}</b> · richesse ${Math.round(b.rich * 100)} % · ${fmt(s.extracted[b.dep] ?? 0)} t extraites</p>`;
       }
-      if (b.halted && b.halted > s.day) h += '<p class="bad">Arrêt suite à un éboulement.</p>';
+      h += `<h3>Stock</h3>${this.stockRows(b, [...ins.map(([r]) => r), ...outs.map(([r]) => r)], () => cap)}`;
     }
-    if (d.workers && !d.recipe && b.built && b.type !== 'village') h += `<p>Ouvriers : <b>${b.staff} / ${this.sim.workersNeeded(b)}</b></p>`;
-    const stock = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5);
-    if (stock.length || b.type === 'entrepot') {
-      const cap = d.storage * b.level;
-      h += `<h3>Stock${b.type === 'entrepot' ? ` (${fmt(stock.reduce((a, [, q]) => a + q, 0))} / ${cap})` : ''}</h3><div class="chips">${stock.map(([r, q]) => resChip(r, q)).join(' ') || '<span class="muted">vide</span>'}</div>`;
+
+    if (b.type === 'entrepot' && b.built) {
+      const cap = d.storage * b.level, list = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5).sort((x, y) => y[1] - x[1]);
+      const total = list.reduce((a, [, q]) => a + q, 0);
+      const f = b.flow, inM = Object.values({ ...(f?.pin ?? {}) }).reduce((a, q) => a + (q ?? 0), 0), outM = Object.values({ ...(f?.pout ?? {}) }).reduce((a, q) => a + (q ?? 0), 0);
+      h += this.kpis([[`${fmt(total)} / ${fmt(cap)} t`, 'remplissage', total >= cap * 0.95 ? 'bad' : total >= cap * 0.8 ? 'warn' : ''], [`${inM >= 0.5 ? '+' : ''}${fmt(inM)} t`, 'entrées (mois dernier)'], [`${outM >= 0.5 ? '−' : ''}${fmt(outM)} t`, 'sorties (mois dernier)'], [`${b.staff} / ${this.sim.workersNeeded(b)}`, 'ouvriers']]);
+      // jauge empilée : une couleur par ressource
+      h += `<div class="stack">${list.map(([r, q]) => `<i style="width:${q / cap * 100}%;background:${RES[r].color}" title="${RES[r].name} : ${fmt(q)} t"></i>`).join('')}</div>`;
+      h += `<h3>Contenu</h3>${list.length ? this.stockRows(b, list.map(([r]) => r), () => 0) : '<p class="muted">Entrepôt vide.</p>'}`;
+    } else if (!d.recipe && !b.city) {
+      const list = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5);
+      if (list.length) h += `<h3>Stock</h3><div class="chips">${list.map(([r, q]) => resChip(r, q)).join(' ')}</div>`;
+      if (d.workers && b.built) h += `<p>Ouvriers : <b>${b.staff} / ${this.sim.workersNeeded(b)}</b></p>`;
     }
+
     const usedBy = s.lines.filter(l => l.stops.some(st => st.bid === b.id));
     if (usedBy.length) h += `<h3>Lignes desservant ce bâtiment</h3>${usedBy.map(l => this.lineCard(l)).join('')}`;
     h += '<div class="actions">';
-    if (b.built && b.type !== 'village' && b.type !== 'poste') h += `<button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ici</button>`;
+    if (b.built && b.type !== 'village') h += `<button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ici</button>`;
     if (b.built && !b.upgrading && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
       const cost = Math.round(d.money * LEVEL_COST[b.level + 1]);
@@ -571,6 +619,59 @@ export class Game {
       <div class="actions"><button class="primary" data-act="buyv" ${l.stops.length >= 2 ? '' : 'disabled'}>+ Acheter un véhicule</button>${vs.length ? `<button data-act="sellv" data-id="${vs[vs.length - 1].id}">− Vendre un véhicule</button>` : ''}</div>
       <p class="muted">Recettes : ${fmt(vs.reduce((a, v) => a + v.income, 0))} sesterces</p>
       <div class="actions"><button data-act="lines">← Toutes les lignes</button><button class="danger" data-act="delline">Supprimer la ligne</button></div>`;
+  }
+
+  /** Économie : finances et bilan des ressources sur tout le territoire */
+  private economyPanel(): string {
+    const s = this.s;
+    // résultats mensuels à partir du grand livre (cumuls de fin de mois)
+    const L = s.ledger, months: { m: number; inc: number; exp: number }[] = [];
+    for (let i = Math.max(1, L.length - 12); i < L.length; i++) months.push({ m: L[i].month, inc: L[i].income - L[i - 1].income, exp: L[i].expenses - L[i - 1].expenses });
+    const last = months[months.length - 1];
+    let h = `<h2>📊 Économie</h2>`;
+    h += this.kpis([[fmt(s.money), 'sesterces en caisse', s.money < 0 ? 'bad' : ''],
+      [last ? `+${fmt(last.inc)}` : '—', 'revenus (mois dernier)'], [last ? `−${fmt(last.exp)}` : '—', 'dépenses (mois dernier)'],
+      [last ? `${last.inc - last.exp >= 0 ? '+' : '−'}${fmt(Math.abs(last.inc - last.exp))}` : '—', 'résultat', last ? (last.inc - last.exp >= 0 ? 'good' : 'bad') : '']]);
+    if (months.length >= 2) {
+      // barres divergentes : bénéfice au-dessus de l'axe (bleu), perte en dessous (rouge)
+      const W = 330, H = 120, pad = 18, bw = (W - 8) / months.length, nets = months.map(x => x.inc - x.exp);
+      const max = Math.max(1, ...nets.map(Math.abs)), y0 = H / 2, k = (H / 2 - pad) / max;
+      const bars = months.map((x, i) => {
+        const v = nets[i], hgt = Math.max(1, Math.abs(v) * k), y = v >= 0 ? y0 - hgt : y0, cx = 4 + i * bw;
+        const lbl = `${MONTHS_SHORT[x.m % 12]} : ${v >= 0 ? '+' : '−'}${fmt(Math.abs(v))} (revenus ${fmt(x.inc)}, dépenses ${fmt(x.exp)})`;
+        return `<g class="fb"><rect x="${cx}" y="0" width="${bw}" height="${H}" fill="transparent"/>
+          <rect x="${cx + 2}" y="${y}" width="${bw - 4}" height="${hgt}" rx="2" fill="${v >= 0 ? '#2a78d6' : '#d4483b'}"/>
+          <text class="tt" x="${W / 2}" y="12" text-anchor="middle">${esc(lbl)}</text></g>`;
+      }).join('');
+      h += `<h3>Résultat mensuel (12 derniers mois)</h3><svg class="fin" viewBox="0 0 ${W} ${H}" role="img" aria-label="Résultat mensuel">
+        <line x1="0" x2="${W}" y1="${y0}" y2="${y0}" stroke="#b9ae9c" stroke-width="1"/>${bars}</svg>
+        <p class="legend"><span><i style="background:#2a78d6"></i>bénéfice</span><span><i style="background:#d4483b"></i>perte</span><small class="muted">touche une barre pour le détail</small></p>`;
+    } else h += '<p class="muted">Le graphique des finances apparaîtra après deux mois de jeu.</p>';
+
+    // bilan des ressources
+    const stock: Stock = {}, prod: Stock = {}, use: Stock = {}, cityStock: Stock = {};
+    const add = (o: Stock, r: ResId, q: number) => { o[r] = (o[r] ?? 0) + q; };
+    for (const b of s.buildings) {
+      if (b.city) { for (const [r, q] of Object.entries(cityNeeds(b)) as [ResId, number][]) { add(use, r, q); add(cityStock, r, b.city.stock[r] ?? 0); } continue; }
+      for (const [r, q] of Object.entries(b.stock) as [ResId, number][]) add(stock, r, q);
+      const d = BUILD[b.type];
+      if (d.recipe && b.built) {
+        const rate = this.sim.rate(b), main = Object.values(d.recipe.out)[0]!;
+        for (const [r, q] of Object.entries(d.recipe.out) as [ResId, number][]) add(prod, r, rate * q / main);
+        for (const [r, q] of Object.entries(d.recipe.in) as [ResId, number][]) add(use, r, rate * q / main);
+      }
+    }
+    const res = (Object.keys(RES) as ResId[]).filter(r => (stock[r] ?? 0) >= 0.5 || (prod[r] ?? 0) > 0 || (use[r] ?? 0) > 0);
+    h += `<h3>Ressources (par mois)</h3>`;
+    h += res.length ? `<table class="eco"><tr><th></th><th class="num">stock</th><th class="num">produit</th><th class="num">consommé</th><th class="num">bilan</th></tr>
+      ${res.map(r => {
+        const bal = (prod[r] ?? 0) - (use[r] ?? 0);
+        return `<tr><td>${resChip(r)}</td><td class="num">${fmt(stock[r] ?? 0)}</td><td class="num">${(prod[r] ?? 0).toFixed(1)}</td><td class="num">${(use[r] ?? 0).toFixed(1)}</td>
+          <td class="num ${bal > 0.05 ? 'pos' : bal < -0.05 ? 'neg' : ''}">${bal > 0.05 ? '▲ +' : bal < -0.05 ? '▼ −' : ''}${Math.abs(bal).toFixed(1)}</td></tr>`;
+      }).join('')}</table>
+      <p class="muted">Stock : entrepôts et ateliers. Consommé : besoins des villes et matières premières des ateliers, à plein régime. Réserves dans les villes : ${(Object.entries(cityStock) as [ResId, number][]).filter(([, q]) => q >= 0.5).map(([r, q]) => resChip(r, q)).join(' ') || 'aucune'}.</p>`
+      : '<p class="muted">Aucune ressource pour l\'instant.</p>';
+    return h;
   }
 
   private researchPanel(): string {
@@ -730,8 +831,4 @@ export class Game {
   }
 }
 
-function satBar(v: number) {
-  const c = v >= 0.9 ? '#2f9e44' : v >= 0.5 ? '#f08c00' : '#e03131';
-  return `<span class="sat" style="--c:${c}"><i style="width:${Math.round(v * 100)}%"></i></span> ${Math.round(v * 100)} %`;
-}
 function yearOf(day: number) { const y = START_YEAR + Math.floor(day / 365.25); const yy = y >= 0 ? y + 1 : y; return yy < 0 ? `${-yy} av. J.-C.` : String(yy); }

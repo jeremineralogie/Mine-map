@@ -32,6 +32,8 @@ export interface Building {
   partner?: string;
   halted?: number;        // arrêt (accident) jusqu'au jour indiqué
   produced: number;       // production cumulée
+  /** flux du mois en cours (in, out) et du mois précédent (pin, pout) */
+  flow?: { in: Stock; out: Stock; pin: Stock; pout: Stock };
 }
 
 /** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */
@@ -85,6 +87,11 @@ export interface GameState {
 }
 
 export const SAVE_KEY = 'mine-map-save-v1';
+
+export function addFlow(b: Building, dir: 'in' | 'out', r: ResId, q: number) {
+  const f = b.flow ??= { in: {}, out: {}, pin: {}, pout: {} };
+  f[dir][r] = (f[dir][r] ?? 0) + q;
+}
 
 export const cargoTotal = (c: Stock) => Object.values(c).reduce((a, q) => a + (q ?? 0), 0);
 

@@ -5,7 +5,7 @@ import {
 } from './defs';
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
-import { cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
+import { addFlow, cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
 
 export const MONTH = 30.4375;
 export const YEAR = 365.25;
@@ -224,7 +224,7 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
     s.market[key] = Math.max(0.4, (s.market[key] ?? 1) * (1 - (b.partner ? 0.012 : 0.004) * qty));
     if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
     else { s.stats.sold[b.partner!] = (s.stats.sold[b.partner!] ?? 0) + qty; s.stats.soldMonth[b.partner!] = (s.stats.soldMonth[b.partner!] ?? 0) + qty; }
-  } else b.stock[res] = (b.stock[res] ?? 0) + qty;
+  } else { b.stock[res] = (b.stock[res] ?? 0) + qty; addFlow(b, 'in', res, qty); }
 }
 
 // ---------- Boucle ----------
@@ -312,7 +312,7 @@ export class Sim {
       if (qty <= 0) continue;
       const path = findPath(s, w.node!, site.node!);
       if (!path) continue;
-      w.stock[r]! -= qty;
+      w.stock[r]! -= qty; addFlow(w, 'out', r, qty);
       site.incoming[r] = (site.incoming[r] ?? 0) + qty;
       const v = newVehicle(s, 'convoi', -1, w);
       v.cargo = { [r]: qty }; v.target = site.id; v.from = w.id; v.at = null;
@@ -353,9 +353,9 @@ export class Sim {
         const ins = Object.entries(d.recipe.in) as [ResId, number][];
         if (ins.some(([r, q]) => (b.stock[r] ?? 0) < q * k - 1e-9)) { b.acc = Math.min(b.acc, 1); break; }
         if (outs.some(([r, q]) => (b.stock[r] ?? 0) + q * k > d.storage * b.level)) { b.acc = Math.min(b.acc, 1); break; }
-        for (const [r, q] of ins) b.stock[r] = (b.stock[r] ?? 0) - q * k;
+        for (const [r, q] of ins) { b.stock[r] = (b.stock[r] ?? 0) - q * k; addFlow(b, 'out', r, q * k); }
         for (const [r, q] of outs) {
-          b.stock[r] = (b.stock[r] ?? 0) + q * k;
+          b.stock[r] = (b.stock[r] ?? 0) + q * k; addFlow(b, 'in', r, q * k);
           s.stats.produced[r] = (s.stats.produced[r] ?? 0) + q * k;
         }
         b.produced += 1;
@@ -452,7 +452,7 @@ export class Sim {
           moved = false;
           for (const r of st.res) {
             if (room < 1 || (b.stock[r] ?? 0) < 1) continue;
-            b.stock[r]! -= 1; v.cargo[r] = (v.cargo[r] ?? 0) + 1; room -= 1; moved = true;
+            b.stock[r]! -= 1; addFlow(b, 'out', r, 1); v.cargo[r] = (v.cargo[r] ?? 0) + 1; room -= 1; moved = true;
           }
         }
       }
@@ -512,6 +512,7 @@ export class Sim {
       s.market[k] = Math.min(1.5, Math.max(0.4, m));
     }
     s.stats.soldMonth = {};
+    for (const b of s.buildings) if (b.flow) b.flow = { in: {}, out: {}, pin: b.flow.in, pout: b.flow.out };
     s.mods = s.mods.filter(m => m.until > s.day);
     s.ledger.push({ month: Math.floor(s.day / MONTH), income: s.stats.income, expenses: s.stats.expenses });
     if (s.ledger.length > 120) s.ledger.shift();
@@ -628,4 +629,49 @@ export function startingCamp(s: GameState, geo: Geo, x: number, y: number) {
   b.stock = { ...START_STOCK };
   attachNode(s, b);
   return b;
+}
+
+// ---------- État d'un bâtiment (fiche et carte) ----------
+export type StatusLevel = 'good' | 'info' | 'warn' | 'bad';
+export interface BStatus { label: string; level: StatusLevel; hint?: string; }
+
+export function buildingStatus(sim: Sim, b: Building): BStatus {
+  const s = sim.s, d = BUILD[b.type];
+  if (b.partner) {
+    const closed = s.mods.some(m => m.kind === 'closed' && m.partner === b.partner && m.until > s.day);
+    if (closed) return { label: 'Frontière fermée', level: 'bad' };
+    if (b.node === null) return { label: 'Non relié', level: 'info', hint: 'Trace une route jusqu\'à ce poste pour y commercer.' };
+    return { label: 'Commerce ouvert', level: 'good' };
+  }
+  if (!b.built || b.upgrading) {
+    if (b.node === null) return { label: 'Chantier non relié', level: 'warn', hint: 'Trace une route jusqu\'à un entrepôt pour livrer les matériaux.' };
+    const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
+    return { label: left > 0 ? (b.upgrading ? 'Amélioration : livraison' : 'Chantier : livraison') : (b.upgrading ? 'Amélioration en cours' : 'Travaux en cours'), level: 'info' };
+  }
+  if (b.halted && b.halted > s.day) return { label: 'Arrêt (éboulement)', level: 'bad' };
+  if (b.city) {
+    const c = b.city;
+    if (c.foodSat < 0.5) return { label: 'Famine', level: 'bad', hint: 'Livre des céréales à la ville.' };
+    if (c.foodSat < 0.9) return { label: 'Mal nourrie', level: 'warn', hint: 'La ville manque de céréales.' };
+    if (c.sat < 0.5) return { label: 'Nourrie, peu de confort', level: 'warn', hint: 'Livre aussi les autres biens demandés pour accélérer la croissance.' };
+    return { label: 'En croissance', level: 'good' };
+  }
+  if (b.type === 'entrepot') {
+    const total = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0), cap = d.storage * b.level;
+    if (total >= cap * 0.95) return { label: 'Plein', level: 'bad', hint: 'Les livraisons sont refusées : évacue des marchandises ou améliore l\'entrepôt.' };
+    if (total >= cap * 0.8) return { label: 'Presque plein', level: 'warn' };
+    return { label: 'Opérationnel', level: 'good' };
+  }
+  if (d.recipe) {
+    const need = sim.workersNeeded(b);
+    if (b.staff === 0) return { label: 'Sans ouvriers', level: 'bad', hint: `Fonde une ville à moins de ${WORK_RANGE} km.` };
+    const outs = Object.keys(d.recipe.out) as ResId[];
+    if (outs.some(r => (b.stock[r] ?? 0) >= d.storage * b.level - 0.5)) return { label: 'Stock plein', level: 'warn', hint: 'La production est arrêtée : crée une ligne pour évacuer la production.' };
+    const ins = Object.keys(d.recipe.in) as ResId[];
+    if (ins.some(r => (b.stock[r] ?? 0) < d.recipe!.in[r]! / outs.length / (Object.values(d.recipe!.out)[0]!) )) return { label: 'Attend des matières', level: 'warn', hint: 'Livre les matières premières avec une ligne.' };
+    if (b.staff < need) return { label: 'Manque d\'ouvriers', level: 'warn', hint: `Fais grandir une ville proche (rayon ${WORK_RANGE} km).` };
+    return { label: 'En production', level: 'good' };
+  }
+  if (b.node === null && b.type !== 'pont_du_gard') return { label: 'Non relié', level: 'info' };
+  return { label: 'Opérationnel', level: 'good' };
 }
