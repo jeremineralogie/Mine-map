@@ -35,7 +35,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 #speed { display: flex; margin-left: auto; background: rgba(255,255,255,.08); border-radius: 10px; padding: 3px; }
 #speed button { background: none; border: 0; color: #f6efe3; padding: 6px 9px; border-radius: 7px; font-weight: 700; min-width: 36px; }
 #speed button.on { background: var(--accent2); }
-#menuBtn { background: none; border: 0; color: #f6efe3; font-size: 22px; padding: 4px 8px; }
+#menuBtn { background: rgba(255,255,255,.1); border: 0; color: #f6efe3; font-size: 14px; font-weight: 700; padding: 7px 11px; border-radius: 9px; display: flex; align-items: center; gap: 6px; }
+#menuBtn span { font-size: 18px; line-height: 1; }
 
 /* ---- Outils ---- */
 #tools {
@@ -143,6 +144,7 @@ a[data-act] { color: var(--accent); cursor: pointer; text-decoration: underline;
   :root { --topH: 50px; }
   #top { gap: 8px; padding: 0 8px; }
   .brand { display: none; }
+  #menuBtn { padding: 6px 8px; font-size: 0; gap: 0; }
   .stat.date { min-width: 0; font-size: 12.5px; }
   .stat.date small { display: none; }
   .toast { font-size: 12.5px; padding: 7px 10px; }

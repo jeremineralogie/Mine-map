@@ -155,6 +155,7 @@ export class Game {
   }
 
   tool(t: string) {
+    if (t === 'menu') { this.openPanel(() => this.menuPanel()); return; }
     if (this.mode.kind === 'start') { this.toast('Choisis d\'abord l\'emplacement de ton entrepôt de départ.'); return; }
     this.view.draft = null; this.roadFrom = null; this.view.ghost = null;
     switch (t) {
@@ -565,11 +566,14 @@ export class Game {
   }
 
   private menuPanel(): string {
-    return `<h2>Menu</h2><div class="actions col">
-      <button data-act="save">Sauvegarder maintenant</button>
-      <button data-act="export">Exporter la sauvegarde (fichier)</button>
-      <button data-act="import">Importer une sauvegarde</button>
-      <button class="danger" data-act="new">Nouvelle partie</button></div>
+    const s = this.s;
+    return `<h2>Menu</h2>
+      <p class="muted">Partie en cours : ${dateLabel(s)} · ${fmt(s.money)} sesterces · ${s.buildings.filter(b => !b.partner).length} bâtiment(s)</p>
+      <div class="actions col">
+      <button class="primary" data-act="new">🔄 Recommencer la partie</button>
+      <button data-act="save">💾 Sauvegarder maintenant</button>
+      <button data-act="export">📤 Exporter la sauvegarde (fichier)</button>
+      <button data-act="import">📥 Importer une sauvegarde</button></div>
       <h3>Commandes</h3><ul class="log">
       <li>Glisser : déplacer la carte · molette ou pincement : zoom</li>
       <li>Espace : pause · 1 à 4 : vitesse · Échap : annuler</li>
@@ -631,8 +635,8 @@ export class Game {
         };
         inp.click(); break;
       }
-      case 'new': this.modal('<h2>Nouvelle partie ?</h2><p>La partie en cours sera perdue (pense à l\'exporter si tu veux la garder).</p>', [
-        { label: 'Annuler' }, { label: 'Recommencer', primary: true, fn: () => { this.fresh(); this.save(); } }]); break;
+      case 'new': this.modal('<h2>Recommencer la partie ?</h2><p>La partie en cours sera définitivement perdue. Pense à l\'exporter avant si tu veux la garder.</p>', [
+        { label: 'Annuler' }, { label: 'Recommencer', primary: true, fn: () => { this.speed = 1; this.fresh(); this.save(); } }]); break;
     }
     this.panelKey = ''; this.refresh();
   }
