@@ -77,6 +77,9 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 - Les véhicules sont **visibles** et se déplacent sur la carte.
 - Déblocage progressif : charrette → chariot à chevaux → barge → train → camion, pipeline,
   navire, etc.
+- **Navigation fluviale** : ports fluviaux au bord des grands fleuves ; les barges (12 t) relient deux ports
+  par le fleuve, sans route.
+- Production d'un bâtiment et lignes **mises en pause** à volonté ; suppression de toutes les lignes en une fois.
 
 ## 8. Économie
 - Les **habitants** achètent ce dont la ville a besoin pour grandir.
@@ -85,7 +88,9 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 - **Faillite = fin de partie** (après un délai de grâce).
 
 ## 9. Progression
-- **Arbre technologique** payé en points de recherche (produits par les villes et les objectifs).
+- **Arbre technologique** par branches (Transport, Production, Cité, Commerce), payé en points de recherche.
+  Le joueur choisit librement l'ordre selon sa stratégie (voies romaines ou navigation fluviale, mines ou commerce…).
+  **L'époque suivante s'ouvre quand tout l'arbre de l'époque est débloqué** ; les objectifs historiques sont des bonus.
 - **Objectifs historiques** par époque (ex. « Construire le Pont du Gard », « Relier Paris à
   Lyon par le rail ») : ils rapportent argent et points de recherche.
 - **Événements historiques** datés (Peste antonine, invasions, crues…).

@@ -143,7 +143,7 @@ export const DEPOSITS: Deposit[] = DEP_ROWS.map(([res, name, lon, lat, rx, ry, r
 // ---- Bâtiments ----
 export type BType =
   | 'entrepot' | 'village' | 'bucheron' | 'carriere' | 'ferme' | 'argiliere' | 'briqueterie'
-  | 'mine_fer' | 'bas_fourneau' | 'forge' | 'mine_plomb' | 'saline' | 'aqueduc' | 'pont_du_gard' | 'poste';
+  | 'mine_fer' | 'bas_fourneau' | 'forge' | 'mine_plomb' | 'saline' | 'aqueduc' | 'pont_du_gard' | 'poste' | 'port';
 
 export interface Recipe { in: Partial<Record<ResId, number>>; out: Partial<Record<ResId, number>>; }
 
@@ -165,6 +165,7 @@ export interface BDef {
   unique?: boolean;
   site?: [number, number];   // emplacement imposé (lon, lat)
   hidden?: boolean;          // non constructible par le joueur
+  river?: boolean;           // doit être au bord d'un fleuve navigable
 }
 
 export const BUILD: Record<BType, BDef> = {
@@ -181,7 +182,8 @@ export const BUILD: Record<BType, BDef> = {
   mine_plomb: { name: 'Mine de plomb argentifère', desc: 'Le plomb sert aux canalisations romaines ; l\'argent qu\'il contient se vend cher.', era: 1, tech: 'plomb', cost: { bois: 25, pierre: 15 }, money: 200, days: 25, workers: 8, deposit: 'plomb', recipe: { in: {}, out: { plomb: 3 } }, storage: 50, maxLevel: 3 },
   saline: { name: 'Saline', desc: 'Récolte le sel (marais salants ou sources salées).', era: 1, tech: 'salines', cost: { bois: 15, pierre: 5 }, money: 100, days: 15, workers: 5, deposit: 'sel', recipe: { in: {}, out: { sel: 4 } }, storage: 60, maxLevel: 3 },
   aqueduc: { name: 'Château d\'eau d\'aqueduc', desc: 'Apporte l\'eau dans un rayon de 25 km : on peut y bâtir villes et ateliers loin des rivières.', era: 1, tech: 'aqueduc', cost: { pierre: 60, briques: 20 }, money: 400, days: 40, workers: 3, waterRange: 25, storage: 0, maxLevel: 1 },
-  poste: { name: 'Poste-frontière', desc: 'Les marchands étrangers y achètent certaines ressources.', era: 1, cost: {}, money: 0, days: 0, workers: 0, storage: 0, maxLevel: 1, hidden: true },
+  port: { name: 'Port fluvial', desc: 'Quai au bord d\'un fleuve navigable : les barges y chargent et déchargent. Stocke toutes les ressources, comme un entrepôt.', era: 1, tech: 'navigation', cost: { bois: 30, pierre: 15 }, money: 220, days: 25, workers: 4, river: true, storage: 200, maxLevel: 3 },
+  poste: { name: 'Poste-frontière', desc: 'Les marchands étrangers y achètent certaines ressources.', era: 1, cost: {}, money: 0, days: 0, workers: 0, storage: 120, maxLevel: 1, hidden: true },
   pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille du chapitre I.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 20, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947] },
 };
 
@@ -217,21 +219,25 @@ export const ANCIENT: [string, number, number][] = [
 ];
 
 // ---- Partenaires commerciaux (postes-frontières, côté français) ----
-export interface Partner { id: string; name: string; lon: number; lat: number; buys: ResId[]; mult: number; volume: number; }
+export interface Partner { id: string; name: string; lon: number; lat: number; buys: ResId[]; sells: ResId[]; mult: number; volume: number; }
+/** Prix d'achat à l'étranger : base × IMPORT_MULT (× 0,85 avec le négoce) ; vente locale depuis un entrepôt : base × LOCAL_SALE */
+export const IMPORT_MULT = 2;
+export const LOCAL_SALE = 0.6;
 export const PARTNERS: Partner[] = [
-  { id: 'italie', name: 'Italie (Rome)', lon: 6.62, lat: 44.92, buys: ['fer', 'outils', 'plomb', 'sel', 'briques'], mult: 1.4, volume: 25 },
-  { id: 'hispanie', name: 'Hispanie', lon: 2.86, lat: 42.48, buys: ['outils', 'cereales', 'fer', 'plomb'], mult: 1.3, volume: 25 },
-  { id: 'germanie', name: 'Germanie', lon: 7.76, lat: 48.6, buys: ['outils', 'fer', 'sel', 'briques', 'cereales'], mult: 1.35, volume: 25 },
-  { id: 'helvetie', name: 'Helvétie', lon: 6.05, lat: 46.18, buys: ['sel', 'cereales', 'pierre', 'bois'], mult: 1.2, volume: 20 },
-  { id: 'belgique', name: 'Gaule Belgique (Rhénanie)', lon: 6.1, lat: 49.45, buys: ['sel', 'cereales', 'briques', 'fer'], mult: 1.25, volume: 20 },
+  { id: 'italie', name: 'Italie (Rome)', lon: 6.62, lat: 44.92, buys: ['fer', 'outils', 'plomb', 'sel', 'briques'], sells: ['outils', 'fer', 'briques'], mult: 1.4, volume: 25 },
+  { id: 'hispanie', name: 'Hispanie', lon: 2.86, lat: 42.48, buys: ['outils', 'cereales', 'fer', 'plomb'], sells: ['plomb', 'sel', 'minerai_fer'], mult: 1.3, volume: 25 },
+  { id: 'germanie', name: 'Germanie', lon: 7.76, lat: 48.6, buys: ['outils', 'fer', 'sel', 'briques', 'cereales'], sells: ['bois', 'minerai_fer'], mult: 1.35, volume: 25 },
+  { id: 'helvetie', name: 'Helvétie', lon: 6.05, lat: 46.18, buys: ['sel', 'cereales', 'pierre', 'bois'], sells: ['bois', 'fer'], mult: 1.2, volume: 20 },
+  { id: 'belgique', name: 'Gaule Belgique (Rhénanie)', lon: 6.1, lat: 49.45, buys: ['sel', 'cereales', 'briques', 'fer'], sells: ['cereales', 'argile', 'bois'], mult: 1.25, volume: 20 },
 ];
 
 // ---- Véhicules ----
-export type VType = 'charrette' | 'chariot' | 'convoi';
-export interface VDef { name: string; cap: number; speed: number; price: number; upkeep: number; tech?: string; }
+export type VType = 'charrette' | 'chariot' | 'barge' | 'convoi';
+export interface VDef { name: string; cap: number; speed: number; price: number; upkeep: number; tech?: string; water?: boolean; }
 export const VEH: Record<VType, VDef> = {
   charrette: { name: 'Charrette à bœufs', cap: 4, speed: 18, price: 120, upkeep: 2 },
   chariot: { name: 'Chariot à chevaux', cap: 3, speed: 32, price: 220, upkeep: 4, tech: 'attelage' },
+  barge: { name: 'Barge fluviale', cap: 12, speed: 26, price: 300, upkeep: 3, tech: 'navigation', water: true },
   convoi: { name: 'Convoi de chantier', cap: 6, speed: 20, price: 0, upkeep: 0 },
 };
 
@@ -246,19 +252,33 @@ export const BRIDGE_COST = 120;
 export const MAX_GRADIENT = 90; // m/km : au-delà, il faudra des tunnels (époques suivantes)
 
 // ---- Technologies ----
-export interface Tech { id: string; name: string; desc: string; era: number; cost: number; req: string[]; }
+export type Branch = 'transport' | 'production' | 'cite' | 'commerce';
+export const BRANCHES: { id: Branch; name: string; icon: string }[] = [
+  { id: 'transport', name: 'Transport', icon: '🛤️' },
+  { id: 'production', name: 'Production', icon: '⚒️' },
+  { id: 'cite', name: 'Cité', icon: '🏛️' },
+  { id: 'commerce', name: 'Commerce', icon: '⚖️' },
+];
+export interface Tech { id: string; name: string; desc: string; era: number; cost: number; req: string[]; branch: Branch; }
 export const TECHS: Tech[] = [
-  { id: 'terre_cuite', name: 'Terre cuite', desc: 'Argilières et tuileries-briqueteries.', era: 1, cost: 12, req: [] },
-  { id: 'salines', name: 'Salines', desc: 'Exploitation des marais salants et des sources salées.', era: 1, cost: 12, req: [] },
-  { id: 'voie_romaine', name: 'Voies romaines', desc: 'Routes pavées : 60 % plus rapides.', era: 1, cost: 18, req: [] },
-  { id: 'metallurgie', name: 'Métallurgie du fer', desc: 'Mines de fer et bas fourneaux.', era: 1, cost: 22, req: ['terre_cuite'] },
-  { id: 'attelage', name: 'Attelage des chevaux', desc: 'Chariots à chevaux, presque deux fois plus rapides.', era: 1, cost: 20, req: ['voie_romaine'] },
-  { id: 'forge', name: 'Forgerons', desc: 'Forges : fabrication d\'outils.', era: 1, cost: 28, req: ['metallurgie'] },
-  { id: 'plomb', name: 'Plomb et argent', desc: 'Mines de plomb argentifère.', era: 1, cost: 24, req: ['metallurgie'] },
-  { id: 'aqueduc', name: 'Aqueducs', desc: 'Châteaux d\'eau d\'aqueduc et Pont du Gard.', era: 1, cost: 32, req: ['terre_cuite', 'voie_romaine'] },
-  { id: 'outillage', name: 'Outillage', desc: 'Débloque le niveau 2 des bâtiments.', era: 1, cost: 30, req: ['forge'] },
-  { id: 'exhaure', name: 'Exhaure (vis d\'Archimède)', desc: 'Pompage des galeries : +30 % de rendement pour toutes les mines et carrières.', era: 1, cost: 34, req: ['plomb'] },
-  { id: 'urbanisme', name: 'Urbanisme romain', desc: 'Débloque le niveau 3 des bâtiments et accélère la croissance des villes.', era: 1, cost: 40, req: ['outillage', 'aqueduc'] },
+  // Transport
+  { id: 'voie_romaine', name: 'Voies romaines', desc: 'Routes pavées : 60 % plus rapides.', era: 1, cost: 18, req: [], branch: 'transport' },
+  { id: 'attelage', name: 'Attelage des chevaux', desc: 'Chariots à chevaux, presque deux fois plus rapides.', era: 1, cost: 20, req: ['voie_romaine'], branch: 'transport' },
+  { id: 'navigation', name: 'Navigation fluviale', desc: 'Ports fluviaux et barges : relie deux ports par le fleuve, sans construire de route. 12 t par barge.', era: 1, cost: 22, req: [], branch: 'transport' },
+  // Production
+  { id: 'terre_cuite', name: 'Terre cuite', desc: 'Argilières et tuileries-briqueteries.', era: 1, cost: 12, req: [], branch: 'production' },
+  { id: 'salines', name: 'Salines', desc: 'Exploitation des marais salants et des sources salées.', era: 1, cost: 12, req: [], branch: 'production' },
+  { id: 'metallurgie', name: 'Métallurgie du fer', desc: 'Mines de fer et bas fourneaux.', era: 1, cost: 22, req: ['terre_cuite'], branch: 'production' },
+  { id: 'forge', name: 'Forgerons', desc: 'Forges : fabrication d\'outils.', era: 1, cost: 28, req: ['metallurgie'], branch: 'production' },
+  { id: 'plomb', name: 'Plomb et argent', desc: 'Mines de plomb argentifère.', era: 1, cost: 24, req: ['metallurgie'], branch: 'production' },
+  { id: 'exhaure', name: 'Exhaure (vis d\'Archimède)', desc: 'Pompage des galeries : +30 % de rendement pour toutes les mines et carrières.', era: 1, cost: 34, req: ['plomb'], branch: 'production' },
+  { id: 'outillage', name: 'Outillage', desc: 'Débloque le niveau 2 des bâtiments.', era: 1, cost: 30, req: ['forge'], branch: 'production' },
+  // Cité
+  { id: 'aqueduc', name: 'Aqueducs', desc: 'Châteaux d\'eau d\'aqueduc et Pont du Gard.', era: 1, cost: 32, req: ['terre_cuite'], branch: 'cite' },
+  { id: 'urbanisme', name: 'Urbanisme romain', desc: 'Débloque le niveau 3 des bâtiments et accélère la croissance des villes.', era: 1, cost: 40, req: ['outillage', 'aqueduc'], branch: 'cite' },
+  // Commerce
+  { id: 'negoce', name: 'Négoce méditerranéen', desc: 'Les partenaires étrangers paient 20 % plus cher et vendent 10 % moins cher.', era: 1, cost: 20, req: [], branch: 'commerce' },
+  { id: 'monnaie', name: 'Atelier monétaire', desc: 'Volume de commerce avec l\'étranger doublé ; la vente locale depuis les entrepôts rapporte davantage.', era: 1, cost: 30, req: ['negoce'], branch: 'commerce' },
 ];
 
 // ---- Objectifs du chapitre I ----

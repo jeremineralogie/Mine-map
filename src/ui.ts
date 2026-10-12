@@ -1,6 +1,6 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
 import {
-  BUILD, ERAS, LEVEL_COST, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
+  BRANCHES, BUILD, ERAS, LEVEL_COST, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
@@ -8,7 +8,7 @@ import { bIconUrl, resImg, vIconUrl } from './icons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import {
-  DAYS_PER_SEC, Sim, attachNode, buildingStatus, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
+  DAYS_PER_SEC, Sim, attachNode, buildingStatus, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type GameState, type Line, type RNode, type Stock } from './state';
@@ -68,7 +68,7 @@ export class Game {
     return {
       toast: (t: string, k?: 'info' | 'good' | 'bad') => this.toast(t, k),
       event: (title: string, text: string) => this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Continuer', primary: true }]),
-      chapter: () => this.modal(`<h2>Chapitre I terminé !</h2><p>Tu as bâti la Gaule romaine : toutes les technologies et tous les objectifs de l'Antiquité sont accomplis.</p><p>Le chapitre II (<b>${ERAS[2]}</b>) arrive dans une prochaine version. Tu peux continuer à développer ton économie en attendant.</p>`, [{ label: 'Continuer', primary: true }]),
+      chapter: () => this.modal(`<h2>Chapitre I terminé !</h2><p>Tu as bâti la Gaule romaine : tout l'arbre de recherche de l'Antiquité est débloqué.</p><p>Le chapitre II (<b>${ERAS[2]}</b>) arrive dans une prochaine version. Tu peux continuer à développer ton économie en attendant.</p>`, [{ label: 'Continuer', primary: true }]),
       gameOver: () => this.modal(`<h2>Faillite</h2><p>Ta trésorerie est restée négative pendant 6 mois. Tes créanciers saisissent tes biens.</p>`, [{ label: 'Nouvelle partie', primary: true, fn: () => this.fresh() }]),
     };
   }
@@ -143,7 +143,8 @@ export class Game {
       if (html !== this.panelKey) {
         // ne pas écraser un champ en cours de saisie
         const active = document.activeElement;
-        if (!(active instanceof HTMLInputElement && $('panelBody').contains(active))) { $('panelBody').innerHTML = html; this.panelKey = html; }
+        // ne pas redessiner pendant qu'un champ ou une liste déroulante est utilisé (sinon la liste se referme)
+        if (!((active instanceof HTMLInputElement || active instanceof HTMLSelectElement) && $('panelBody').contains(active))) { $('panelBody').innerHTML = html; this.panelKey = html; }
       }
     }
   }
@@ -445,7 +446,7 @@ export class Game {
   }
 
   /** Lignes de stock : pictogramme, quantité, jauge de remplissage et flux du mois */
-  private stockRows(b: Building, list: ResId[], cap: (r: ResId) => number) {
+  private stockRows(b: Building, list: ResId[], cap: (r: ResId) => number, extra?: (r: ResId) => string) {
     const f = b.flow;
     return `<div class="stocks">${list.map(r => {
       const q = b.stock[r] ?? 0, c = cap(r), pct = c ? Math.min(100, q / c * 100) : 0;
@@ -453,7 +454,7 @@ export class Game {
       const flux = inM || outM || pin || pout
         ? `<small class="flux">${Math.max(inM, pin) >= 0.5 ? `<span class="up">+${fmt(Math.max(inM, pin))} entrées</span> ` : ''}${Math.max(outM, pout) >= 0.5 ? `<span class="down">−${fmt(Math.max(outM, pout))} sorties</span>` : ''} <span class="muted">/ mois</span></small>` : '<small class="flux muted">aucun mouvement</small>';
       return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${fmt(q)}${c ? ` <small class="muted">/ ${fmt(c)}</small>` : ''}</b></div>
-        ${c ? `<div class="gauge ${pct >= 95 ? 'full' : pct >= 80 ? 'high' : ''}"><i style="width:${pct}%;background:${RES[r].color}"></i></div>` : ''}${flux}</div></div>`;
+        ${c ? `<div class="gauge ${pct >= 95 ? 'full' : pct >= 80 ? 'high' : ''}"><i style="width:${pct}%;background:${RES[r].color}"></i></div>` : ''}${flux}${extra ? extra(r) : ''}</div></div>`;
     }).join('')}</div>`;
   }
   private kpis(items: [string, string, string?][]) {
@@ -471,10 +472,18 @@ export class Game {
 
     if (b.partner) {
       const p = PARTNERS.find(x => x.id === b.partner)!;
-      const sold = s.stats.soldMonth[p.id] ?? 0;
-      h += this.kpis([[`${fmt(sold)} / ${p.volume} t`, 'acheté ce mois'], [`${fmt(s.stats.sold[p.id] ?? 0)} t`, 'vendu au total']]);
-      h += `<div class="gauge"><i style="width:${Math.min(100, sold / p.volume * 100)}%"></i></div>`;
-      h += `<h3>Achète</h3><div class="stocks">${p.buys.map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${priceAt(s, b, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
+      const sold = s.stats.soldMonth[p.id] ?? 0, vol = partnerVolume(s, p.id), closed = partnerClosed(s, p.id);
+      h += this.kpis([[`${fmt(sold)} / ${vol} t`, 'vendu ce mois'], [`${fmt(s.stats.sold[p.id] ?? 0)} t`, 'vendu au total']]);
+      h += `<div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>`;
+      h += `<h3>Ils achètent <small class="muted">— livre-leur avec une ligne (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${priceAt(s, b, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
+      h += `<h3>Ils vendent <small class="muted">— les achats arrivent dans ce poste</small></h3><div class="stocks">${p.sells.map(r => {
+        const pr = importPrice(s, b, r);
+        return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${pr.toFixed(1)} <small class="muted">sest./t</small></b></div>
+          <div class="buy"><button data-act="import" data-id="${b.id}" data-r="${r}" data-q="5" ${closed ? 'disabled' : ''}>Acheter 5 t (${fmt(pr * 5)})</button><button data-act="import" data-id="${b.id}" data-r="${r}" data-q="20" ${closed ? 'disabled' : ''}>20 t (${fmt(pr * 20)})</button></div></div></div>`;
+      }).join('')}</div>`;
+      const st = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5);
+      h += `<h3>Marchandises achetées en attente (${fmt(st.reduce((a, [, q]) => a + q, 0))} / ${BUILD.poste.storage} t)</h3>${st.length ? `<div class="chips">${st.map(([r, q]) => resChip(r, q)).join(' ')}</div><p class="muted">Crée une ligne qui les <b>charge</b> ici pour les rapporter dans tes entrepôts.</p>` : '<p class="muted">Aucune.</p>'}`;
+      if (b.node !== null) h += `<div class="actions"><button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ce poste</button></div>`;
       return h;
     }
 
@@ -530,14 +539,17 @@ export class Game {
       h += `<h3>Stock</h3>${this.stockRows(b, [...ins.map(([r]) => r), ...outs.map(([r]) => r)], () => cap)}`;
     }
 
-    if (b.type === 'entrepot' && b.built) {
+    if (isStore(b) && b.built) {
       const cap = d.storage * b.level, list = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5).sort((x, y) => y[1] - x[1]);
       const total = list.reduce((a, [, q]) => a + q, 0);
       const f = b.flow, inM = Object.values({ ...(f?.pin ?? {}) }).reduce((a, q) => a + (q ?? 0), 0), outM = Object.values({ ...(f?.pout ?? {}) }).reduce((a, q) => a + (q ?? 0), 0);
       h += this.kpis([[`${fmt(total)} / ${fmt(cap)} t`, 'remplissage', total >= cap * 0.95 ? 'bad' : total >= cap * 0.8 ? 'warn' : ''], [`${inM >= 0.5 ? '+' : ''}${fmt(inM)} t`, 'entrées (mois dernier)'], [`${outM >= 0.5 ? '−' : ''}${fmt(outM)} t`, 'sorties (mois dernier)'], [`${b.staff} / ${this.sim.workersNeeded(b)}`, 'ouvriers']]);
       // jauge empilée : une couleur par ressource
       h += `<div class="stack">${list.map(([r, q]) => `<i style="width:${q / cap * 100}%;background:${RES[r].color}" title="${RES[r].name} : ${fmt(q)} t"></i>`).join('')}</div>`;
-      h += `<h3>Contenu</h3>${list.length ? this.stockRows(b, list.map(([r]) => r), () => 0) : '<p class="muted">Entrepôt vide.</p>'}`;
+      h += `<h3>Contenu</h3>${list.length ? this.stockRows(b, list.map(([r]) => r), () => 0, r => {
+        const pr = localPrice(s, r), q = Math.floor(b.stock[r] ?? 0);
+        return q >= 1 ? `<div class="buy"><small class="muted">Vendre sur place : ${pr.toFixed(1)} sest./t</small><button data-act="sell" data-id="${b.id}" data-r="${r}" data-q="10">10 t (${fmt(pr * Math.min(10, q))})</button><button data-act="sell" data-id="${b.id}" data-r="${r}" data-q="${q}">Tout (${fmt(pr * q)})</button></div>` : '';
+      }) : '<p class="muted">Vide.</p>'}<p class="muted">La vente sur place à un marchand local est immédiate mais moins chère que dans une ville ou à l'étranger.</p>`;
     } else if (!d.recipe && !b.city) {
       const list = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5);
       if (list.length) h += `<h3>Stock</h3><div class="chips">${list.map(([r, q]) => resChip(r, q)).join(' ')}</div>`;
@@ -547,6 +559,7 @@ export class Game {
     const usedBy = s.lines.filter(l => l.stops.some(st => st.bid === b.id));
     if (usedBy.length) h += `<h3>Lignes desservant ce bâtiment</h3>${usedBy.map(l => this.lineCard(l)).join('')}`;
     h += '<div class="actions">';
+    if (b.built && d.recipe) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre la production' : '⏸ Mettre en pause'}</button>`;
     if (b.built && b.type !== 'village') h += `<button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ici</button>`;
     if (b.built && !b.upgrading && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
@@ -577,7 +590,8 @@ export class Game {
     }
     const rows = s.lines.map(l => this.lineCard(l)).join('');
     return `<h2>Lignes de transport</h2><p class="muted">Chaque ligne relie des arrêts : on y charge une ou plusieurs ressources, puis on les décharge plus loin (entrepôt, atelier, ville ou poste-frontière).</p>
-      ${rows || '<p>Aucune ligne pour l\'instant.</p>'}<div class="actions"><button class="primary" data-act="newline">Nouvelle ligne</button></div>`;
+      ${rows || '<p>Aucune ligne pour l\'instant.</p>'}<div class="actions"><button class="primary" data-act="newline">Nouvelle ligne</button>
+      ${s.lines.length ? `<button data-act="pauseall">${s.lines.every(l => l.paused) ? '▶ Reprendre toutes' : '⏸ Tout mettre en pause'}</button><button class="danger" data-act="delall">Supprimer toutes les lignes</button>` : ''}</div>`;
   }
   /** Nom court d'un bâtiment (sans le nom du gisement) */
   private short(id: number) { const b = getB(this.s, id); return b ? b.name.split(' — ')[0] : '?'; }
@@ -597,7 +611,7 @@ export class Game {
       ? `<span class="route"><span class="stopTag start">Départ</span>${esc(this.short(first.bid))}<span class="arrow">→</span><span class="stopTag end">Arrivée</span>${esc(this.short(last.bid))}${l.stops.length > 2 ? ` <small class="muted">(+${l.stops.length - 2} arrêt${l.stops.length > 3 ? 's' : ''})</small>` : ''}</span>`
       : '<span class="warn">Ajoute au moins deux arrêts</span>';
     return `<button class="linecard" data-act="line" data-id="${l.id}" style="--lc:${l.color}">
-      <span class="lc-head"><i class="dot" style="background:${l.color}"></i>${l.name || l.stops.length < 2 ? `<b>${esc(this.lineLabel(l))}</b>` : ''}<span class="muted">${vs.length} ${VEH[l.vtype].name.toLowerCase()}${vs.length > 1 ? 's' : ''} · ${fmt(vs.reduce((a, v) => a + v.income, 0))} sest.</span></span>
+      <span class="lc-head"><i class="dot" style="background:${l.color}"></i>${l.name || l.stops.length < 2 ? `<b>${esc(this.lineLabel(l))}</b>` : ''}${l.paused ? '<span class="pill info">En pause</span>' : ''}<span class="muted">${vs.length} ${VEH[l.vtype].name.toLowerCase()}${vs.length > 1 ? 's' : ''} · ${fmt(vs.reduce((a, v) => a + v.income, 0))} sest.</span></span>
       ${route}
       <span class="chips">${res.length ? res.map(r => resChip(r)).join(' ') : '<small class="muted">aucun matériau chargé</small>'}</span></button>`;
   }
@@ -618,9 +632,11 @@ export class Game {
       const b = getB(s, st.bid);
       const role = i === 0 ? '<span class="stopTag start">Départ</span>' : i === l.stops.length - 1 ? '<span class="stopTag end">Arrivée</span>' : '<span class="stopTag">Étape</span>';
       let warn = '';
-      if (b && b.node === null) warn = '<small class="warn">non relié par la route</small>';
+      const water = VEH[l.vtype].water;
+      if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 4)) warn = '<small class="warn">pas au bord d\'un fleuve navigable</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
+      else if (b && b.node === null) warn = '<small class="warn">non relié par la route</small>';
       else if (b && i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && p.node !== null && b.node !== null && !findPath(s, p.node, b.node)) warn = '<small class="warn">aucun itinéraire depuis l\'arrêt précédent</small>'; }
-      if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && b.type !== 'entrepot') {
+      if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && !isStore(b)) {
         const ok = loaded.filter(r => BUILD[b.type].recipe?.in[r]);
         if (!ok.length) warn += ' <small class="warn">ce bâtiment n\'accepte aucun de ces matériaux</small>';
       }
@@ -649,7 +665,7 @@ export class Game {
       <p class="muted">${VEH[l.vtype].name} : ${fmt(VEH[l.vtype].price)} sesterces, frais ${VEH[l.vtype].upkeep}/mois.</p>
       <div class="actions"><button class="primary" data-act="buyv" ${l.stops.length >= 2 ? '' : 'disabled'}>+ Acheter un véhicule</button>${vs.length ? `<button data-act="sellv" data-id="${vs[vs.length - 1].id}">− Vendre un véhicule</button>` : ''}</div>
       <p class="muted">Recettes : ${fmt(vs.reduce((a, v) => a + v.income, 0))} sesterces</p>
-      <div class="actions"><button data-act="lines">← Toutes les lignes</button><button class="danger" data-act="delline">Supprimer la ligne</button></div>`;
+      <div class="actions"><button data-act="lines">← Toutes les lignes</button><button data-act="pausel" class="${l.paused ? 'primary' : ''}">${l.paused ? '▶ Reprendre la ligne' : '⏸ Mettre la ligne en pause'}</button><button class="danger" data-act="delline">Supprimer la ligne</button></div>`;
   }
 
   /** Économie : finances et bilan des ressources sur tout le territoire */
@@ -679,6 +695,14 @@ export class Game {
         <p class="legend"><span><i style="background:#2a78d6"></i>bénéfice</span><span><i style="background:#d4483b"></i>perte</span><small class="muted">touche une barre pour le détail</small></p>`;
     } else h += '<p class="muted">Le graphique des finances apparaîtra après deux mois de jeu.</p>';
 
+    // commerce extérieur
+    h += `<h3>Commerce extérieur</h3>${s.buildings.filter(b => b.partner).map(b => {
+      const p = PARTNERS.find(x => x.id === b.partner)!, st = buildingStatus(this.sim, b);
+      return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#7a1f2b"><span class="lc-head"><b>${esc(p.name)}</b><span class="pill ${st.level}">${st.label}</span></span>
+        <span class="chips"><small class="muted">Achète :</small> ${p.buys.map(r => resChip(r)).join(' ')}</span>
+        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
+    }).join('')}<p class="muted">Relie un poste-frontière par la route, puis livre-lui des marchandises avec une ligne, ou achète-lui des ressources depuis sa fiche.</p>`;
+
     // bilan des ressources
     const stock: Stock = {}, prod: Stock = {}, use: Stock = {}, cityStock: Stock = {};
     const add = (o: Stock, r: ResId, q: number) => { o[r] = (o[r] ?? 0) + q; };
@@ -706,18 +730,35 @@ export class Game {
   }
 
   private researchPanel(): string {
-    const s = this.s;
-    const rows = TECHS.filter(t => t.era === s.era).map(t => {
-      const done = s.techs.includes(t.id), reqOk = t.req.every(r => s.techs.includes(r));
-      const unlocks = (Object.keys(BUILD) as BType[]).filter(b => BUILD[b].tech === t.id).map(b => BUILD[b].name);
-      const veh = (Object.keys(VEH) as VType[]).filter(v => VEH[v].tech === t.id).map(v => VEH[v].name);
-      const roads = (Object.keys(ROADS) as RoadType[]).filter(r => ROADS[r].tech === t.id).map(r => ROADS[r].name);
-      const all = [...unlocks, ...veh, ...roads];
-      return `<div class="tech ${done ? 'done' : reqOk ? '' : 'locked'}"><b>${t.name}</b> <span class="muted">${done ? '✓ découverte' : t.cost + ' pts'}</span>
-        <p>${esc(t.desc)}${all.length ? `<br><small>Débloque : ${all.join(', ')}</small>` : ''}${!reqOk ? `<br><small>Nécessite : ${t.req.map(r => TECHS.find(x => x.id === r)!.name).join(', ')}</small>` : ''}</p>
-        ${!done && reqOk ? `<button data-act="research" data-id="${t.id}" ${s.rp >= t.cost ? '' : 'disabled'}>Rechercher</button>` : ''}</div>`;
+    const s = this.s, techs = TECHS.filter(t => t.era === s.era);
+    const done = techs.filter(t => s.techs.includes(t.id)).length;
+    const unlocks = (id: string) => [
+      ...(Object.keys(BUILD) as BType[]).filter(b => BUILD[b].tech === id).map(b => BUILD[b].name),
+      ...(Object.keys(VEH) as VType[]).filter(v => VEH[v].tech === id).map(v => VEH[v].name),
+      ...(Object.keys(ROADS) as RoadType[]).filter(r => ROADS[r].tech === id).map(r => ROADS[r].name)];
+    // profondeur dans l'arbre : nombre de prérequis en chaîne
+    const depth = (id: string): number => { const t = TECHS.find(x => x.id === id)!; return t.req.length ? 1 + Math.max(...t.req.map(depth)) : 0; };
+    const card = (t: typeof techs[number]) => {
+      const ok = s.techs.includes(t.id), reqOk = t.req.every(r => s.techs.includes(r)), u = unlocks(t.id);
+      const cls = ok ? 'done' : reqOk ? (s.rp >= t.cost ? 'ready' : 'avail') : 'locked';
+      return `<div class="tnode ${cls}" style="margin-left:${depth(t.id) * 14}px">
+        <div class="tn-head"><b>${ok ? '✓ ' : !reqOk ? '🔒 ' : ''}${t.name}</b><span class="cost">${ok ? 'découverte' : `${t.cost} pts`}</span></div>
+        <small>${esc(t.desc)}</small>${u.length ? `<small class="unl">Débloque : ${u.join(', ')}</small>` : ''}
+        ${!reqOk ? `<small class="muted">Après : ${t.req.map(r => TECHS.find(x => x.id === r)!.name).join(', ')}</small>` : ''}
+        ${!ok && reqOk ? `<button data-act="research" data-id="${t.id}" ${s.rp >= t.cost ? 'class="primary"' : 'disabled'}>Rechercher</button>` : ''}</div>`;
+    };
+    const cols = BRANCHES.map(br => {
+      const list = techs.filter(t => t.branch === br.id).sort((a, z) => depth(a.id) - depth(z.id));
+      if (!list.length) return '';
+      return `<div class="branch"><h3>${br.icon} ${br.name} <small class="muted">${list.filter(t => s.techs.includes(t.id)).length}/${list.length}</small></h3>${list.map(card).join('')}</div>`;
     }).join('');
-    return `<h2>Recherche · ${ERAS[s.era]}</h2><p>Points de recherche : <b>${fmt(Math.floor(s.rp))}</b>. <span class="muted">Les villes en produisent chaque mois (davantage si elles sont peuplées) ; les objectifs en rapportent aussi.</span></p>${rows}`;
+    return `<h2>📜 Recherche · ${ERAS[s.era]}</h2>
+      <p>Points de recherche : <b>${fmt(Math.floor(s.rp))}</b> <span class="muted">(produits par les villes et les objectifs)</span></p>
+      <p class="muted">Choisis librement l'ordre de tes recherches selon ta stratégie : routes ou fleuves, mines ou commerce… Quand tout l'arbre de l'époque est débloqué, l'époque suivante s'ouvre.</p>
+      <div class="kpis"><div class="kpi ${done === techs.length ? 'good' : ''}"><b>${done} / ${techs.length}</b><small>technologies de l'époque</small></div></div>
+      <div class="gauge big"><i style="width:${done / techs.length * 100}%"></i></div>
+      ${done === techs.length ? `<div class="actions"><button class="primary" data-act="nextera">Passer à l'époque suivante →</button></div>` : ''}
+      <div class="tree">${cols}</div>`;
   }
 
   private objectivesPanel(): string {
@@ -727,9 +768,9 @@ export class Game {
     const rows = objs.map(o => `<div class="obj ${s.objectives.includes(o.id) ? 'done' : ''}"><b>${s.objectives.includes(o.id) ? '✓ ' : ''}${o.name}</b><p>${esc(o.desc)} <small class="muted">+${fmt(o.money)} sesterces, +${o.rp} pts</small></p></div>`).join('');
     const log = s.log.slice(0, 12).map(e => `<li><small class="muted">${yearOf(e.day)}</small> ${esc(e.text)}</li>`).join('');
     return `<h2>Chapitre I · ${ERAS[s.era]}</h2>
-      <p>Objectifs : <b>${doneN} / ${objs.length}</b> · Technologies : <b>${techN} / ${techT}</b></p>
-      <div class="bar"><i style="width:${Math.round((doneN + techN) / (objs.length + techT) * 100)}%"></i></div>
-      <p class="muted">Le chapitre se termine quand tous les objectifs et toutes les technologies de l'époque sont accomplis.</p>
+      <p>Arbre de recherche : <b>${techN} / ${techT}</b> · Objectifs : <b>${doneN} / ${objs.length}</b></p>
+      <div class="bar"><i style="width:${Math.round(techN / techT * 100)}%"></i></div>
+      <p class="muted">L'époque s'achève quand tout son arbre de recherche est débloqué. Les objectifs historiques sont facultatifs : ils rapportent argent et points de recherche.</p>
       ${rows}<h3>Journal</h3><ul class="log">${log || '<li class="muted">Rien à signaler.</li>'}</ul>`;
   }
 
@@ -801,6 +842,15 @@ export class Game {
         break;
       }
       case 'research': this.sim.research(t.dataset.id!); break;
+      case 'nextera': this.notifier().chapter(); break;
+      case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; this.toast(b.paused ? `${b.name} : production en pause.` : `${b.name} : production relancée.`); } break; }
+      case 'pausel': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) l.paused = !l.paused; break; }
+      case 'pauseall': { const all = s.lines.every(l => l.paused); for (const l of s.lines) l.paused = !all; break; }
+      case 'delall': this.modal(`<h2>Supprimer toutes les lignes ?</h2><p>Les ${s.lines.length} lignes seront supprimées et leurs ${s.vehicles.filter(v => v.line >= 0).length} véhicules revendus à moitié prix. Les routes ne sont pas touchées.</p>`, [
+        { label: 'Annuler' }, { label: 'Tout supprimer', primary: true, fn: () => { for (const v of s.vehicles.filter(x => x.line >= 0)) sellVehicle(s, v); s.lines = []; this.view.selectedLine = null; this.toast('Toutes les lignes ont été supprimées.'); this.refresh(); } }]); break;
+      case 'sell': { const b = getB(s, id)!; const g = sellLocal(s, b, t.dataset.r as ResId, Number(t.dataset.q)); if (g) this.toast(`Vendu pour ${fmt(g)} sesterces.`, 'good'); break; }
+      case 'import': { const b = getB(s, id)!; const err = buyImport(s, b, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? `Achat livré au poste ${b.name}.`, err ? 'bad' : 'good'); break; }
+      case 'goto': { const b = getB(s, id); if (b) { this.centerOn(b.x, b.y, Math.max(this.cam.scale, 3)); this.select({ kind: 'building', id }); } return; }
       case 'save': this.save(); this.toast('Partie sauvegardée.', 'good'); break;
       case 'export': {
         const blob = new Blob([JSON.stringify(this.s)], { type: 'application/json' });

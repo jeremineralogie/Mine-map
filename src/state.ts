@@ -34,12 +34,13 @@ export interface Building {
   produced: number;       // production cumulée
   /** flux du mois en cours (in, out) et du mois précédent (pin, pout) */
   flow?: { in: Stock; out: Stock; pin: Stock; pout: Stock };
+  paused?: boolean;       // production mise en pause par le joueur
 }
 
 /** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */
 export interface Stop { bid: number; action: 'load' | 'unload'; res: ResId[]; }
 /** `name` vide : le nom est déduit des arrêts (départ → arrivée) */
-export interface Line { id: number; name: string; vtype: VType; stops: Stop[]; color: string; }
+export interface Line { id: number; name: string; vtype: VType; stops: Stop[]; color: string; paused?: boolean; }
 
 export interface Vehicle {
   id: number;

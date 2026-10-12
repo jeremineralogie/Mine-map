@@ -69,6 +69,11 @@ const SVG: Record<BType, string> = {
     `<rect x="4" y="22" width="54" height="18" fill="#d9c8a0" stroke="#8a7a58"/>` +
     `<g fill="#b9a67c"><rect x="8" y="22" width="5" height="18"/><rect x="20" y="22" width="5" height="18"/><rect x="32" y="22" width="5" height="18"/><rect x="44" y="22" width="5" height="18"/></g>` +
     `<rect x="4" y="29" width="54" height="3" fill="#8fb8e0"/>`),
+  port: plate('#cfe0c9',
+    `<rect x="2" y="34" width="58" height="24" fill="#6fa8dc"/><path d="M2 40 Q16 37 30 40 T60 40" stroke="#9cc6ea" stroke-width="1.5" fill="none"/>` +
+    `<rect x="6" y="26" width="50" height="9" fill="#a37f52" stroke="#5b4632"/><g stroke="#5b4632" stroke-width="1"><path d="M14 26 v9 M24 26 v9 M34 26 v9 M44 26 v9"/></g>` +
+    `<path d="M14 44 h26 l-4 9 h-18 z" fill="#8a5a2b" stroke="#3b2a1e"/><rect x="20" y="45" width="12" height="5" fill="#c9a774"/>` +
+    roof(8, 8, 22, 16, '#c8643c', '#a84e2c') + `<g fill="#b98a55" stroke="#5b4632"><rect x="36" y="12" width="7" height="7"/><rect x="45" y="12" width="7" height="7"/><rect x="40" y="5" width="7" height="7"/></g>`),
   poste: plate('#e6dcc6',
     `<rect x="28" y="8" width="3" height="44" fill="#5b4632"/><path d="M31 10 h20 l-5 7 l5 7 h-20 z" fill="#b22234"/>` +
     `<rect x="10" y="40" width="14" height="10" rx="2" fill="#a37f52" stroke="#5b4632"/><rect x="38" y="40" width="14" height="10" rx="2" fill="#a37f52" stroke="#5b4632"/>`),
@@ -92,6 +97,12 @@ const VSVG: Record<VType, string> = {
     `<path d="M32 24 h8" stroke="#4a3320" stroke-width="2.5"/>` +
     `<ellipse cx="50" cy="18" rx="11" ry="4.5" fill="#5a3a22" stroke="#24170d"/><ellipse cx="50" cy="30" rx="11" ry="4.5" fill="#e8e0d0" stroke="#5a4a3a"/>` +
     `<circle cx="61" cy="18" r="2.5" fill="#3b2a1e"/><circle cx="61" cy="30" r="2.5" fill="#c9bfae"/></g>`,
+  barge:
+    `<g transform="translate(0 4)">` +
+    `<path d="M3 24 Q6 12 16 12 H52 Q61 12 62 24 Q61 36 52 36 H16 Q6 36 3 24 Z" fill="#8a5a2b" stroke="#3b2a1e" stroke-width="1.5"/>` +
+    `<path d="M10 24 Q12 16 18 16 H50 Q56 16 57 24 Q56 32 50 32 H18 Q12 32 10 24 Z" fill="#b98a55"/>` +
+    `<g fill="#d8c9a8" stroke="#6b5032"><rect x="20" y="18" width="10" height="6"/><rect x="32" y="18" width="10" height="6"/><rect x="20" y="25" width="10" height="6"/><rect x="32" y="25" width="10" height="6"/></g>` +
+    `<rect x="46" y="21" width="6" height="6" rx="1" fill="#5b4632"/></g>`,
   convoi:
     `<g transform="translate(0 4)">` +
     `<rect x="4" y="13" width="28" height="22" rx="2" fill="#a0784c" stroke="#4a3320" stroke-width="1.5"/>` +

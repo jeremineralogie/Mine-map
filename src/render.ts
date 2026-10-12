@@ -1,5 +1,5 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
-import { BUILD, RES, ROADS, WATER_RANGE, WORK_RANGE, type BType, type ResId } from './defs';
+import { BUILD, RES, ROADS, VEH, WATER_RANGE, WORK_RANGE, type BType, type ResId } from './defs';
 import type { Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
@@ -213,7 +213,7 @@ export class Renderer {
   private legCache = new Map<string, { x: number; y: number }[][]>();
   /** Itinéraire routier de chaque étape d'une ligne (mis en cache tant que le réseau ne change pas) */
   private legs(s: GameState, l: Line) {
-    const key = `${l.id}|${l.stops.map(st => st.bid).join(',')}|${s.edges.length}|${s.edges[s.edges.length - 1]?.id ?? 0}|${s.nodes.length}`;
+    const key = `${l.id}|${l.vtype}|${l.stops.map(st => st.bid).join(',')}|${s.edges.length}|${s.edges[s.edges.length - 1]?.id ?? 0}|${s.nodes.length}`;
     let legs = this.legCache.get(key);
     if (!legs) {
       legs = [];
@@ -221,7 +221,8 @@ export class Renderer {
       for (let i = 0; i < n && n >= 2; i++) {
         const a = s.buildings.find(b => b.id === l.stops[i].bid), b = s.buildings.find(b => b.id === l.stops[(i + 1) % n].bid);
         if (!a || !b) { legs.push([]); continue; }
-        const p = a.node !== null && b.node !== null ? findPath(s, a.node, b.node) : null;
+        // barge : itinéraire par le fleuve ; sinon par la route
+        const p = VEH[l.vtype].water ? this.geo.riverPath(a.x, a.y, b.x, b.y) : a.node !== null && b.node !== null ? findPath(s, a.node, b.node) : null;
         legs.push(p ? p.pts : []);
       }
       if (this.legCache.size > 200) this.legCache.clear();
