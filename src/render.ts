@@ -1,0 +1,333 @@
+// Rendu de la carte sur un canvas (coordonnées monde en km).
+import { BUILD, RES, ROADS, WATER_RANGE, WORK_RANGE, type BType, type ResId } from './defs';
+import type { Geo } from './geo';
+import { BICON, VICON } from './icons';
+import type { Building, GameState } from './state';
+
+export class Camera {
+  cx = 0; cy = 0; scale = 0.6; w = 0; h = 0; minScale = 0.35;
+  toScreen(x: number, y: number): [number, number] { return [(x - this.cx) * this.scale + this.w / 2, (y - this.cy) * this.scale + this.h / 2]; }
+  toWorld(sx: number, sy: number): [number, number] { return [(sx - this.w / 2) / this.scale + this.cx, (sy - this.h / 2) / this.scale + this.cy]; }
+  zoomAt(sx: number, sy: number, f: number) {
+    const [wx, wy] = this.toWorld(sx, sy);
+    this.scale = Math.min(40, Math.max(this.minScale, this.scale * f));
+    const [nx, ny] = this.toWorld(sx, sy);
+    this.cx += wx - nx; this.cy += wy - ny;
+  }
+}
+
+export interface View {
+  layers: { deposits: boolean; water: boolean; workers: boolean; trade: boolean };
+  depositFilter: ResId | 'all';
+  selected: { kind: 'building' | 'vehicle' | 'edge'; id: number } | null;
+  selectedLine: number | null;
+  draft: { pts: { x: number; y: number }[]; cursor: { x: number; y: number } | null; valid: boolean } | null;
+  ghost: { type: BType; x: number; y: number; ok: boolean } | null;
+  hoverEdge: number | null;
+}
+
+export class Renderer {
+  ctx: CanvasRenderingContext2D;
+  dpr = 1;
+  private france = new Path2D();
+  private neigh = new Path2D();
+  private lakes = new Path2D();
+  private rivers: { p: Path2D; w: number }[] = [];
+  private waterLayer: HTMLCanvasElement;
+  private gardSite: [number, number];
+
+  constructor(public canvas: HTMLCanvasElement, public geo: Geo, public cam: Camera) {
+    this.ctx = canvas.getContext('2d')!;
+    const ring = (p: Path2D, r: [number, number][]) => { r.forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y)); p.closePath(); };
+    for (const poly of geo.data.france) for (const r of poly) ring(this.france, r);
+    for (const n of geo.data.neighbours) for (const r of n.rings) ring(this.neigh, r);
+    for (const poly of geo.data.lakes) for (const r of poly) ring(this.lakes, r);
+    const groups = new Map<number, Path2D>();
+    for (const r of geo.data.rivers) {
+      const w = r.r <= 5 ? 2.4 : r.r <= 8 ? 1.7 : 1.1;
+      if (!groups.has(w)) groups.set(w, new Path2D());
+      const p = groups.get(w)!;
+      r.p.forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y));
+    }
+    this.rivers = [...groups].map(([w, p]) => ({ w, p }));
+    // calque de l'eau disponible (une case = 2 km)
+    const g = geo.data.grid;
+    this.waterLayer = document.createElement('canvas');
+    this.waterLayer.width = g.w; this.waterLayer.height = g.h;
+    const wc = this.waterLayer.getContext('2d')!, id = wc.createImageData(g.w, g.h);
+    for (let k = 0; k < g.w * g.h; k++) if (geo.mask[k] === 1 && geo.water[k] <= WATER_RANGE) {
+      id.data[k * 4] = 40; id.data[k * 4 + 1] = 120; id.data[k * 4 + 2] = 220; id.data[k * 4 + 3] = 90;
+    }
+    wc.putImageData(id, 0, 0);
+    this.gardSite = geo.proj(BUILD.pont_du_gard.site![0], BUILD.pont_du_gard.site![1]);
+  }
+
+  resize() {
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    const r = this.canvas.getBoundingClientRect();
+    this.cam.w = r.width; this.cam.h = r.height;
+    this.canvas.width = Math.round(r.width * this.dpr); this.canvas.height = Math.round(r.height * this.dpr);
+    const e = this.geo.data.extent;
+    this.cam.minScale = Math.min(r.width / (e.x1 - e.x0), r.height / (e.y1 - e.y0)) * 0.9;
+  }
+
+  private world() {
+    const c = this.cam, d = this.dpr;
+    this.ctx.setTransform(d * c.scale, 0, 0, d * c.scale, d * (c.w / 2 - c.cx * c.scale), d * (c.h / 2 - c.cy * c.scale));
+  }
+  private screen() { this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); }
+  private px(n: number) { return n / this.cam.scale; }
+
+  draw(s: GameState, v: View, time: number) {
+    const ctx = this.ctx, cam = this.cam, geo = this.geo, e = geo.data.extent, rl = geo.data.relief;
+    this.screen();
+    ctx.fillStyle = '#d8cfbd'; ctx.fillRect(0, 0, cam.w, cam.h);
+    // la caméra reste au-dessus de la carte
+    cam.cx = Math.min(e.x1, Math.max(e.x0, cam.cx)); cam.cy = Math.min(e.y1, Math.max(e.y0, cam.cy));
+    this.world();
+    // la carte est une feuille posée sur la table : rien n'est dessiné au-delà
+    ctx.save();
+    ctx.shadowColor = 'rgba(60,45,30,.35)'; ctx.shadowBlur = 18 * this.dpr;
+    ctx.fillStyle = '#a9c6dc'; ctx.fillRect(e.x0, e.y0, e.x1 - e.x0, e.y1 - e.y0);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(e.x0, e.y0, e.x1 - e.x0, e.y1 - e.y0); ctx.clip();
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(geo.relief, e.x0, e.y0, rl.w * rl.cell, rl.h * rl.cell);
+    // voile sur les pays voisins
+    ctx.fillStyle = 'rgba(246,244,238,0.55)'; ctx.fill(this.neigh, 'evenodd');
+    ctx.fillStyle = '#a9cbe3'; ctx.fill(this.lakes, 'evenodd');
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    const rz = Math.min(1.8, Math.max(0.8, cam.scale / 1.2));
+    ctx.strokeStyle = '#4f8fc9';
+    for (const r of this.rivers) { ctx.lineWidth = this.px(r.w * rz); ctx.stroke(r.p); }
+    ctx.setLineDash([this.px(5), this.px(4)]);
+    ctx.strokeStyle = 'rgba(110,98,84,.75)'; ctx.lineWidth = this.px(1); ctx.stroke(this.neigh);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#6b5b4b'; ctx.lineWidth = this.px(1.6); ctx.stroke(this.france);
+    ctx.restore();
+
+    if (v.layers.water) this.drawWater(s);
+    if (v.layers.workers) this.drawWorkers(s);
+    if (v.layers.deposits) this.drawDeposits(s, v);
+    this.drawGardSite(s);
+    this.drawRoads(s, v);
+    if (v.selectedLine !== null) this.drawLine(s, v.selectedLine);
+    this.drawBuildings(s, v, time);
+    this.drawVehicles(s, v);
+    this.drawDraft(v);
+    this.drawGhost(s, v);
+  }
+
+  private drawWater(s: GameState) {
+    const ctx = this.ctx, g = this.geo.data.grid, e = this.geo.data.extent;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.waterLayer, e.x0, e.y0, g.w * g.cell, g.h * g.cell);
+    ctx.imageSmoothingEnabled = true;
+    for (const b of s.buildings) {
+      const r = BUILD[b.type].waterRange; if (!r || !b.built) continue;
+      ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(40,120,220,.25)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(40,120,220,.8)'; ctx.lineWidth = this.px(1.5); ctx.stroke();
+    }
+  }
+  private drawWorkers(s: GameState) {
+    const ctx = this.ctx;
+    for (const b of s.buildings) if (b.city && b.built) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, WORK_RANGE, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(214,120,40,.12)'; ctx.fill();
+      ctx.setLineDash([this.px(6), this.px(4)]);
+      ctx.strokeStyle = 'rgba(190,100,30,.8)'; ctx.lineWidth = this.px(1.5); ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  private drawDeposits(s: GameState, v: View) {
+    const ctx = this.ctx, showLabels = this.cam.scale > 1.3;
+    for (const d of this.geo.deposits) {
+      if (v.depositFilter !== 'all' && d.res !== v.depositFilter) continue;
+      const future = RES[d.res].era > s.era;
+      if (d.res === 'cereales' && v.depositFilter !== 'cereales') continue; // les terres fertiles ont leur propre filtre
+      ctx.beginPath(); ctx.ellipse(d.x, d.y, d.rx, d.ry, 0, 0, Math.PI * 2);
+      const col = RES[d.res].color;
+      // plus discret quand on zoome, pour laisser voir le relief
+      const fade = this.cam.scale > 4 ? 0.5 : 1;
+      ctx.globalAlpha = (future ? 0.12 : 0.18 + 0.12 * d.rich) * fade; ctx.fillStyle = col; ctx.fill();
+      ctx.globalAlpha = future ? 0.5 : 0.9; ctx.strokeStyle = col === '#f1f1f1' || col === '#f5f0e6' || col === '#fdfdfd' || col === '#eeeeee' ? '#9aa' : col;
+      ctx.lineWidth = this.px(future ? 1 : 1.6);
+      if (future) ctx.setLineDash([this.px(4), this.px(3)]);
+      ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    if (!showLabels) return;
+    this.screen();
+    ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+    for (const d of this.geo.deposits) {
+      if (v.depositFilter !== 'all' && d.res !== v.depositFilter) continue;
+      if (d.res === 'cereales' && v.depositFilter !== 'cereales') continue;
+      const [x, y] = this.cam.toScreen(d.x, d.y);
+      if (x < -100 || y < -20 || x > this.cam.w + 100 || y > this.cam.h + 20) continue;
+      const future = RES[d.res].era > s.era;
+      const t = `${RES[d.res].name}${future ? ' (époque ' + ['', 'I', 'II', 'III', 'IV', 'V'][RES[d.res].era] + ')' : ''}`;
+      halo(ctx, t, x, y - 6, future ? '#666' : '#222');
+      ctx.font = '10px system-ui, sans-serif'; halo(ctx, d.name, x, y + 7, '#555'); ctx.font = '600 11px system-ui, sans-serif';
+    }
+    this.world();
+  }
+  private drawGardSite(s: GameState) {
+    if (s.buildings.some(b => b.type === 'pont_du_gard')) return;
+    const ctx = this.ctx, [x, y] = this.gardSite;
+    ctx.beginPath(); ctx.arc(x, y, Math.max(3, this.px(14)), 0, Math.PI * 2);
+    ctx.setLineDash([this.px(3), this.px(3)]); ctx.strokeStyle = '#8a5a00'; ctx.lineWidth = this.px(2); ctx.stroke(); ctx.setLineDash([]);
+    if (this.cam.scale > 0.9) {
+      this.screen(); const [sx, sy] = this.cam.toScreen(x, y);
+      ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+      halo(ctx, 'Site du Pont du Gard', sx, sy - 18, '#6b4500'); this.world();
+    }
+  }
+  private drawRoads(s: GameState, v: View) {
+    const ctx = this.ctx, nodes = new Map(s.nodes.map(n => [n.id, n]));
+    const z = Math.min(1.6, Math.max(0.8, this.cam.scale / 2));
+    for (const pass of [0, 1]) for (const e of s.edges) {
+      const a = nodes.get(e.a), b = nodes.get(e.b); if (!a || !b) continue;
+      const sel = v.selected?.kind === 'edge' && v.selected.id === e.id, hov = v.hoverEdge === e.id;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      if (pass === 0) {
+        ctx.strokeStyle = sel || hov ? '#d9480f' : e.type === 'voie' ? '#4a4a4a' : '#6e5232';
+        ctx.lineWidth = this.px((e.type === 'voie' ? 5 : 3.6) * z + (sel || hov ? 2 : 0)); ctx.stroke();
+      } else {
+        ctx.strokeStyle = e.type === 'voie' ? '#d9d4c7' : '#c9a774';
+        ctx.lineWidth = this.px((e.type === 'voie' ? 2.6 : 1.6) * z); ctx.stroke();
+        if (e.bridges && this.cam.scale > 1.5) {
+          ctx.fillStyle = '#5a5a5a'; const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          ctx.fillRect(mx - this.px(2), my - this.px(2), this.px(4), this.px(4));
+        }
+      }
+    }
+    if (this.cam.scale > 1.2) {
+      const deg = new Map<number, number>();
+      for (const e of s.edges) { deg.set(e.a, (deg.get(e.a) ?? 0) + 1); deg.set(e.b, (deg.get(e.b) ?? 0) + 1); }
+      ctx.fillStyle = '#5a4630';
+      for (const n of s.nodes) if (n.b === undefined && deg.get(n.id) !== 2) { ctx.beginPath(); ctx.arc(n.x, n.y, this.px(3), 0, Math.PI * 2); ctx.fill(); }
+    }
+  }
+  private drawLine(s: GameState, id: number) {
+    const l = s.lines.find(x => x.id === id); if (!l) return;
+    const ctx = this.ctx;
+    const pts = l.stops.map(st => s.buildings.find(b => b.id === st.bid)).filter(Boolean) as Building[];
+    ctx.setLineDash([this.px(8), this.px(5)]); ctx.strokeStyle = l.color; ctx.lineWidth = this.px(3);
+    ctx.beginPath(); pts.forEach((b, i) => i ? ctx.lineTo(b.x, b.y) : ctx.moveTo(b.x, b.y)); if (pts.length > 2) ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  }
+  iconSize() { return Math.min(56, Math.max(24, this.cam.scale * 7)); }
+  private drawBuildings(s: GameState, v: View, time: number) {
+    const ctx = this.ctx; this.screen();
+    const S = this.iconSize();
+    ctx.textAlign = 'center';
+    for (const b of s.buildings) {
+      const [x, y] = this.cam.toScreen(b.x, b.y);
+      if (x < -S || y < -S || x > this.cam.w + S || y > this.cam.h + S) continue;
+      const size = b.city ? S * (1 + Math.min(0.6, (b.city.tier) * 0.2)) : b.type === 'pont_du_gard' ? S * 1.3 : S;
+      const sel = v.selected?.kind === 'building' && v.selected.id === b.id;
+      if (sel) { ctx.beginPath(); ctx.arc(x, y, size * 0.72, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.45)'; ctx.fill(); }
+      ctx.globalAlpha = b.built ? 1 : 0.5;
+      ctx.drawImage(BICON[b.type], x - size / 2, y - size / 2, size, size);
+      ctx.globalAlpha = 1;
+      if (!b.built || b.upgrading) {
+        const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
+        const total = Object.values(BUILD[b.type].cost).reduce((a, q) => a + (q ?? 0), 0) || 1;
+        const p = left > 0 ? 0.5 * (1 - Math.min(1, left / total)) : 0.5 + 0.5 * Math.min(1, b.work / Math.max(1, BUILD[b.type].days));
+        ctx.beginPath(); ctx.arc(x, y, size * 0.6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * p);
+        ctx.strokeStyle = '#f08c00'; ctx.lineWidth = 3; ctx.stroke();
+        // marques de chantier
+        ctx.fillStyle = '#f08c00'; ctx.beginPath(); ctx.arc(x + size * 0.42, y - size * 0.42, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui'; ctx.fillText('⚒', x + size * 0.42, y - size * 0.42 + 3);
+      } else if (b.halted && b.halted > s.day) {
+        ctx.fillStyle = '#c92a2a'; ctx.beginPath(); ctx.arc(x + size * 0.42, y - size * 0.42, 6, 0, Math.PI * 2); ctx.fill();
+      } else if (BUILD[b.type].workers && b.staff < BUILD[b.type].workers && b.built) {
+        // manque de main-d'œuvre : pastille clignotante
+        if (Math.floor(time / 600) % 2) { ctx.fillStyle = '#e67700'; ctx.beginPath(); ctx.arc(x + size * 0.42, y - size * 0.42, 5, 0, Math.PI * 2); ctx.fill(); }
+      }
+      if (b.node === null && b.type !== 'poste') {
+        ctx.fillStyle = '#868e96'; ctx.beginPath(); ctx.arc(x - size * 0.42, y - size * 0.42, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      const label = b.city ? `${b.name} · ${Math.round(b.city.pop)} hab.` : b.partner ? b.name : this.cam.scale > 2.5 ? b.name : '';
+      if (label) { ctx.font = b.city || b.partner ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; halo(ctx, label, x, y + size / 2 + 12, b.partner ? '#7a1f2b' : '#1f1a14'); }
+    }
+    this.world();
+  }
+  private drawVehicles(s: GameState, v: View) {
+    const ctx = this.ctx; this.screen();
+    const S = Math.min(34, Math.max(16, this.cam.scale * 4));
+    for (const veh of s.vehicles) {
+      if (veh.at !== null && veh.state !== 'go') continue; // à quai, caché sous le bâtiment
+      const [x, y] = this.cam.toScreen(veh.x, veh.y);
+      if (x < -S || y < -S || x > this.cam.w + S || y > this.cam.h + S) continue;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(veh.angle);
+      if (v.selected?.kind === 'vehicle' && v.selected.id === veh.id) { ctx.beginPath(); ctx.arc(0, 0, S * 0.7, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.6)'; ctx.fill(); }
+      ctx.drawImage(VICON[veh.type], -S / 2, -S / 2, S, S);
+      ctx.restore();
+      if (veh.res && veh.qty > 0 && this.cam.scale > 1.5) {
+        ctx.fillStyle = RES[veh.res].color; ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(x, y - S * 0.55, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+    }
+    this.world();
+  }
+  private drawDraft(v: View) {
+    const d = v.draft; if (!d || !d.pts.length) return;
+    const ctx = this.ctx;
+    ctx.beginPath(); d.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.strokeStyle = '#e8590c'; ctx.lineWidth = this.px(4); ctx.stroke();
+    if (d.cursor) {
+      const l = d.pts[d.pts.length - 1];
+      ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(d.cursor.x, d.cursor.y);
+      ctx.setLineDash([this.px(6), this.px(4)]); ctx.strokeStyle = d.valid ? '#e8590c' : '#c92a2a'; ctx.lineWidth = this.px(3); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.fillStyle = '#e8590c';
+    for (const p of d.pts) { ctx.beginPath(); ctx.arc(p.x, p.y, this.px(4), 0, Math.PI * 2); ctx.fill(); }
+  }
+  private drawGhost(s: GameState, v: View) {
+    const g = v.ghost; if (!g) return;
+    const ctx = this.ctx; this.screen();
+    const [x, y] = this.cam.toScreen(g.x, g.y), S = this.iconSize();
+    if (g.type === 'village') {
+      ctx.beginPath(); ctx.arc(x, y, WORK_RANGE * this.cam.scale, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(214,120,40,.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(190,100,30,.6)'; ctx.stroke();
+    }
+    ctx.globalAlpha = 0.75; ctx.drawImage(BICON[g.type], x - S / 2, y - S / 2, S, S); ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(x, y, S * 0.65, 0, Math.PI * 2); ctx.strokeStyle = g.ok ? '#2f9e44' : '#e03131'; ctx.lineWidth = 3; ctx.stroke();
+    void s; this.world();
+  }
+
+  /** Objet sous le pointeur (coordonnées écran) */
+  pick(s: GameState, sx: number, sy: number): View['selected'] {
+    const S = this.iconSize();
+    for (const veh of s.vehicles) {
+      if (veh.at !== null && veh.state !== 'go') continue;
+      const [x, y] = this.cam.toScreen(veh.x, veh.y);
+      if (Math.hypot(x - sx, y - sy) < 12) return { kind: 'vehicle', id: veh.id };
+    }
+    let best: Building | null = null, bd = S * 0.6;
+    for (const b of s.buildings) { const [x, y] = this.cam.toScreen(b.x, b.y), d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; best = b; } }
+    if (best) return { kind: 'building', id: best.id };
+    const e = this.pickEdge(s, sx, sy);
+    return e !== null ? { kind: 'edge', id: e } : null;
+  }
+  pickEdge(s: GameState, sx: number, sy: number) {
+    const nodes = new Map(s.nodes.map(n => [n.id, n]));
+    let best: number | null = null, bd = 9;
+    for (const e of s.edges) {
+      const a = nodes.get(e.a), b = nodes.get(e.b); if (!a || !b) continue;
+      const [ax, ay] = this.cam.toScreen(a.x, a.y), [bx, by] = this.cam.toScreen(b.x, b.y);
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((sx - ax) * dx + (sy - ay) * dy) / L2));
+      const d = Math.hypot(ax + dx * t - sx, ay + dy * t - sy);
+      if (d < bd) { bd = d; best = e.id; }
+    }
+    return best;
+  }
+}
+
+function halo(ctx: CanvasRenderingContext2D, t: string, x: number, y: number, col: string) {
+  ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(t, x, y);
+  ctx.fillStyle = col; ctx.fillText(t, x, y);
+}
+
+export const ROAD_LABEL = (t: keyof typeof ROADS) => ROADS[t].name;

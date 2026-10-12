@@ -1,0 +1,625 @@
+// Simulation : production, chantiers, main-d'œuvre, villes, véhicules, marché, objectifs, événements.
+import {
+  ANCIENT, BUILD, EVENTS, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
+  START_YEAR, TECHS, TIERS, VEH, WAGE, WATER_RANGE, WORK_RANGE, type BType, type ResId, type VType,
+} from './defs';
+import type { Geo } from './geo';
+import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
+import type { Building, GameState, Stock, Vehicle } from './state';
+
+export const MONTH = 30.4375;
+export const YEAR = 365.25;
+/** 1 heure de jeu = 10 ans à vitesse ×1 */
+export const DAYS_PER_SEC = (10 * YEAR) / 3600;
+
+export interface Notifier { toast(text: string, kind?: 'info' | 'good' | 'bad'): void; event(title: string, text: string): void; chapter(): void; gameOver(): void; }
+
+// ---------- Création ----------
+export function newGame(geo: Geo): GameState {
+  const s: GameState = {
+    version: 1, day: 0, money: START_MONEY, rp: 0, era: 1, techs: [], nextId: 1,
+    nodes: [], edges: [], buildings: [], lines: [], vehicles: [], extracted: {},
+    stats: { produced: {}, food: 0, sold: {}, soldMonth: {}, income: 0, expenses: 0 },
+    objectives: [], events: [], mods: [], market: {}, negMonths: 0, over: false, chapterDone: false,
+    log: [], ledger: [],
+  };
+  for (const p of PARTNERS) {
+    const [x, y] = geo.proj(p.lon, p.lat);
+    const b = makeBuilding(s, 'poste', x, y, p.name);
+    b.built = true; b.partner = p.id;
+    attachNode(s, b);
+  }
+  return s;
+}
+
+function makeBuilding(s: GameState, type: BType, x: number, y: number, name: string): Building {
+  const b: Building = {
+    id: s.nextId++, type, x, y, name, level: 1, built: false, need: { ...BUILD[type].cost }, incoming: {}, work: 0,
+    upgrading: false, stock: {}, acc: 0, staff: 0, rich: 1, dep: null, node: null, produced: 0,
+  };
+  s.buildings.push(b);
+  return b;
+}
+
+export function attachNode(s: GameState, b: Building) {
+  if (b.node !== null) return nodeById(s, b.node)!;
+  const n = addNode(s, b.x, b.y, b.id);
+  b.node = n.id;
+  return n;
+}
+
+export const year = (s: GameState) => { const y = START_YEAR + Math.floor(s.day / YEAR); return y >= 0 ? y + 1 : y; };
+const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+export function dateLabel(s: GameState, short = false) {
+  const y = year(s), m = Math.floor((s.day % YEAR) / (YEAR / 12));
+  const mo = short && MONTHS[m].length > 5 ? MONTHS[m].slice(0, MONTHS[m] === 'juillet' ? 5 : 4) + '.' : MONTHS[m];
+  return `${mo} ${y < 0 ? -y + (short ? ' av. J.C.' : ' av. J.-C.') : y}`;
+}
+export const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
+
+export const hasTech = (s: GameState, t?: string) => !t || s.techs.includes(t);
+export const getB = (s: GameState, id: number) => s.buildings.find(b => b.id === id);
+export const cities = (s: GameState) => s.buildings.filter(b => b.type === 'village' && b.built && b.city);
+
+// ---------- Placement ----------
+export interface PlaceCheck { ok: boolean; reason?: string; rich?: number; depName?: string; water?: boolean; }
+
+export function hasWater(s: GameState, geo: Geo, x: number, y: number) {
+  if (geo.waterDist(x, y) <= WATER_RANGE) return true;
+  return s.buildings.some(b => b.built && BUILD[b.type].waterRange && Math.hypot(b.x - x, b.y - y) <= BUILD[b.type].waterRange!);
+}
+
+export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: number, free = false): PlaceCheck {
+  const d = BUILD[type];
+  if (!geo.isFrance(x, y)) return { ok: false, reason: 'Il faut construire en France, sur la terre ferme.' };
+  if (d.site) {
+    const [sx, sy] = geo.proj(d.site[0], d.site[1]);
+    if (Math.hypot(sx - x, sy - y) > 6) return { ok: false, reason: 'Ce monument doit être bâti sur son site historique (marqué sur la carte).' };
+    if (s.buildings.some(b => b.type === type)) return { ok: false, reason: 'Déjà construit.' };
+  }
+  if (s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 2.5)) return { ok: false, reason: 'Trop près d\'un autre bâtiment.' };
+  if (!free && s.money < d.money) return { ok: false, reason: `Pas assez d'argent (${fmt(d.money)} sesterces).` };
+  const r: PlaceCheck = { ok: true, rich: 1 };
+  if (d.deposit) {
+    const { value, dep } = geo.richness(d.deposit, x, y);
+    if (d.deposit === 'cereales') { r.rich = Math.max(0.45, value); r.depName = dep?.name ?? 'Terres ordinaires'; }
+    else if (!dep) return { ok: false, reason: `Il faut un gisement de ${RES[d.deposit].name.toLowerCase()} (calque Gisements).` };
+    else { r.rich = value; r.depName = dep.name; }
+  }
+  if (d.needsWater) {
+    r.water = hasWater(s, geo, x, y);
+    if (!r.water) return { ok: false, reason: `Pas d'eau : il faut être à moins de ${WATER_RANGE} km d'un fleuve, d'un lac ou de la côte (ou près d'un aqueduc).` };
+  }
+  return r;
+}
+
+export function suggestName(s: GameState, geo: Geo, type: BType, x: number, y: number) {
+  if (type === 'village') {
+    let best = '', bd = 30;
+    for (const [n, lo, la] of ANCIENT) {
+      const [ax, ay] = geo.proj(lo, la), d = Math.hypot(ax - x, ay - y);
+      if (d < bd && !s.buildings.some(b => b.name === n)) { bd = d; best = n; }
+    }
+    if (best) return best;
+    return 'Vicus ' + (cities(s).length + 1);
+  }
+  const d = BUILD[type];
+  if (d.deposit && d.deposit !== 'cereales') { const r = geo.richness(d.deposit, x, y); if (r.dep) return `${d.name} — ${r.dep.name}`; }
+  const near = nearestCity(s, x, y);
+  return near ? `${d.name} de ${near.name}` : d.name;
+}
+
+function nearestCity(s: GameState, x: number, y: number) {
+  let best: Building | null = null, bd = 60;
+  for (const c of cities(s)) { const d = Math.hypot(c.x - x, c.y - y); if (d < bd) { bd = d; best = c; } }
+  return best;
+}
+
+export function place(s: GameState, geo: Geo, type: BType, x: number, y: number, name: string, free = false) {
+  const d = BUILD[type];
+  const b = makeBuilding(s, type, x, y, name);
+  if (!free) { s.money -= d.money; s.stats.expenses += d.money; }
+  if (d.deposit) {
+    const { value, dep } = geo.richness(d.deposit, x, y);
+    b.rich = d.deposit === 'cereales' ? Math.max(0.45, value) : value; b.dep = dep ? dep.id : null;
+  }
+  if (free) { b.built = true; b.need = {}; }
+  if (type === 'village') b.city = { pop: 80, stock: { cereales: 12, bois: 6 }, sat: 1, foodSat: 1, tier: 0 };
+  return b;
+}
+
+export function upgrade(s: GameState, b: Building) {
+  const d = BUILD[b.type];
+  const next = b.level + 1;
+  const cost = Math.round(d.money * LEVEL_COST[next]);
+  if (s.money < cost) return `Pas assez d'argent (${fmt(cost)}).`;
+  s.money -= cost; s.stats.expenses += cost;
+  b.upgrading = true; b.work = 0;
+  b.need = {};
+  for (const [r, q] of Object.entries(d.cost)) b.need[r as ResId] = Math.ceil(q! * LEVEL_COST[next]);
+  return null;
+}
+export function maxLevelAllowed(s: GameState) { return s.techs.includes('urbanisme') ? 3 : s.techs.includes('outillage') ? 2 : 1; }
+
+export function demolish(s: GameState, b: Building) {
+  if (b.type === 'poste') return;
+  s.buildings = s.buildings.filter(x => x.id !== b.id);
+  // le nœud routier reste comme simple carrefour s'il est relié, sinon il disparaît
+  if (b.node !== null) {
+    const n = nodeById(s, b.node);
+    if (n) { delete n.b; if (!s.edges.some(e => e.a === n.id || e.b === n.id)) s.nodes = s.nodes.filter(x => x.id !== n.id); }
+  }
+  for (const l of s.lines) l.stops = l.stops.filter(st => st.bid !== b.id);
+  s.vehicles = s.vehicles.filter(v => !(v.line === -1 && v.target === b.id));
+  invalidate();
+}
+
+// ---------- Véhicules et lignes ----------
+export function buyVehicle(s: GameState, lineId: number) {
+  const l = s.lines.find(x => x.id === lineId); if (!l || !l.stops.length) return 'La ligne n\'a pas d\'arrêt.';
+  const d = VEH[l.vtype];
+  if (s.money < d.price) return 'Pas assez d\'argent.';
+  const b = getB(s, l.stops[0].bid); if (!b) return 'Arrêt introuvable.';
+  s.money -= d.price; s.stats.expenses += d.price;
+  const v = newVehicle(s, l.vtype, l.id, b);
+  v.state = l.stops[0].action;
+  s.vehicles.push(v);
+  return null;
+}
+function newVehicle(s: GameState, type: VType, line: number, at: Building): Vehicle {
+  return { id: s.nextId++, type, line, stop: 0, res: null, qty: 0, state: line === -1 ? 'go' : 'load', path: [], speeds: [], seg: 0, segPos: 0, timer: 0, x: at.x, y: at.y, angle: 0, at: at.id, income: 0 };
+}
+export function sellVehicle(s: GameState, v: Vehicle) {
+  s.vehicles = s.vehicles.filter(x => x.id !== v.id);
+  const p = Math.round(VEH[v.type].price * 0.5); s.money += p;
+}
+
+// ---------- Prix ----------
+function partnerMods(s: GameState, pid: string) {
+  let closed = false, mult = 1;
+  for (const m of s.mods) if (m.partner === pid && m.until > s.day) { if (m.kind === 'closed') closed = true; if (m.kind === 'boost') mult *= m.mult; }
+  return { closed, mult };
+}
+export function priceAt(s: GameState, b: Building, res: ResId) {
+  const base = RES[res].price * (s.market[b.id + ':' + res] ?? 1);
+  if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult; }
+  return base * (1 + 0.1 * (b.city?.tier ?? 0));
+}
+export function cityNeeds(b: Building): Stock {
+  const c = b.city!; const t = TIERS[c.tier], out: Stock = {};
+  for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * c.pop / 100;
+  return out;
+}
+/** Quantité qu'un bâtiment accepte de recevoir */
+export function accepts(s: GameState, b: Building, res: ResId): number {
+  const d = BUILD[b.type];
+  if (b.city) {
+    const need = cityNeeds(b)[res] ?? 0;
+    // la ville achète aussi un peu des biens du palier suivant pour pouvoir y accéder
+    const nextT = TIERS[b.city.tier + 1];
+    const future = nextT && nextT.needs[res] && !TIERS[b.city.tier].needs[res] ? nextT.needs[res]! * b.city.pop / 100 : 0;
+    const cap = (need + future) * 6;
+    return Math.max(0, cap - (b.city.stock[res] ?? 0));
+  }
+  if (b.partner) {
+    const p = PARTNERS.find(x => x.id === b.partner)!;
+    if (!p.buys.includes(res) || partnerMods(s, p.id).closed) return 0;
+    return Math.max(0, p.volume - (s.stats.soldMonth[p.id] ?? 0));
+  }
+  if (!b.built) return 0;
+  if (b.type === 'entrepot') {
+    const total = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
+    return Math.max(0, d.storage * b.level - total);
+  }
+  if (d.recipe && d.recipe.in[res]) return Math.max(0, d.storage * b.level - (b.stock[res] ?? 0));
+  return 0;
+}
+
+function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle | null) {
+  if (qty <= 0) return;
+  if (b.city || b.partner) {
+    const price = priceAt(s, b, res), gain = price * qty;
+    s.money += gain; s.stats.income += gain; if (v) v.income += gain;
+    const key = b.id + ':' + res;
+    s.market[key] = Math.max(0.4, (s.market[key] ?? 1) * (1 - (b.partner ? 0.012 : 0.004) * qty));
+    if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
+    else { s.stats.sold[b.partner!] = (s.stats.sold[b.partner!] ?? 0) + qty; s.stats.soldMonth[b.partner!] = (s.stats.soldMonth[b.partner!] ?? 0) + qty; }
+  } else b.stock[res] = (b.stock[res] ?? 0) + qty;
+}
+
+// ---------- Boucle ----------
+export class Sim {
+  s: GameState;
+  private dispatchTimer = 0;
+  constructor(state: GameState, public geo: Geo, public notify: Notifier) { this.s = state; }
+
+  step(dtDays: number) {
+    const s = this.s;
+    if (s.over) return;
+    const m0 = Math.floor(s.day / MONTH);
+    s.day += dtDays;
+    this.staffing();
+    this.construction(dtDays);
+    this.production(dtDays);
+    this.vehicles(dtDays);
+    this.dispatchTimer -= dtDays;
+    if (this.dispatchTimer <= 0) { this.dispatchTimer = 1; this.dispatchConvoys(); }
+    if (Math.floor(s.day / MONTH) !== m0) this.monthly();
+  }
+
+  // ----- Main-d'œuvre -----
+  staffing() {
+    const s = this.s;
+    const avail = new Map<number, number>();
+    for (const c of cities(s)) avail.set(c.id, Math.floor(c.city!.pop * 0.4));
+    const cs = cities(s);
+    for (const b of s.buildings) {
+      const need = BUILD[b.type].workers * (b.level === 1 ? 1 : 1 + 0.5 * (b.level - 1));
+      b.staff = 0;
+      if (!b.built || !need) continue;
+      const near = cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= WORK_RANGE).sort((a, z) => a.d - z.d);
+      let got = 0;
+      for (const { c } of near) {
+        const a = avail.get(c.id)!, t = Math.min(a, need - got);
+        got += t; avail.set(c.id, a - t);
+        if (got >= need) break;
+      }
+      b.staff = got;
+    }
+  }
+  workersNeeded(b: Building) { return Math.round(BUILD[b.type].workers * (b.level === 1 ? 1 : 1 + 0.5 * (b.level - 1))); }
+
+  // ----- Chantiers -----
+  construction(dt: number) {
+    const s = this.s;
+    for (const b of s.buildings) {
+      if (b.built && !b.upgrading) continue;
+      const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
+      if (left > 0.001) continue;
+      b.work += dt;
+      const d = BUILD[b.type];
+      const total = b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
+      if (b.work >= total) {
+        if (b.upgrading) { b.upgrading = false; b.level++; this.notify.toast(`${b.name} passe au niveau ${b.level}.`, 'good'); }
+        else { b.built = true; this.notify.toast(`Construction terminée : ${b.name}.`, 'good'); }
+        b.work = 0;
+      }
+    }
+  }
+  constructionProgress(b: Building) {
+    const d = BUILD[b.type];
+    const total = b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
+    return Math.min(1, b.work / Math.max(1, total));
+  }
+
+  dispatchConvoys() {
+    const s = this.s;
+    const sites = s.buildings.filter(b => (!b.built || b.upgrading) && b.node !== null);
+    if (!sites.length) return;
+    const stores = s.buildings.filter(b => b.type === 'entrepot' && b.built && b.node !== null);
+    for (const site of sites) {
+      const active = s.vehicles.filter(v => v.line === -1 && v.target === site.id).length;
+      if (active >= 3) continue;
+      const missing = (Object.keys(site.need) as ResId[]).filter(r => (site.need[r] ?? 0) - (site.incoming[r] ?? 0) > 0.001);
+      if (!missing.length) continue;
+      const { dist } = dijkstra(s, site.node!);
+      const cands = stores.filter(w => w.id !== site.id && dist.has(w.node!) && missing.some(r => (w.stock[r] ?? 0) >= 1))
+        .sort((a, z) => dist.get(a.node!)! - dist.get(z.node!)!);
+      const w = cands[0];
+      if (!w) continue;
+      const r = missing.find(x => (w.stock[x] ?? 0) >= 1)!;
+      const qty = Math.min(VEH.convoi.cap, Math.floor(w.stock[r]!), Math.ceil(site.need[r]! - (site.incoming[r] ?? 0)));
+      if (qty <= 0) continue;
+      const path = findPath(s, w.node!, site.node!);
+      if (!path) continue;
+      w.stock[r]! -= qty;
+      site.incoming[r] = (site.incoming[r] ?? 0) + qty;
+      const v = newVehicle(s, 'convoi', -1, w);
+      v.res = r; v.qty = qty; v.target = site.id; v.from = w.id; v.at = null;
+      setPath(v, path);
+      s.vehicles.push(v);
+    }
+  }
+
+  // ----- Production -----
+  depositFactor(b: Building) {
+    const s = this.s;
+    if (b.dep === null) return b.rich;
+    const ex = s.extracted[b.dep] ?? 0;
+    const dep = this.geo.deposits[b.dep];
+    const exhaure = s.techs.includes('exhaure');
+    const k = 600 * dep.rich * (exhaure ? 2 : 1);
+    return b.rich * (1 / (1 + ex / k)) * (exhaure && BUILD[b.type].deposit !== 'cereales' && BUILD[b.type].deposit !== 'bois' ? 1.3 : 1);
+  }
+  rate(b: Building) {
+    const d = BUILD[b.type];
+    if (!d.recipe || !b.built) return 0;
+    const need = this.workersNeeded(b);
+    const staffRatio = need ? b.staff / need : 1;
+    const out = Object.values(d.recipe.out)[0]!;
+    return out * LEVEL_MULT[b.level] * staffRatio * (d.deposit ? this.depositFactor(b) : 1);
+  }
+  production(dt: number) {
+    const s = this.s;
+    for (const b of s.buildings) {
+      const d = BUILD[b.type];
+      if (!d.recipe || !b.built) continue;
+      if (b.halted && b.halted > s.day) continue;
+      const outs = Object.entries(d.recipe.out) as [ResId, number][];
+      const primary = outs[0][1];
+      b.acc += this.rate(b) * dt / MONTH;
+      while (b.acc >= 1) {
+        const k = 1 / primary;
+        const ins = Object.entries(d.recipe.in) as [ResId, number][];
+        if (ins.some(([r, q]) => (b.stock[r] ?? 0) < q * k - 1e-9)) { b.acc = Math.min(b.acc, 1); break; }
+        if (outs.some(([r, q]) => (b.stock[r] ?? 0) + q * k > d.storage * b.level)) { b.acc = Math.min(b.acc, 1); break; }
+        for (const [r, q] of ins) b.stock[r] = (b.stock[r] ?? 0) - q * k;
+        for (const [r, q] of outs) {
+          b.stock[r] = (b.stock[r] ?? 0) + q * k;
+          s.stats.produced[r] = (s.stats.produced[r] ?? 0) + q * k;
+        }
+        b.produced += 1;
+        if (b.dep !== null) s.extracted[b.dep] = (s.extracted[b.dep] ?? 0) + 1;
+        b.acc -= 1;
+      }
+    }
+  }
+
+  // ----- Véhicules -----
+  vehicles(dt: number) {
+    const s = this.s;
+    for (const v of [...s.vehicles]) {
+      if (v.state === 'go' || v.state === 'lost') this.move(v, dt);
+      else this.atStop(v, dt);
+    }
+  }
+  private move(v: Vehicle, dt: number) {
+    if (v.state === 'lost') {
+      v.timer -= dt; if (v.timer > 0) return;
+      if (!this.route(v)) { v.timer = 2; return; }
+    }
+    let travel = VEH[v.type].speed * dt;
+    while (travel > 0 && v.seg < v.path.length - 1) {
+      const a = v.path[v.seg], b = v.path[v.seg + 1];
+      const L = Math.hypot(b.x - a.x, b.y - a.y), sp = v.speeds[v.seg] ?? 1;
+      const room = L - v.segPos, can = travel * sp;
+      v.angle = Math.atan2(b.y - a.y, b.x - a.x);
+      if (can < room) { v.segPos += can; travel = 0; }
+      else { travel -= room / sp; v.seg++; v.segPos = 0; }
+      const t = L > 0 ? v.segPos / L : 0;
+      const p = v.path[v.seg], q = v.path[Math.min(v.seg + 1, v.path.length - 1)];
+      v.x = p.x + (q.x - p.x) * t; v.y = p.y + (q.y - p.y) * t;
+    }
+    if (v.seg >= v.path.length - 1) this.arrive(v);
+  }
+  private route(v: Vehicle) {
+    const s = this.s;
+    const dest = this.destination(v);
+    if (!dest || dest.node === null) return false;
+    // départ : le nœud le plus proche de la position actuelle
+    let from: number | null = null;
+    if (v.at !== null) from = getB(s, v.at)?.node ?? null;
+    if (from === null) {
+      let bd = Infinity;
+      for (const n of s.nodes) { const d = Math.hypot(n.x - v.x, n.y - v.y); if (d < bd) { bd = d; from = n.id; } }
+    }
+    if (from === null) return false;
+    const p = findPath(s, from, dest.node);
+    if (!p) return false;
+    setPath(v, p); v.state = 'go'; v.at = null;
+    return true;
+  }
+  private destination(v: Vehicle) {
+    const s = this.s;
+    if (v.line === -1) return getB(s, v.target!);
+    const l = s.lines.find(x => x.id === v.line);
+    if (!l || !l.stops.length) return null;
+    return getB(s, l.stops[v.stop % l.stops.length].bid) ?? null;
+  }
+  private arrive(v: Vehicle) {
+    const s = this.s;
+    const dest = this.destination(v);
+    if (v.line === -1) {
+      if (dest) {
+        dest.need[v.res!] = Math.max(0, (dest.need[v.res!] ?? 0) - v.qty);
+        dest.incoming[v.res!] = Math.max(0, (dest.incoming[v.res!] ?? 0) - v.qty);
+        for (const r of Object.keys(dest.need) as ResId[]) if ((dest.need[r] ?? 0) <= 0.001) delete dest.need[r];
+      }
+      s.vehicles = s.vehicles.filter(x => x.id !== v.id);
+      return;
+    }
+    if (!dest) { v.state = 'lost'; v.timer = 2; return; }
+    v.at = dest.id; v.x = dest.x; v.y = dest.y;
+    const l = s.lines.find(x => x.id === v.line)!;
+    const st = l.stops[v.stop % l.stops.length];
+    v.state = st.action === 'load' ? 'load' : 'unload';
+    v.timer = 0;
+  }
+  private atStop(v: Vehicle, dt: number) {
+    const s = this.s;
+    const l = s.lines.find(x => x.id === v.line);
+    if (!l || !l.stops.length) return;
+    const st = l.stops[v.stop % l.stops.length];
+    const b = getB(s, st.bid);
+    if (!b) { this.next(v); return; }
+    v.timer += dt;
+    const cap = VEH[v.type].cap;
+    if (v.state === 'load') {
+      if (st.res && (v.res === null || v.res === st.res || v.qty === 0)) {
+        const avail = Math.floor(b.city ? 0 : (b.stock[st.res] ?? 0));
+        const take = Math.min(avail, cap - v.qty);
+        if (take > 0) { b.stock[st.res] = (b.stock[st.res] ?? 0) - take; v.res = st.res; v.qty += take; }
+      }
+      // attend d'être plein, au plus 6 jours
+      if (v.qty >= cap || v.timer >= 6 || !st.res) { if (v.timer >= 0.5) this.next(v); }
+    } else {
+      if (v.res && v.qty > 0) {
+        const q = Math.min(v.qty, Math.floor(accepts(s, b, v.res)));
+        if (q > 0) { deliver(s, b, v.res, q, v); v.qty -= q; }
+        if (v.qty <= 0) { v.qty = 0; v.res = null; }
+      }
+      if (v.timer >= 0.5) this.next(v);
+    }
+  }
+  private next(v: Vehicle) {
+    const l = this.s.lines.find(x => x.id === v.line)!;
+    v.stop = (v.stop + 1) % l.stops.length;
+    if (!this.route(v)) { v.state = 'lost'; v.timer = 2; }
+  }
+
+  // ----- Mensuel -----
+  monthly() {
+    const s = this.s;
+    let expenses = 0;
+    for (const b of s.buildings) expenses += b.staff * WAGE;
+    for (const v of s.vehicles) expenses += VEH[v.type].upkeep;
+    s.money -= expenses; s.stats.expenses += expenses;
+
+    const growthMult = s.mods.filter(m => m.kind === 'growth' && m.until > s.day).reduce((a, m) => a * m.mult, 1) * (s.techs.includes('urbanisme') ? 1.25 : 1);
+    for (const c of cities(s)) {
+      const city = c.city!;
+      const needs = cityNeeds(c);
+      let satSum = 0, n = 0;
+      for (const [r, q] of Object.entries(needs) as [ResId, number][]) {
+        const have = city.stock[r] ?? 0, sat = q > 0 ? Math.min(1, have / q) : 1;
+        city.stock[r] = Math.max(0, have - q);
+        if (r === 'cereales') city.foodSat = sat; else { satSum += sat; n++; }
+      }
+      city.sat = n ? satSum / n : 1;
+      if (city.foodSat >= 0.9) {
+        let rate = (0.012 + 0.03 * city.sat) * growthMult;
+        const next = TIERS[city.tier + 1];
+        // pour passer au palier suivant, la ville doit déjà recevoir ses nouveaux biens
+        if (next && city.pop * (1 + rate) >= next.minPop) {
+          const newGoods = (Object.keys(next.needs) as ResId[]).filter(r => !TIERS[city.tier].needs[r]);
+          if (newGoods.some(r => (city.stock[r] ?? 0) <= 0)) { rate = 0; city.pop = Math.min(city.pop, next.minPop - 1); }
+        }
+        city.pop *= 1 + rate;
+      } else if (city.foodSat < 0.5) city.pop = Math.max(20, city.pop * 0.96);
+      let t = 0; for (let i = 0; i < TIERS.length; i++) if (city.pop >= TIERS[i].minPop) t = i;
+      if (t > city.tier) this.notify.toast(`${c.name} devient un${t === 3 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
+      city.tier = t;
+      s.rp += 0.4 + city.pop / 1000;
+    }
+    for (const k of Object.keys(s.market)) {
+      const m = s.market[k] + (1 - s.market[k]) * 0.08 + (Math.random() - 0.5) * 0.04;
+      s.market[k] = Math.min(1.5, Math.max(0.4, m));
+    }
+    s.stats.soldMonth = {};
+    s.mods = s.mods.filter(m => m.until > s.day);
+    s.ledger.push({ month: Math.floor(s.day / MONTH), income: s.stats.income, expenses: s.stats.expenses });
+    if (s.ledger.length > 120) s.ledger.shift();
+
+    this.objectives();
+    this.events();
+    this.randomEvents();
+
+    if (s.money < 0) {
+      s.negMonths++;
+      if (s.negMonths === 1) this.notify.toast('Trésorerie négative ! Au bout de 6 mois, c\'est la faillite.', 'bad');
+      if (s.negMonths >= 6) { s.over = true; this.notify.gameOver(); }
+    } else s.negMonths = 0;
+  }
+
+  objectiveDone(id: string): boolean {
+    const s = this.s, cs = cities(s), maxPop = Math.max(0, ...cs.map(c => c.city!.pop));
+    switch (id) {
+      case 'ville': return cs.length > 0;
+      case 'routes': return roadKm(s) >= 60;
+      case 'ravitaillement': return s.stats.food >= 60;
+      case 'batisseurs': return (s.stats.produced.pierre ?? 0) >= 200;
+      case 'bourg': return maxPop >= 400;
+      case 'fer': return (s.stats.produced.fer ?? 0) >= 40;
+      case 'rome': return (s.stats.sold.italie ?? 0) >= 30;
+      case 'ville2': return maxPop >= 1500;
+      case 'gard': return s.buildings.some(b => b.type === 'pont_du_gard' && b.built);
+      case 'via': {
+        const comp = components(s);
+        for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) {
+          const a = cs[i], b = cs[j];
+          if (a.node !== null && b.node !== null && comp.get(a.node) === comp.get(b.node) && Math.hypot(a.x - b.x, a.y - b.y) >= 250) return true;
+        }
+        return false;
+      }
+    }
+    return false;
+  }
+  objectives() {
+    const s = this.s;
+    for (const o of OBJECTIVES) {
+      if (o.era !== s.era || s.objectives.includes(o.id)) continue;
+      if (this.objectiveDone(o.id)) {
+        s.objectives.push(o.id); s.money += o.money; s.rp += o.rp;
+        this.notify.toast(`Objectif atteint : ${o.name} (+${fmt(o.money)} sesterces, +${o.rp} points de recherche)`, 'good');
+      }
+    }
+    this.checkChapter();
+  }
+  checkChapter() {
+    const s = this.s;
+    if (s.chapterDone) return;
+    const allObj = OBJECTIVES.filter(o => o.era === s.era).every(o => s.objectives.includes(o.id));
+    const allTech = TECHS.filter(t => t.era === s.era).every(t => s.techs.includes(t.id));
+    if (allObj && allTech) { s.chapterDone = true; this.notify.chapter(); }
+  }
+  research(id: string) {
+    const s = this.s, t = TECHS.find(x => x.id === id)!;
+    if (s.techs.includes(id) || s.rp < t.cost || !t.req.every(r => s.techs.includes(r))) return false;
+    s.rp -= t.cost; s.techs.push(id);
+    this.notify.toast(`Technologie découverte : ${t.name}`, 'good');
+    this.checkChapter();
+    return true;
+  }
+  events() {
+    const s = this.s, y = year(s);
+    EVENTS.forEach((e, i) => {
+      if (s.events.includes(i) || e.year > y) return;
+      s.events.push(i);
+      for (const f of e.effects) {
+        if (f.kind === 'money') s.money += f.amount;
+        else if (f.kind === 'rp') s.rp += f.amount;
+        else if (f.kind === 'growth') s.mods.push({ kind: 'growth', mult: f.mult, until: s.day + f.months * MONTH });
+        else if (f.kind === 'pop') for (const c of cities(s)) c.city!.pop *= f.mult;
+        else if (f.kind === 'partnerClosed') s.mods.push({ kind: 'closed', partner: f.partner, mult: 1, until: s.day + f.months * MONTH });
+        else if (f.kind === 'partnerBoost') s.mods.push({ kind: 'boost', partner: f.partner, mult: f.mult, until: s.day + f.months * MONTH });
+      }
+      s.log.unshift({ day: s.day, text: `${e.title} — ${e.text}` });
+      this.notify.event(`${y < 0 ? -y + ' av. J.-C.' : y} — ${e.title}`, e.text);
+    });
+  }
+  randomEvents() {
+    const s = this.s;
+    if (Math.random() < 0.006) {
+      // pas d'accident pendant les premières années d'exploitation
+      const mines = s.buildings.filter(b => b.built && b.dep !== null && b.produced > 150 && BUILD[b.type].deposit !== 'cereales' && BUILD[b.type].deposit !== 'bois');
+      if (mines.length) {
+        const b = mines[Math.floor(Math.random() * mines.length)];
+        b.halted = s.day + 2 * MONTH;
+        const t = `Éboulement à ${b.name} : production arrêtée pendant 2 mois.`;
+        s.log.unshift({ day: s.day, text: t }); this.notify.toast(t, 'bad');
+      }
+    }
+    if (Math.random() < 0.006) {
+      const cs = cities(s).filter(c => this.geo.waterDist(c.x, c.y) <= 2);
+      if (cs.length) {
+        const c = cs[Math.floor(Math.random() * cs.length)];
+        for (const r of Object.keys(c.city!.stock) as ResId[]) c.city!.stock[r]! *= 0.6;
+        const t = `Crue à ${c.name} : une partie des réserves de la ville est perdue.`;
+        s.log.unshift({ day: s.day, text: t }); this.notify.toast(t, 'bad');
+      }
+    }
+    if (s.log.length > 60) s.log.length = 60;
+  }
+}
+
+function setPath(v: Vehicle, p: { pts: { x: number; y: number }[]; speed: number[] }) {
+  v.path = p.pts; v.speeds = p.speed; v.seg = 0; v.segPos = 0;
+  if (p.pts.length) { v.x = p.pts[0].x; v.y = p.pts[0].y; }
+}
+
+export function startingCamp(s: GameState, geo: Geo, x: number, y: number) {
+  const b = place(s, geo, 'entrepot', x, y, 'Entrepôt de départ', true);
+  b.stock = { ...START_STOCK };
+  attachNode(s, b);
+  return b;
+}

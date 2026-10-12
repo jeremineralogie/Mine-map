@@ -1,0 +1,86 @@
+// État d'une partie (sérialisable en JSON pour la sauvegarde).
+import type { BType, ResId, RoadType, VType } from './defs';
+
+export type Stock = Partial<Record<ResId, number>>;
+
+export interface RNode { id: number; x: number; y: number; b?: number; }
+export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; }
+
+export interface City { pop: number; stock: Stock; sat: number; foodSat: number; tier: number; }
+
+export interface Building {
+  id: number;
+  type: BType;
+  x: number; y: number;
+  name: string;
+  level: number;
+  built: boolean;
+  /** construction ou amélioration en cours : matériaux restant à livrer */
+  need: Stock;
+  /** matériaux en route vers le chantier */
+  incoming: Stock;
+  /** avancement des travaux une fois les matériaux livrés (jours écoulés) */
+  work: number;
+  upgrading: boolean;
+  stock: Stock;
+  acc: number;
+  staff: number;
+  rich: number;           // richesse du gisement à cet endroit
+  dep: number | null;     // gisement exploité
+  node: number | null;    // nœud routier rattaché
+  city?: City;
+  partner?: string;
+  halted?: number;        // arrêt (accident) jusqu'au jour indiqué
+  produced: number;       // production cumulée
+}
+
+export interface Stop { bid: number; action: 'load' | 'unload'; res?: ResId; }
+export interface Line { id: number; name: string; vtype: VType; stops: Stop[]; color: string; }
+
+export interface Vehicle {
+  id: number;
+  type: VType;
+  line: number;          // -1 pour un convoi de chantier
+  stop: number;
+  res: ResId | null;
+  qty: number;
+  state: 'go' | 'load' | 'unload' | 'lost';
+  path: { x: number; y: number }[];
+  speeds: number[];
+  seg: number;
+  segPos: number;
+  timer: number;
+  x: number; y: number; angle: number;
+  at: number | null;     // bâtiment où se trouve le véhicule
+  target?: number;       // convoi : chantier à livrer
+  from?: number;         // convoi : entrepôt d'origine
+  income: number;        // recettes cumulées
+}
+
+export interface GameState {
+  version: number;
+  day: number;
+  money: number;
+  rp: number;
+  era: number;
+  techs: string[];
+  nextId: number;
+  nodes: RNode[];
+  edges: Edge[];
+  buildings: Building[];
+  lines: Line[];
+  vehicles: Vehicle[];
+  extracted: Record<number, number>;
+  stats: { produced: Stock; food: number; sold: Record<string, number>; soldMonth: Record<string, number>; income: number; expenses: number; };
+  objectives: string[];
+  events: number[];
+  mods: { kind: 'growth' | 'closed' | 'boost'; partner?: string; mult: number; until: number }[];
+  market: Record<string, number>;
+  negMonths: number;
+  over: boolean;
+  chapterDone: boolean;
+  log: { day: number; text: string }[];
+  ledger: { month: number; income: number; expenses: number }[];
+}
+
+export const SAVE_KEY = 'mine-map-save-v1';

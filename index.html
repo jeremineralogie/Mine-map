@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#2b2118">
+  <title>Mine Map</title>
+  <meta name="description" content="Jeu de gestion : bâtis l'économie de la France, de l'Antiquité romaine à aujourd'hui.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232b2118'/%3E%3Cpath d='M12 48 L26 22 L34 36 L40 28 L52 48 Z' fill='%23d9c8a0'/%3E%3Ccircle cx='44' cy='18' r='5' fill='%23e8590c'/%3E%3C/svg%3E">
+</head>
+<body>
+  <div id="app">
+    <canvas id="map"></canvas>
+    <header id="top">
+      <div class="brand">Mine Map</div>
+      <div class="stat date"><small id="era"></small><span id="date"></span></div>
+      <div class="stat" title="Trésorerie (sesterces)"><span class="ico">🪙</span><span id="money"></span></div>
+      <div class="stat" title="Points de recherche"><span class="ico">📜</span><span id="rp"></span></div>
+      <div id="speed">
+        <button data-s="0" title="Pause (Espace)">⏸</button><button data-s="1">×1</button><button data-s="2">×2</button><button data-s="4">×4</button><button data-s="8">×8</button>
+      </div>
+      <button id="menuBtn" title="Menu">☰</button>
+    </header>
+    <nav id="tools">
+      <button data-t="select"><span>👆</span>Sélection</button>
+      <button data-t="build"><span>🏗️</span>Construire</button>
+      <button data-t="road"><span>🛤️</span>Route</button>
+      <button data-t="lines"><span>🐂</span>Lignes</button>
+      <button data-t="research"><span>📜</span>Recherche</button>
+      <button data-t="objectives"><span>🏛️</span>Objectifs</button>
+      <button data-t="layers"><span>🗺️</span>Calques</button>
+      <button data-t="demolish"><span>⛏️</span>Démolir</button>
+    </nav>
+    <div id="hint" hidden></div>
+    <aside id="panel" hidden><button id="panelClose" title="Fermer">✕</button><div id="panelBody"></div></aside>
+    <div id="toasts"></div>
+    <div id="modal" hidden></div>
+    <div id="loading">Chargement de la carte de France…</div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
