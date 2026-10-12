@@ -172,3 +172,20 @@ a[data-act] { color: var(--accent); cursor: pointer; text-decoration: underline;
 @media (max-width: 380px) {
   .stat .ico { display: none; }
 }
+
+/* ---- Fiches de ligne ---- */
+.linecard { display: flex; flex-direction: column; gap: 5px; width: 100%; text-align: left; background: #fff; border: 1px solid var(--line); border-left: 5px solid var(--lc); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.linecard:hover { border-color: var(--lc); }
+.lc-head { display: flex; align-items: center; gap: 7px; }
+.lc-head .muted { margin-left: auto; text-align: right; font-size: 12px; white-space: nowrap; }
+.route { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13.5px; font-weight: 600; }
+.route.big { font-size: 15px; margin: 4px 0 8px; }
+.route .arrow { color: var(--muted); font-size: 16px; }
+.stopTag { display: inline-block; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; padding: 2px 6px; border-radius: 6px; background: var(--paper2); color: var(--muted); margin-right: 3px; }
+.stopTag.start { background: #d3f9d8; color: #2b8a3e; }
+.stopTag.end { background: #ffe3e3; color: #c92a2a; }
+.chips.sel { margin: 6px 0 4px; }
+.reschip { background: var(--paper2); border: 1px solid var(--line); border-radius: 14px; padding: 3px 8px; font-size: 12.5px; }
+.reschip:hover { border-color: var(--bad); }
+.vic { width: 30px; height: 30px; }
+.row .chips { margin-left: auto; }

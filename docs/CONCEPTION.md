@@ -67,7 +67,11 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 
 ## 7. Transport
 - Routes **dessinées à la main** (et supprimables).
-- **Chaque ligne est créée à la main** : véhicule, point de chargement, ressource, point de livraison.
+- **Chaque ligne est créée à la main** : véhicule, arrêts dans l'ordre (départ → étapes → arrivée, puis retour),
+  et à chaque arrêt de chargement **une ou plusieurs ressources** : un véhicule peut transporter plusieurs
+  matériaux à la fois, dans la limite de sa capacité.
+- Sur la carte, une ligne est tracée le long de ses routes, avec le sens de circulation, les arrêts
+  numérotés, le départ, l'arrivée et les matériaux chargés.
 - Les véhicules sont **visibles** et se déplacent sur la carte.
 - Déblocage progressif : charrette → chariot à chevaux → barge → train → camion, pipeline,
   navire, etc.

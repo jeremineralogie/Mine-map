@@ -2,7 +2,8 @@
 import { BUILD, RES, ROADS, WATER_RANGE, WORK_RANGE, type BType, type ResId } from './defs';
 import type { Geo } from './geo';
 import { BICON, VICON } from './icons';
-import type { Building, GameState } from './state';
+import { findPath } from './roads';
+import type { Building, GameState, Line } from './state';
 
 export class Camera {
   cx = 0; cy = 0; scale = 0.6; w = 0; h = 0; minScale = 0.35;
@@ -21,6 +22,8 @@ export interface View {
   depositFilter: ResId | 'all';
   selected: { kind: 'building' | 'vehicle' | 'edge'; id: number } | null;
   selectedLine: number | null;
+  /** lignes à afficher sur la carte (tracé, sens, départ et arrivée) */
+  showLines: number[];
   draft: { pts: { x: number; y: number }[]; cursor: { x: number; y: number } | null; valid: boolean } | null;
   ghost: { type: BType; x: number; y: number; ok: boolean } | null;
   hoverEdge: number | null;
@@ -112,9 +115,11 @@ export class Renderer {
     if (v.layers.deposits) this.drawDeposits(s, v);
     this.drawGardSite(s);
     this.drawRoads(s, v);
-    if (v.selectedLine !== null) this.drawLine(s, v.selectedLine);
+    const lines = v.showLines.map(id => s.lines.find(l => l.id === id)).filter(Boolean) as Line[];
+    for (const l of lines) this.drawLinePath(s, l, v.selectedLine === l.id || lines.length === 1);
     this.drawBuildings(s, v, time);
     this.drawVehicles(s, v);
+    for (const l of lines) this.drawLineBadges(s, l);
     this.drawDraft(v);
     this.drawGhost(s, v);
   }
@@ -202,12 +207,91 @@ export class Renderer {
       for (const n of s.nodes) if (n.b === undefined && deg.get(n.id) !== 2) { ctx.beginPath(); ctx.arc(n.x, n.y, this.px(3), 0, Math.PI * 2); ctx.fill(); }
     }
   }
-  private drawLine(s: GameState, id: number) {
-    const l = s.lines.find(x => x.id === id); if (!l) return;
-    const ctx = this.ctx;
-    const pts = l.stops.map(st => s.buildings.find(b => b.id === st.bid)).filter(Boolean) as Building[];
-    ctx.setLineDash([this.px(8), this.px(5)]); ctx.strokeStyle = l.color; ctx.lineWidth = this.px(3);
-    ctx.beginPath(); pts.forEach((b, i) => i ? ctx.lineTo(b.x, b.y) : ctx.moveTo(b.x, b.y)); if (pts.length > 2) ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  // ---- Lignes de transport ----
+  private legCache = new Map<string, { x: number; y: number }[][]>();
+  /** Itinéraire routier de chaque étape d'une ligne (mis en cache tant que le réseau ne change pas) */
+  private legs(s: GameState, l: Line) {
+    const key = `${l.id}|${l.stops.map(st => st.bid).join(',')}|${s.edges.length}|${s.edges[s.edges.length - 1]?.id ?? 0}|${s.nodes.length}`;
+    let legs = this.legCache.get(key);
+    if (!legs) {
+      legs = [];
+      const n = l.stops.length;
+      for (let i = 0; i < n && n >= 2; i++) {
+        const a = s.buildings.find(b => b.id === l.stops[i].bid), b = s.buildings.find(b => b.id === l.stops[(i + 1) % n].bid);
+        if (!a || !b) { legs.push([]); continue; }
+        const p = a.node !== null && b.node !== null ? findPath(s, a.node, b.node) : null;
+        legs.push(p ? p.pts : []);
+      }
+      if (this.legCache.size > 200) this.legCache.clear();
+      this.legCache.set(key, legs);
+    }
+    return legs;
+  }
+  private drawLinePath(s: GameState, l: Line, strong: boolean) {
+    const ctx = this.ctx, legs = this.legs(s, l), n = l.stops.length;
+    this.screen();
+    legs.forEach((pts, i) => {
+      const ret = i === n - 1 && n >= 2; // retour vers le départ
+      const a = s.buildings.find(b => b.id === l.stops[i].bid), b = s.buildings.find(b => b.id === l.stops[(i + 1) % n].bid);
+      const sp = (pts.length ? pts : a && b ? [a, b] : []).map(p => this.cam.toScreen(p.x, p.y));
+      if (sp.length < 2) return;
+      const path = () => { ctx.beginPath(); sp.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.globalAlpha = strong ? 1 : 0.75;
+      if (!pts.length) ctx.setLineDash([6, 6]);           // pas d'itinéraire : tracé en pointillés
+      else if (ret) ctx.setLineDash([2, 7]);              // trajet retour : pointillés fins
+      path(); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = (ret ? 4 : strong ? 9 : 6); ctx.stroke();
+      path(); ctx.strokeStyle = pts.length ? l.color : '#c92a2a'; ctx.lineWidth = (ret ? 2 : strong ? 5 : 3); ctx.stroke();
+      ctx.setLineDash([]);
+      // flèches indiquant le sens de circulation
+      if (!ret) {
+        let acc = 35;
+        for (let k = 1; k < sp.length; k++) {
+          const [x0, y0] = sp[k - 1], [x1, y1] = sp[k], L = Math.hypot(x1 - x0, y1 - y0), ang = Math.atan2(y1 - y0, x1 - x0);
+          let d = acc;
+          while (d < L) {
+            const x = x0 + (x1 - x0) * d / L, y = y0 + (y1 - y0) * d / L, r = strong ? 6 : 4.5;
+            ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+            ctx.beginPath(); ctx.moveTo(r, 0); ctx.lineTo(-r * 0.8, -r * 0.8); ctx.lineTo(-r * 0.3, 0); ctx.lineTo(-r * 0.8, r * 0.8); ctx.closePath();
+            ctx.fillStyle = '#fff'; ctx.strokeStyle = l.color; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke(); ctx.restore();
+            d += 80;
+          }
+          acc = d - L;
+        }
+      }
+      ctx.globalAlpha = 1;
+    });
+    this.world();
+  }
+  /** Pastilles des arrêts : numéro, « Départ », « Arrivée » et matériaux chargés */
+  private drawLineBadges(s: GameState, l: Line) {
+    const ctx = this.ctx, n = l.stops.length, S = this.iconSize();
+    this.screen();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    l.stops.forEach((st, i) => {
+      const b = s.buildings.find(x => x.id === st.bid); if (!b) return;
+      const [x, y] = this.cam.toScreen(b.x, b.y), bx = x - S * 0.5, by = y - S * 0.5;
+      ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2);
+      ctx.fillStyle = l.color; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui, sans-serif'; ctx.fillText(String(i + 1), bx, by + 0.5);
+      const tag = n >= 2 && i === 0 ? 'Départ' : n >= 2 && i === n - 1 ? 'Arrivée' : '';
+      const res = st.action === 'load' ? st.res : [];
+      if (!tag && !res.length) return;
+      // étiquette au-dessus du bâtiment
+      ctx.font = '700 11px system-ui, sans-serif';
+      const label = tag + (res.length ? (tag ? ' · ' : '') + 'charge : ' + res.map(r => RES[r].name).join(', ') : st.action === 'unload' && tag ? ' · décharge' : '');
+      // départ au-dessus du bâtiment, arrivée en dessous : les étiquettes ne se chevauchent pas
+      const w = ctx.measureText(label).width + 16 + res.length * 12, h = 20;
+      const lx = Math.max(4, Math.min(this.cam.w - w - 4, x - w / 2));
+      const ly = n >= 2 && i === n - 1 && i > 0 ? y + S * 0.5 + 18 : by - 30;
+      ctx.fillStyle = 'rgba(255,255,255,.96)'; ctx.strokeStyle = l.color; ctx.lineWidth = 2;
+      roundRect(ctx, lx, ly, w, h, 10); ctx.fill(); ctx.stroke();
+      let cx = lx + 8;
+      for (const r of res) { ctx.fillStyle = RES[r].color; ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.fillRect(cx, ly + 6, 8, 8); ctx.strokeRect(cx, ly + 6, 8, 8); cx += 12; }
+      ctx.fillStyle = '#2b2118'; ctx.textAlign = 'left'; ctx.fillText(label, cx, ly + h / 2 + 0.5); ctx.textAlign = 'center';
+    });
+    ctx.textBaseline = 'alphabetic';
+    this.world();
   }
   iconSize() { return Math.min(56, Math.max(24, this.cam.scale * 7)); }
   private drawBuildings(s: GameState, v: View, time: number) {
@@ -257,9 +341,13 @@ export class Renderer {
       if (v.selected?.kind === 'vehicle' && v.selected.id === veh.id) { ctx.beginPath(); ctx.arc(0, 0, S * 0.7, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.6)'; ctx.fill(); }
       ctx.drawImage(VICON[veh.type], -S / 2, -S / 2, S, S);
       ctx.restore();
-      if (veh.res && veh.qty > 0 && this.cam.scale > 1.5) {
-        ctx.fillStyle = RES[veh.res].color; ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(x, y - S * 0.55, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // pastilles de chargement : une par matériau transporté
+      const load = (Object.entries(veh.cargo) as [ResId, number][]).filter(([, q]) => q > 0);
+      if (load.length && this.cam.scale > 1.5) {
+        load.forEach(([r], k) => {
+          ctx.fillStyle = RES[r].color; ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(x + (k - (load.length - 1) / 2) * 9, y - S * 0.55, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        });
       }
     }
     this.world();
@@ -317,6 +405,11 @@ export class Renderer {
     }
     return best;
   }
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
 function halo(ctx: CanvasRenderingContext2D, t: string, x: number, y: number, col: string) {

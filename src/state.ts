@@ -34,7 +34,9 @@ export interface Building {
   produced: number;       // production cumulée
 }
 
-export interface Stop { bid: number; action: 'load' | 'unload'; res?: ResId; }
+/** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */
+export interface Stop { bid: number; action: 'load' | 'unload'; res: ResId[]; }
+/** `name` vide : le nom est déduit des arrêts (départ → arrivée) */
 export interface Line { id: number; name: string; vtype: VType; stops: Stop[]; color: string; }
 
 export interface Vehicle {
@@ -42,8 +44,7 @@ export interface Vehicle {
   type: VType;
   line: number;          // -1 pour un convoi de chantier
   stop: number;
-  res: ResId | null;
-  qty: number;
+  cargo: Stock;          // chargement, éventuellement plusieurs ressources
   state: 'go' | 'load' | 'unload' | 'lost';
   path: { x: number; y: number }[];
   speeds: number[];
@@ -84,3 +85,25 @@ export interface GameState {
 }
 
 export const SAVE_KEY = 'mine-map-save-v1';
+
+export const cargoTotal = (c: Stock) => Object.values(c).reduce((a, q) => a + (q ?? 0), 0);
+
+/** Met à niveau une sauvegarde d'une version précédente */
+export function migrate(s: GameState): GameState {
+  if (s.version < 2) {
+    for (const l of s.lines) {
+      for (const st of l.stops) {
+        const old = (st as unknown as { res?: ResId | ResId[] }).res;
+        st.res = Array.isArray(old) ? old : old ? [old] : [];
+      }
+      if (/→$|^Ligne \d+$/.test(l.name)) l.name = '';
+    }
+    for (const v of s.vehicles) {
+      const o = v as unknown as { res?: ResId | null; qty?: number };
+      v.cargo = o.res && o.qty ? { [o.res]: o.qty } : {};
+      delete o.res; delete o.qty;
+    }
+    s.version = 2;
+  }
+  return s;
+}

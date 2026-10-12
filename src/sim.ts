@@ -5,7 +5,7 @@ import {
 } from './defs';
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
-import type { Building, GameState, Stock, Vehicle } from './state';
+import { cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
 
 export const MONTH = 30.4375;
 export const YEAR = 365.25;
@@ -17,7 +17,7 @@ export interface Notifier { toast(text: string, kind?: 'info' | 'good' | 'bad'):
 // ---------- Création ----------
 export function newGame(geo: Geo): GameState {
   const s: GameState = {
-    version: 1, day: 0, money: START_MONEY, rp: 0, era: 1, techs: [], nextId: 1,
+    version: 2, day: 0, money: START_MONEY, rp: 0, era: 1, techs: [], nextId: 1,
     nodes: [], edges: [], buildings: [], lines: [], vehicles: [], extracted: {},
     stats: { produced: {}, food: 0, sold: {}, soldMonth: {}, income: 0, expenses: 0 },
     objectives: [], events: [], mods: [], market: {}, negMonths: 0, over: false, chapterDone: false,
@@ -167,7 +167,7 @@ export function buyVehicle(s: GameState, lineId: number) {
   return null;
 }
 function newVehicle(s: GameState, type: VType, line: number, at: Building): Vehicle {
-  return { id: s.nextId++, type, line, stop: 0, res: null, qty: 0, state: line === -1 ? 'go' : 'load', path: [], speeds: [], seg: 0, segPos: 0, timer: 0, x: at.x, y: at.y, angle: 0, at: at.id, income: 0 };
+  return { id: s.nextId++, type, line, stop: 0, cargo: {}, state: line === -1 ? 'go' : 'load', path: [], speeds: [], seg: 0, segPos: 0, timer: 0, x: at.x, y: at.y, angle: 0, at: at.id, income: 0 };
 }
 export function sellVehicle(s: GameState, v: Vehicle) {
   s.vehicles = s.vehicles.filter(x => x.id !== v.id);
@@ -315,7 +315,7 @@ export class Sim {
       w.stock[r]! -= qty;
       site.incoming[r] = (site.incoming[r] ?? 0) + qty;
       const v = newVehicle(s, 'convoi', -1, w);
-      v.res = r; v.qty = qty; v.target = site.id; v.from = w.id; v.at = null;
+      v.cargo = { [r]: qty }; v.target = site.id; v.from = w.id; v.at = null;
       setPath(v, path);
       s.vehicles.push(v);
     }
@@ -420,9 +420,9 @@ export class Sim {
     const s = this.s;
     const dest = this.destination(v);
     if (v.line === -1) {
-      if (dest) {
-        dest.need[v.res!] = Math.max(0, (dest.need[v.res!] ?? 0) - v.qty);
-        dest.incoming[v.res!] = Math.max(0, (dest.incoming[v.res!] ?? 0) - v.qty);
+      if (dest) for (const [r, q] of Object.entries(v.cargo) as [ResId, number][]) {
+        dest.need[r] = Math.max(0, (dest.need[r] ?? 0) - q);
+        dest.incoming[r] = Math.max(0, (dest.incoming[r] ?? 0) - q);
         for (const r of Object.keys(dest.need) as ResId[]) if ((dest.need[r] ?? 0) <= 0.001) delete dest.need[r];
       }
       s.vehicles = s.vehicles.filter(x => x.id !== v.id);
@@ -445,18 +445,24 @@ export class Sim {
     v.timer += dt;
     const cap = VEH[v.type].cap;
     if (v.state === 'load') {
-      if (st.res && (v.res === null || v.res === st.res || v.qty === 0)) {
-        const avail = Math.floor(b.city ? 0 : (b.stock[st.res] ?? 0));
-        const take = Math.min(avail, cap - v.qty);
-        if (take > 0) { b.stock[st.res] = (b.stock[st.res] ?? 0) - take; v.res = st.res; v.qty += take; }
+      // charge les ressources demandées à tour de rôle, tonne par tonne, jusqu'à remplir le véhicule
+      if (!b.city && !b.partner) {
+        let room = cap - cargoTotal(v.cargo), moved = true;
+        while (room >= 1 && moved) {
+          moved = false;
+          for (const r of st.res) {
+            if (room < 1 || (b.stock[r] ?? 0) < 1) continue;
+            b.stock[r]! -= 1; v.cargo[r] = (v.cargo[r] ?? 0) + 1; room -= 1; moved = true;
+          }
+        }
       }
       // attend d'être plein, au plus 6 jours
-      if (v.qty >= cap || v.timer >= 6 || !st.res) { if (v.timer >= 0.5) this.next(v); }
+      if ((cargoTotal(v.cargo) >= cap || v.timer >= 6 || !st.res.length) && v.timer >= 0.5) this.next(v);
     } else {
-      if (v.res && v.qty > 0) {
-        const q = Math.min(v.qty, Math.floor(accepts(s, b, v.res)));
-        if (q > 0) { deliver(s, b, v.res, q, v); v.qty -= q; }
-        if (v.qty <= 0) { v.qty = 0; v.res = null; }
+      for (const [r, q] of Object.entries(v.cargo) as [ResId, number][]) {
+        const n = Math.min(q, Math.floor(accepts(s, b, r)));
+        if (n > 0) { deliver(s, b, r, n, v); v.cargo[r] = q - n; }
+        if ((v.cargo[r] ?? 0) <= 0) delete v.cargo[r];
       }
       if (v.timer >= 0.5) this.next(v);
     }
