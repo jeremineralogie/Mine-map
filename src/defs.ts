@@ -166,23 +166,24 @@ export interface BDef {
   site?: [number, number];   // emplacement imposé (lon, lat)
   hidden?: boolean;          // non constructible par le joueur
   river?: boolean;           // doit être au bord d'un fleuve navigable
+  upgrade?: Partial<Record<ResId, number>>;  // matériaux d'amélioration au niveau 2 (×1,5 au niveau 3)
 }
 
 export const BUILD: Record<BType, BDef> = {
-  entrepot: { name: 'Entrepôt', desc: 'Stocke toutes les ressources. Point de départ des convois de chantier.', era: 1, cost: { bois: 20, pierre: 10 }, money: 100, days: 15, workers: 2, storage: 300, maxLevel: 3 },
+  entrepot: { name: 'Entrepôt', desc: 'Stocke toutes les ressources. Point de départ des convois de chantier.', era: 1, cost: { bois: 20, pierre: 10 }, money: 100, days: 15, workers: 2, storage: 300, maxLevel: 3, upgrade: { pierre: 20, bois: 8 } },
   village: { name: 'Village', desc: 'Fournit la main-d\'œuvre et achète ce dont ses habitants ont besoin. Grandit s\'il est bien approvisionné.', era: 1, cost: { bois: 30, pierre: 10 }, money: 150, days: 25, workers: 0, needsWater: true, storage: 0, maxLevel: 1 },
-  bucheron: { name: 'Camp de bûcherons', desc: 'Abat le bois d\'une forêt.', era: 1, cost: { bois: 8 }, money: 50, days: 10, workers: 4, deposit: 'bois', recipe: { in: {}, out: { bois: 8 } }, storage: 60, maxLevel: 3 },
-  carriere: { name: 'Carrière de pierre', desc: 'Extrait la pierre de taille d\'un banc de calcaire.', era: 1, cost: { bois: 15 }, money: 80, days: 15, workers: 6, deposit: 'pierre', recipe: { in: {}, out: { pierre: 5 } }, storage: 60, maxLevel: 3 },
-  ferme: { name: 'Villa agricole', desc: 'Cultive des céréales. Bien plus productive sur des terres fertiles.', era: 1, cost: { bois: 15, pierre: 5 }, money: 60, days: 12, workers: 5, deposit: 'cereales', recipe: { in: {}, out: { cereales: 10 } }, storage: 80, maxLevel: 3 },
-  argiliere: { name: 'Argilière', desc: 'Extrait l\'argile.', era: 1, tech: 'terre_cuite', cost: { bois: 10 }, money: 60, days: 10, workers: 4, deposit: 'argile', recipe: { in: {}, out: { argile: 6 } }, storage: 60, maxLevel: 3 },
-  briqueterie: { name: 'Tuilerie-briqueterie', desc: 'Cuit l\'argile au feu de bois pour faire briques et tuiles. A besoin d\'eau.', era: 1, tech: 'terre_cuite', cost: { bois: 20, pierre: 15 }, money: 150, days: 20, workers: 5, needsWater: true, recipe: { in: { argile: 4, bois: 2 }, out: { briques: 3 } }, storage: 40, maxLevel: 3 },
-  mine_fer: { name: 'Mine de fer', desc: 'Extrait le minerai de fer.', era: 1, tech: 'metallurgie', cost: { bois: 25, pierre: 15 }, money: 150, days: 20, workers: 8, deposit: 'minerai_fer', recipe: { in: {}, out: { minerai_fer: 4 } }, storage: 60, maxLevel: 3 },
-  bas_fourneau: { name: 'Bas fourneau', desc: 'Réduit le minerai de fer au charbon de bois.', era: 1, tech: 'metallurgie', cost: { pierre: 20, argile: 10 }, money: 180, days: 20, workers: 6, recipe: { in: { minerai_fer: 4, bois: 4 }, out: { fer: 2 } }, storage: 40, maxLevel: 3 },
-  forge: { name: 'Forge', desc: 'Forge des outils à partir du fer.', era: 1, tech: 'forge', cost: { pierre: 15, briques: 10 }, money: 200, days: 20, workers: 4, recipe: { in: { fer: 2, bois: 1 }, out: { outils: 1 } }, storage: 30, maxLevel: 3 },
-  mine_plomb: { name: 'Mine de plomb argentifère', desc: 'Le plomb sert aux canalisations romaines ; l\'argent qu\'il contient se vend cher.', era: 1, tech: 'plomb', cost: { bois: 25, pierre: 15 }, money: 200, days: 25, workers: 8, deposit: 'plomb', recipe: { in: {}, out: { plomb: 3 } }, storage: 50, maxLevel: 3 },
-  saline: { name: 'Saline', desc: 'Récolte le sel (marais salants ou sources salées).', era: 1, tech: 'salines', cost: { bois: 15, pierre: 5 }, money: 100, days: 15, workers: 5, deposit: 'sel', recipe: { in: {}, out: { sel: 4 } }, storage: 60, maxLevel: 3 },
+  bucheron: { name: 'Camp de bûcherons', desc: 'Abat le bois d\'une forêt.', era: 1, cost: { bois: 8 }, money: 50, days: 10, workers: 4, deposit: 'bois', recipe: { in: {}, out: { bois: 8 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 8, bois: 6 } },
+  carriere: { name: 'Carrière de pierre', desc: 'Extrait la pierre de taille d\'un banc de calcaire.', era: 1, cost: { bois: 15 }, money: 80, days: 15, workers: 6, deposit: 'pierre', recipe: { in: {}, out: { pierre: 5 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 20 } },
+  ferme: { name: 'Villa agricole', desc: 'Cultive des céréales. Bien plus productive sur des terres fertiles.', era: 1, cost: { bois: 15, pierre: 5 }, money: 60, days: 12, workers: 5, deposit: 'cereales', recipe: { in: {}, out: { cereales: 10 } }, storage: 80, maxLevel: 3, upgrade: { pierre: 10, bois: 6 } },
+  argiliere: { name: 'Argilière', desc: 'Extrait l\'argile.', era: 1, tech: 'terre_cuite', cost: { bois: 10 }, money: 60, days: 10, workers: 4, deposit: 'argile', recipe: { in: {}, out: { argile: 6 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 10, briques: 4 } },
+  briqueterie: { name: 'Tuilerie-briqueterie', desc: 'Cuit l\'argile au feu de bois pour faire briques et tuiles. A besoin d\'eau.', era: 1, tech: 'terre_cuite', cost: { bois: 20, pierre: 15 }, money: 150, days: 20, workers: 5, needsWater: true, recipe: { in: { argile: 4, bois: 2 }, out: { briques: 3 } }, storage: 40, maxLevel: 3, upgrade: { briques: 15, pierre: 10 } },
+  mine_fer: { name: 'Mine de fer', desc: 'Extrait le minerai de fer.', era: 1, tech: 'metallurgie', cost: { bois: 25, pierre: 15 }, money: 150, days: 20, workers: 8, deposit: 'minerai_fer', recipe: { in: {}, out: { minerai_fer: 4 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 20, fer: 4 } },
+  bas_fourneau: { name: 'Bas fourneau', desc: 'Réduit le minerai de fer au charbon de bois.', era: 1, tech: 'metallurgie', cost: { pierre: 20, argile: 10 }, money: 180, days: 20, workers: 6, recipe: { in: { minerai_fer: 4, bois: 4 }, out: { fer: 2 } }, storage: 40, maxLevel: 3, upgrade: { briques: 15, pierre: 10 } },
+  forge: { name: 'Forge', desc: 'Forge des outils à partir du fer.', era: 1, tech: 'forge', cost: { pierre: 15, briques: 10 }, money: 200, days: 20, workers: 4, recipe: { in: { fer: 2, bois: 1 }, out: { outils: 1 } }, storage: 30, maxLevel: 3, upgrade: { briques: 10, fer: 6 } },
+  mine_plomb: { name: 'Mine de plomb argentifère', desc: 'Le plomb sert aux canalisations romaines ; l\'argent qu\'il contient se vend cher.', era: 1, tech: 'plomb', cost: { bois: 25, pierre: 15 }, money: 200, days: 25, workers: 8, deposit: 'plomb', recipe: { in: {}, out: { plomb: 3 } }, storage: 50, maxLevel: 3, upgrade: { pierre: 20, outils: 2 } },
+  saline: { name: 'Saline', desc: 'Récolte le sel (marais salants ou sources salées).', era: 1, tech: 'salines', cost: { bois: 15, pierre: 5 }, money: 100, days: 15, workers: 5, deposit: 'sel', recipe: { in: {}, out: { sel: 4 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 12, briques: 4 } },
   aqueduc: { name: 'Château d\'eau d\'aqueduc', desc: 'Apporte l\'eau dans un rayon de 25 km : on peut y bâtir villes et ateliers loin des rivières.', era: 1, tech: 'aqueduc', cost: { pierre: 60, briques: 20 }, money: 400, days: 40, workers: 3, waterRange: 25, storage: 0, maxLevel: 1 },
-  port: { name: 'Port fluvial', desc: 'Quai au bord d\'un fleuve navigable : les barges y chargent et déchargent. Stocke toutes les ressources, comme un entrepôt.', era: 1, tech: 'navigation', cost: { bois: 30, pierre: 15 }, money: 220, days: 25, workers: 4, river: true, storage: 200, maxLevel: 3 },
+  port: { name: 'Port fluvial', desc: 'Quai au bord d\'un fleuve navigable : les barges y chargent et déchargent. Stocke toutes les ressources, comme un entrepôt.', era: 1, tech: 'navigation', cost: { bois: 30, pierre: 15 }, money: 220, days: 25, workers: 4, river: true, storage: 200, maxLevel: 3, upgrade: { pierre: 25, bois: 10 } },
   poste: { name: 'Poste-frontière', desc: 'Les marchands étrangers y achètent certaines ressources.', era: 1, cost: {}, money: 0, days: 0, workers: 0, storage: 120, maxLevel: 1, hidden: true },
   pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille du chapitre I.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 20, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947] },
 };
@@ -200,7 +201,9 @@ export const TIERS: Tier[] = [
   { name: 'Ville', minPop: 1500, needs: { cereales: 2.5, bois: 1.5, pierre: 0.6, sel: 0.15, briques: 0.4, outils: 0.06 } },
   { name: 'Cité', minPop: 5000, needs: { cereales: 2.5, bois: 1.5, pierre: 0.6, sel: 0.15, briques: 0.5, outils: 0.08, plomb: 0.05 } },
 ];
-export const WORK_RANGE = 35;   // km
+export const WORK_RANGE = 35;   // km (village) ; le rayon grandit avec la ville
+/** Rayon de main-d'œuvre selon le palier de la ville (village, bourg, ville, cité) */
+export const WORK_RANGES = [30, 40, 55, 70];
 export const WATER_RANGE = 6;   // km d'un fleuve, lac ou de la côte
 export const WAGE = 0.6;        // sesterces par ouvrier et par mois
 
@@ -263,38 +266,38 @@ export const BRANCHES: { id: Branch; name: string; icon: string }[] = [
 export interface Tech { id: string; name: string; desc: string; era: number; cost: number; req: string[]; branch: Branch; }
 export const TECHS: Tech[] = [
   // Transport
-  { id: 'voie_romaine', name: 'Voies romaines', desc: 'Routes pavées : 60 % plus rapides.', era: 1, cost: 18, req: [], branch: 'transport' },
-  { id: 'attelage', name: 'Attelage des chevaux', desc: 'Chariots à chevaux, presque deux fois plus rapides.', era: 1, cost: 20, req: ['voie_romaine'], branch: 'transport' },
-  { id: 'navigation', name: 'Navigation fluviale', desc: 'Ports fluviaux et barges : relie deux ports par le fleuve, sans construire de route. 12 t par barge.', era: 1, cost: 22, req: [], branch: 'transport' },
+  { id: 'voie_romaine', name: 'Voies romaines', desc: 'Routes pavées : 60 % plus rapides.', era: 1, cost: 25, req: [], branch: 'transport' },
+  { id: 'attelage', name: 'Attelage des chevaux', desc: 'Chariots à chevaux, presque deux fois plus rapides.', era: 1, cost: 28, req: ['voie_romaine'], branch: 'transport' },
+  { id: 'navigation', name: 'Navigation fluviale', desc: 'Ports fluviaux et barges : relie deux ports par le fleuve, sans construire de route. 12 t par barge.', era: 1, cost: 31, req: [], branch: 'transport' },
   // Production
-  { id: 'terre_cuite', name: 'Terre cuite', desc: 'Argilières et tuileries-briqueteries.', era: 1, cost: 12, req: [], branch: 'production' },
-  { id: 'salines', name: 'Salines', desc: 'Exploitation des marais salants et des sources salées.', era: 1, cost: 12, req: [], branch: 'production' },
-  { id: 'metallurgie', name: 'Métallurgie du fer', desc: 'Mines de fer et bas fourneaux.', era: 1, cost: 22, req: ['terre_cuite'], branch: 'production' },
-  { id: 'forge', name: 'Forgerons', desc: 'Forges : fabrication d\'outils.', era: 1, cost: 28, req: ['metallurgie'], branch: 'production' },
-  { id: 'plomb', name: 'Plomb et argent', desc: 'Mines de plomb argentifère.', era: 1, cost: 24, req: ['metallurgie'], branch: 'production' },
-  { id: 'exhaure', name: 'Exhaure (vis d\'Archimède)', desc: 'Pompage des galeries : +30 % de rendement pour toutes les mines et carrières.', era: 1, cost: 34, req: ['plomb'], branch: 'production' },
-  { id: 'outillage', name: 'Outillage', desc: 'Débloque le niveau 2 des bâtiments.', era: 1, cost: 30, req: ['forge'], branch: 'production' },
+  { id: 'terre_cuite', name: 'Terre cuite', desc: 'Argilières et tuileries-briqueteries.', era: 1, cost: 17, req: [], branch: 'production' },
+  { id: 'salines', name: 'Salines', desc: 'Exploitation des marais salants et des sources salées.', era: 1, cost: 17, req: [], branch: 'production' },
+  { id: 'metallurgie', name: 'Métallurgie du fer', desc: 'Mines de fer et bas fourneaux.', era: 1, cost: 31, req: ['terre_cuite'], branch: 'production' },
+  { id: 'forge', name: 'Forgerons', desc: 'Forges : fabrication d\'outils.', era: 1, cost: 39, req: ['metallurgie'], branch: 'production' },
+  { id: 'plomb', name: 'Plomb et argent', desc: 'Mines de plomb argentifère.', era: 1, cost: 34, req: ['metallurgie'], branch: 'production' },
+  { id: 'exhaure', name: 'Exhaure (vis d\'Archimède)', desc: 'Pompage des galeries : +30 % de rendement pour toutes les mines et carrières.', era: 1, cost: 48, req: ['plomb'], branch: 'production' },
+  { id: 'outillage', name: 'Outillage', desc: 'Débloque le niveau 2 des bâtiments.', era: 1, cost: 42, req: ['forge'], branch: 'production' },
   // Cité
-  { id: 'aqueduc', name: 'Aqueducs', desc: 'Châteaux d\'eau d\'aqueduc et Pont du Gard.', era: 1, cost: 32, req: ['terre_cuite'], branch: 'cite' },
-  { id: 'urbanisme', name: 'Urbanisme romain', desc: 'Débloque le niveau 3 des bâtiments et accélère la croissance des villes.', era: 1, cost: 40, req: ['outillage', 'aqueduc'], branch: 'cite' },
+  { id: 'aqueduc', name: 'Aqueducs', desc: 'Châteaux d\'eau d\'aqueduc et Pont du Gard.', era: 1, cost: 45, req: ['terre_cuite'], branch: 'cite' },
+  { id: 'urbanisme', name: 'Urbanisme romain', desc: 'Débloque le niveau 3 des bâtiments et accélère la croissance des villes.', era: 1, cost: 56, req: ['outillage', 'aqueduc'], branch: 'cite' },
   // Commerce
-  { id: 'negoce', name: 'Négoce méditerranéen', desc: 'Les partenaires étrangers paient 20 % plus cher et vendent 10 % moins cher.', era: 1, cost: 20, req: [], branch: 'commerce' },
-  { id: 'monnaie', name: 'Atelier monétaire', desc: 'Volume de commerce avec l\'étranger doublé ; la vente locale depuis les entrepôts rapporte davantage.', era: 1, cost: 30, req: ['negoce'], branch: 'commerce' },
+  { id: 'negoce', name: 'Négoce méditerranéen', desc: 'Les partenaires étrangers paient 20 % plus cher et vendent 10 % moins cher.', era: 1, cost: 28, req: [], branch: 'commerce' },
+  { id: 'monnaie', name: 'Atelier monétaire', desc: 'Volume de commerce avec l\'étranger doublé ; la vente locale depuis les entrepôts rapporte davantage.', era: 1, cost: 42, req: ['negoce'], branch: 'commerce' },
 ];
 
 // ---- Objectifs du chapitre I ----
 export interface Objective { id: string; name: string; desc: string; era: number; money: number; rp: number; }
 export const OBJECTIVES: Objective[] = [
-  { id: 'ville', name: 'Fonder une ville', desc: 'Fonde ton premier village.', era: 1, money: 200, rp: 5 },
-  { id: 'routes', name: 'Premiers chemins', desc: 'Construis 60 km de routes.', era: 1, money: 150, rp: 4 },
-  { id: 'ravitaillement', name: 'Ravitailler la ville', desc: 'Livre 60 t de céréales à tes villes.', era: 1, money: 250, rp: 6 },
-  { id: 'batisseurs', name: 'Bâtisseurs', desc: 'Extrais 200 t de pierre.', era: 1, money: 300, rp: 8 },
-  { id: 'bourg', name: 'Un vrai bourg', desc: 'Fais grandir une ville jusqu\'à 400 habitants.', era: 1, money: 300, rp: 8 },
-  { id: 'fer', name: 'Le fer des Gaules', desc: 'Produis 40 t de fer.', era: 1, money: 400, rp: 10 },
-  { id: 'rome', name: 'Commerce avec Rome', desc: 'Vends 30 t de marchandises à l\'Italie.', era: 1, money: 500, rp: 10 },
-  { id: 'via', name: 'Via Agrippa', desc: 'Relie par la route deux villes distantes de plus de 250 km.', era: 1, money: 600, rp: 12 },
-  { id: 'ville2', name: 'Une ville romaine', desc: 'Fais grandir une ville jusqu\'à 1 500 habitants.', era: 1, money: 800, rp: 15 },
-  { id: 'gard', name: 'Le Pont du Gard', desc: 'Construis le Pont du Gard.', era: 1, money: 2000, rp: 25 },
+  { id: 'ville', name: 'Fonder une ville', desc: 'Fonde ton premier village.', era: 1, money: 200, rp: 2 },
+  { id: 'routes', name: 'Premiers chemins', desc: 'Construis 60 km de routes.', era: 1, money: 150, rp: 2 },
+  { id: 'ravitaillement', name: 'Ravitailler la ville', desc: 'Livre 60 t de céréales à tes villes.', era: 1, money: 250, rp: 3 },
+  { id: 'batisseurs', name: 'Bâtisseurs', desc: 'Extrais 200 t de pierre.', era: 1, money: 300, rp: 4 },
+  { id: 'bourg', name: 'Un vrai bourg', desc: 'Fais grandir une ville jusqu\'à 400 habitants.', era: 1, money: 300, rp: 4 },
+  { id: 'fer', name: 'Le fer des Gaules', desc: 'Produis 40 t de fer.', era: 1, money: 400, rp: 5 },
+  { id: 'rome', name: 'Commerce avec Rome', desc: 'Vends 30 t de marchandises à l\'Italie.', era: 1, money: 500, rp: 5 },
+  { id: 'via', name: 'Via Agrippa', desc: 'Relie par la route deux villes distantes de plus de 250 km.', era: 1, money: 600, rp: 6 },
+  { id: 'ville2', name: 'Une ville romaine', desc: 'Fais grandir une ville jusqu\'à 1 500 habitants.', era: 1, money: 800, rp: 8 },
+  { id: 'gard', name: 'Le Pont du Gard', desc: 'Construis le Pont du Gard.', era: 1, money: 2000, rp: 12 },
 ];
 
 export const ERAS = [

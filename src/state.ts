@@ -44,7 +44,11 @@ export interface Stop {
   share?: number;
 }
 /** `name` vide : le nom est déduit des arrêts (départ → arrivée) */
-export interface Line { id: number; name: string; vtype: VType; stops: Stop[]; color: string; paused?: boolean; }
+export interface Line {
+  id: number; name: string; vtype: VType; stops: Stop[]; color: string; paused?: boolean;
+  /** tonnes chargées ou déposées à chaque arrêt : mois en cours (cur) et mois précédent (prev) */
+  moved?: { cur: Record<number, Stock>; prev: Record<number, Stock>; total?: Record<number, Stock> };
+}
 
 export interface Vehicle {
   id: number;

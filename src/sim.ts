@@ -1,7 +1,7 @@
 // Simulation : production, chantiers, main-d'œuvre, villes, véhicules, marché, objectifs, événements.
 import {
   ANCIENT, BUILD, EVENTS, IMPORT_MULT, LOCAL_SALE, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
-  START_YEAR, TECHS, TIERS, VEH, WAGE, WATER_RANGE, WORK_RANGE, type BType, type ResId, type VType,
+  START_YEAR, TECHS, TIERS, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
 } from './defs';
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
@@ -147,10 +147,18 @@ export function upgrade(s: GameState, b: Building) {
   if (s.money < cost) return `Pas assez d'argent (${fmt(cost)}).`;
   s.money -= cost; s.stats.expenses += cost;
   b.upgrading = true; b.work = 0;
-  b.need = {};
-  for (const [r, q] of Object.entries(d.cost)) b.need[r as ResId] = Math.ceil(q! * LEVEL_COST[next]);
+  b.need = upgradeCost(b);
   return null;
 }
+/** Matériaux nécessaires pour passer au niveau suivant */
+export function upgradeCost(b: Building): Stock {
+  const d = BUILD[b.type], next = b.level + 1, out: Stock = {};
+  if (d.upgrade) for (const [r, q] of Object.entries(d.upgrade)) out[r as ResId] = Math.ceil(q! * (next >= 3 ? 1.5 : 1));
+  else for (const [r, q] of Object.entries(d.cost)) out[r as ResId] = Math.ceil(q! * LEVEL_COST[next]);
+  return out;
+}
+/** Rayon de main-d'œuvre d'une ville (il grandit avec elle) */
+export const workRange = (c: Building) => WORK_RANGES[c.city?.tier ?? 0] ?? WORK_RANGE;
 export function maxLevelAllowed(s: GameState) { return s.techs.includes('urbanisme') ? 3 : s.techs.includes('outillage') ? 2 : 1; }
 
 export function demolish(s: GameState, b: Building) {
@@ -308,23 +316,23 @@ export class Sim {
 
   // ----- Main-d'œuvre -----
   staffing() {
-    const s = this.s;
+    const s = this.s, cs = cities(s);
     const avail = new Map<number, number>();
-    for (const c of cities(s)) avail.set(c.id, Math.floor(c.city!.pop * 0.4));
-    const cs = cities(s);
-    for (const b of s.buildings) {
-      const need = BUILD[b.type].workers * (b.level === 1 ? 1 : 1 + 0.5 * (b.level - 1));
-      b.staff = 0;
-      if (!b.built || !need || b.paused) continue;
-      const near = cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= WORK_RANGE).sort((a, z) => a.d - z.d);
-      let got = 0;
-      for (const { c } of near) {
-        const a = avail.get(c.id)!, t = Math.min(a, need - got);
-        got += t; avail.set(c.id, a - t);
-        if (got >= need) break;
+    for (const c of cs) avail.set(c.id, Math.floor(c.city!.pop * 0.4));
+    const jobs = s.buildings.filter(b => b.built && !b.paused && BUILD[b.type].workers);
+    const near = new Map(jobs.map(b => [b.id, cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= workRange(o.c)).sort((a, z) => a.d - z.d)]));
+    const take = (b: Building, want: number) => {
+      for (const { c } of near.get(b.id)!) {
+        const a = avail.get(c.id)!, t = Math.min(a, want);
+        b.staff += t; want -= t; avail.set(c.id, a - t);
+        if (want <= 0) break;
       }
-      b.staff = got;
-    }
+    };
+    for (const b of s.buildings) b.staff = 0;
+    // 1) chaque atelier reçoit d'abord les ouvriers dont il a besoin
+    for (const b of jobs) take(b, this.workersNeeded(b));
+    // 2) les villes qui ont des bras en trop renforcent les ateliers voisins (jusqu'à +50 % d'équipe)
+    for (const b of jobs) if (BUILD[b.type].recipe) take(b, Math.ceil(this.workersNeeded(b) * 1.5) - b.staff);
   }
   workersNeeded(b: Building) { return Math.round(BUILD[b.type].workers * (b.level === 1 ? 1 : 1 + 0.5 * (b.level - 1))); }
 
@@ -403,7 +411,8 @@ export class Sim {
     const d = BUILD[b.type];
     if (!d.recipe || !b.built) return 0;
     const need = this.workersNeeded(b);
-    const staffRatio = need ? b.staff / need : 1;
+    // équipe complète = 100 % ; chaque ouvrier en renfort ajoute la moitié de sa part (jusqu'à +25 %)
+    const staffRatio = need ? Math.min(b.staff, need) / need + 0.5 * Math.max(0, b.staff - need) / need : 1;
     const out = Object.values(d.recipe.out)[0]!;
     return out * LEVEL_MULT[b.level] * staffRatio * (d.deposit ? this.depositFactor(b) : 1);
   }
@@ -535,6 +544,7 @@ export class Sim {
           for (const r of st.res) {
             if (room < 1 || (b.stock[r] ?? 0) < 1) continue;
             b.stock[r]! -= 1; addFlow(b, 'out', r, 1); v.cargo[r] = (v.cargo[r] ?? 0) + 1; room -= 1; moved = true;
+            lineMoved(l, v.stop % l.stops.length, r, 1);
           }
         }
       }
@@ -546,7 +556,7 @@ export class Sim {
         // part à déposer ici : un pourcentage du chargement de départ (100 % = tout ce qui reste)
         const allow = share >= 100 ? q : Math.max(0, Math.round((v.ref?.[r] ?? q) * share / 100) - (drop[r] ?? 0));
         const n = Math.min(q, allow, Math.floor(accepts(s, b, r)));
-        if (n > 0) { deliver(s, b, r, n, v); v.cargo[r] = q - n; drop[r] = (drop[r] ?? 0) + n; }
+        if (n > 0) { deliver(s, b, r, n, v); v.cargo[r] = q - n; drop[r] = (drop[r] ?? 0) + n; lineMoved(l, v.stop % l.stops.length, r, n); }
         if ((v.cargo[r] ?? 0) <= 0) delete v.cargo[r];
       }
       if (v.timer >= 0.5) this.next(v);
@@ -593,13 +603,14 @@ export class Sim {
       let t = 0; for (let i = 0; i < TIERS.length; i++) if (city.pop >= TIERS[i].minPop) t = i;
       if (t > city.tier) this.notify.toast(`${c.name} devient un${t === 3 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
       city.tier = t;
-      s.rp += 0.2 + city.pop / 2500;   // recherche volontairement lente : chaque technologie se mérite
+      s.rp += 0.12 + city.pop / 5000;   // recherche volontairement lente : chaque technologie se mérite
     }
     for (const k of Object.keys(s.market)) {
       const m = s.market[k] + (1 - s.market[k]) * 0.08 + (Math.random() - 0.5) * 0.04;
       s.market[k] = Math.min(1.5, Math.max(0.4, m));
     }
     s.stats.soldMonth = {};
+    for (const l of s.lines) if (l.moved) l.moved = { cur: {}, prev: l.moved.cur, total: l.moved.total };
     for (const b of s.buildings) if (b.flow) b.flow = { in: {}, out: {}, pin: b.flow.in, pout: b.flow.out };
     s.mods = s.mods.filter(m => m.until > s.day);
     s.ledger.push({ month: Math.floor(s.day / MONTH), income: s.stats.income, expenses: s.stats.expenses });
@@ -704,6 +715,14 @@ export class Sim {
     }
     if (s.log.length > 60) s.log.length = 60;
   }
+}
+
+function lineMoved(l: { moved?: { cur: Record<number, Stock>; prev: Record<number, Stock>; total?: Record<number, Stock> } }, i: number, r: ResId, q: number) {
+  const m = l.moved ??= { cur: {}, prev: {} };
+  const st = m.cur[i] ??= {};
+  st[r] = (st[r] ?? 0) + q;
+  const tt = (m.total ??= {})[i] ??= {};
+  tt[r] = (tt[r] ?? 0) + q;
 }
 
 function setPath(v: Vehicle, p: { pts: { x: number; y: number }[]; speed: number[] }) {

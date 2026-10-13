@@ -9,7 +9,7 @@ import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import {
-  DAYS_PER_SEC, Sim, attachNode, buildingStatus, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
+  DAYS_PER_SEC, Sim, attachNode, buildingStatus, upgradeCost, workRange, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type GameState, type Line, type RNode, type Stock } from './state';
@@ -148,7 +148,7 @@ export class Game {
         // ne pas écraser un champ en cours de saisie
         const active = document.activeElement;
         // ne pas redessiner pendant qu'un champ ou une liste déroulante est utilisé (sinon la liste se referme)
-        if (!((active instanceof HTMLInputElement || active instanceof HTMLSelectElement) && $('panelBody').contains(active))) { $('panelBody').innerHTML = html; this.panelKey = html; }
+        if (!this.panelHold && !((active instanceof HTMLInputElement || active instanceof HTMLSelectElement) && $('panelBody').contains(active))) { $('panelBody').innerHTML = html; this.panelKey = html; }
       }
     }
   }
@@ -163,9 +163,14 @@ export class Game {
     $('speedCycle').onclick = () => { const v = [1, 2, 4, 8]; this.speed = v[(v.indexOf(this.speed) + 1) % v.length] || 1; this.refresh(); };
     document.querySelectorAll<HTMLButtonElement>('#tools button').forEach(b => b.onclick = () => this.tool(b.dataset.t!));
     $('panelClose').onclick = () => this.closePanel();
+    // pas de redessin du panneau pendant qu'on appuie dessus : aucun clic perdu
+    $('panelBody').addEventListener('pointerdown', () => { this.panelHold = true; });
+    window.addEventListener('pointerup', () => setTimeout(() => { this.panelHold = false; }, 60));
+    window.addEventListener('pointercancel', () => { this.panelHold = false; });
+    $('panelBack').onclick = () => this.back();
     $('menuBtn').onclick = () => this.openPanel(() => this.menuPanel());
     $('panelBody').addEventListener('click', e => this.panelClick(e));
-    $('panelBody').addEventListener('mouseover', e => { const c = (e.target as HTMLElement).closest<HTMLElement>('.linecard[data-act=line]'); this.view.hoverLine = c ? Number(c.dataset.id) : null; });
+    $('panelBody').addEventListener('mouseover', e => { const c = (e.target as HTMLElement).closest<HTMLElement>('.linebox, .linecard[data-act=line]'); this.view.hoverLine = c ? Number(c.dataset.line ?? c.dataset.id) : null; });
     $('panelBody').addEventListener('mouseleave', () => { this.view.hoverLine = null; });
     $('panelBody').addEventListener('change', e => this.panelChange(e));
     window.addEventListener('keydown', e => {
@@ -440,12 +445,33 @@ export class Game {
     this.openPanel(() => this.detailPanel(), 'detail');
   }
   private panelKind = '';
+  private panelHold = false;
+  private history: { fn: () => string; kind: string; sel: View['selected']; line: number | null }[] = [];
   openPanel(fn: () => string, kind = 'panel') {
+    // mémorise le panneau précédent pour le bouton « Retour »
+    if (this.panel && !(kind === 'detail' && this.panelKind === 'detail' && JSON.stringify(this.view.selected) === JSON.stringify(this.history[this.history.length - 1]?.sel))) {
+      this.history.push({ fn: this.panel, kind: this.panelKind, sel: this.view.selected, line: this.view.selectedLine });
+      if (this.history.length > 12) this.history.shift();
+    }
     this.panel = fn; this.panelKind = kind; this.panelKey = '';
+    $('panelBack').hidden = !this.history.length;
     $('panel').hidden = false; this.refresh();
     $('panelBody').scrollTop = 0;
   }
-  closePanel() { this.panel = null; this.panelKind = ''; $('panel').hidden = true; this.view.selected = null; this.view.selectedLine = null; }
+  closePanel() {
+    this.panel = null; this.panelKind = ''; $('panel').hidden = true; this.view.selected = null; this.view.selectedLine = null;
+    this.history = []; $('panelBack').hidden = true;
+    // fermer une ligne en cours d'édition ramène à la sélection (pas de bâtiment ajouté par erreur)
+    if (this.mode.kind === 'pickStop') this.setMode({ kind: 'select' });
+  }
+  private back() {
+    const h = this.history.pop(); if (!h) return;
+    if (this.mode.kind === 'pickStop') this.setMode({ kind: 'select' });
+    this.view.selected = h.sel; this.view.selectedLine = h.line;
+    this.panel = h.fn; this.panelKind = h.kind; this.panelKey = '';
+    $('panelBack').hidden = !this.history.length; $('panel').hidden = false;
+    this.refresh(); $('panelBody').scrollTop = 0;
+  }
 
   private detailPanel(): string {
     const sel = this.view.selected, s = this.s;
@@ -529,7 +555,7 @@ export class Game {
 
     if (b.city) {
       const c = b.city, needs = cityNeeds(b), next = TIERS[c.tier + 1];
-      h += this.kpis([[fmt(c.pop), 'habitants'], [fmt(c.pop * 0.4), `ouvriers (${WORK_RANGE} km)`], [`${Math.round(c.foodSat * 100)} %`, 'nourriture', c.foodSat >= 0.9 ? 'good' : c.foodSat >= 0.5 ? 'warn' : 'bad'], [`${Math.round(c.sat * 100)} %`, 'confort', c.sat >= 0.9 ? 'good' : c.sat >= 0.5 ? 'warn' : 'bad']]);
+      h += this.kpis([[fmt(c.pop), 'habitants'], [fmt(c.pop * 0.4), `ouvriers (rayon ${workRange(b)} km)`], [`${Math.round(c.foodSat * 100)} %`, 'nourriture', c.foodSat >= 0.9 ? 'good' : c.foodSat >= 0.5 ? 'warn' : 'bad'], [`${Math.round(c.sat * 100)} %`, 'confort', c.sat >= 0.9 ? 'good' : c.sat >= 0.5 ? 'warn' : 'bad']]);
       if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
       h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
         const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 6 * 100);
@@ -545,7 +571,7 @@ export class Game {
 
     if (d.recipe && b.built) {
       const need = this.sim.workersNeeded(b), rate = this.sim.rate(b), cap = d.storage * b.level;
-      const items: [string, string, string?][] = [[`${rate.toFixed(1)} t`, 'par mois', rate > 0 ? 'good' : 'bad'], [`${b.staff} / ${need}`, 'ouvriers', b.staff >= need ? 'good' : b.staff ? 'warn' : 'bad']];
+      const items: [string, string, string?][] = [[`${rate.toFixed(1)} t`, 'par mois', rate > 0 ? 'good' : 'bad'], [`${b.staff} / ${need}`, b.staff > need ? `ouvriers (+${Math.round(50 * (b.staff - need) / need)} % de renfort)` : 'ouvriers', b.staff >= need ? 'good' : b.staff ? 'warn' : 'bad']];
       if (d.deposit && b.dep !== null) items.push([`${Math.round(this.sim.depositFactor(b) / b.rich * 100)} %`, 'rendement du gisement']);
       items.push([`${fmt(b.produced)} t`, 'produites au total']);
       h += this.kpis(items);
@@ -588,7 +614,7 @@ export class Game {
     if (b.built && !b.upgrading && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
       const cost = Math.round(d.money * LEVEL_COST[b.level + 1]);
-      h += `<button data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1} (${fmt(cost)} + ${costList(Object.fromEntries(Object.entries(d.cost).map(([r, q]) => [r, Math.ceil(q! * LEVEL_COST[b.level + 1])])))})${allowed ? '' : ' — technologie requise'}</button>`;
+      h += `<button data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1} (${fmt(cost)} + ${costList(upgradeCost(b))})${allowed ? '' : ' — technologie requise'}</button>`;
     }
     h += `<button class="danger" data-act="demolish" data-id="${b.id}">Démolir</button></div>`;
     return h;
@@ -634,15 +660,29 @@ export class Game {
   lineRes(l: Line) { return [...new Set(l.stops.flatMap(st => st.action === 'load' ? st.res : []))]; }
   /** Fiche lisible d'une ligne : départ → arrivée, matériaux, véhicules, recettes */
   private lineCard(l: Line) {
-    const s = this.s, vs = s.vehicles.filter(v => v.line === l.id), res = this.lineRes(l);
-    const first = l.stops[0], last = l.stops[l.stops.length - 1];
-    const route = l.stops.length >= 2
-      ? `<span class="route"><span class="stopTag start">Départ</span>${esc(this.short(first.bid))}<span class="arrow">→</span><span class="stopTag end">Arrivée</span>${esc(this.short(last.bid))}${l.stops.length > 2 ? ` <small class="muted">(+${l.stops.length - 2} arrêt${l.stops.length > 3 ? 's' : ''})</small>` : ''}</span>`
-      : '<span class="warn">Ajoute au moins deux arrêts</span>';
-    return `<button class="linecard" data-act="line" data-id="${l.id}" style="--lc:${l.color}">
-      <span class="lc-head"><i class="dot" style="background:${l.color}"></i>${l.name || l.stops.length < 2 ? `<b>${esc(this.lineLabel(l))}</b>` : ''}${l.paused ? '<span class="pill info">En pause</span>' : ''}<span class="muted">${vs.length} ${VEH[l.vtype].name.toLowerCase()}${vs.length > 1 ? 's' : ''} · ${fmt(vs.reduce((a, v) => a + v.income, 0))} sest.</span></span>
-      ${route}
-      <span class="chips">${res.length ? res.map(r => resChip(r)).join(' ') : '<small class="muted">aucun matériau chargé</small>'}</span></button>`;
+    const s = this.s, vs = s.vehicles.filter(v => v.line === l.id), n = l.stops.length;
+    const m = l.moved, month = m?.prev ?? {}, total = m?.total ?? {};
+    const stops = l.stops.map((st, i) => {
+      const role = i === 0 ? 'Départ' : i === n - 1 ? 'Terminus' : `Arrêt ${i}`;
+      const b = getB(s, st.bid), moved = (Object.entries(month[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
+      const tot = (Object.entries(total[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
+      const verb = st.action === 'load' ? 'chargé' : b?.city || b?.partner ? 'vendu' : 'déposé';
+      const what = st.action === 'load'
+        ? `<span class="lc-act load">Charge</span> ${st.res.map(r => resChip(r)).join(' ') || '<small class="warn">aucune ressource choisie</small>'}`
+        : `<span class="lc-act unload">${b?.city || b?.partner ? 'Vend' : 'Dépose'}</span> <small>${(st.share ?? 100) >= 100 ? 'tout le reste' : `${st.share} % du chargement`}</small>`;
+      return `<li class="${i === 0 ? 'first' : i === n - 1 ? 'last' : ''}"><span class="lc-dot">${i + 1}</span><div class="lc-stop">
+        <div class="lc-st-head"><span class="lc-role">${role}</span><b>${esc(b?.name.split(' — ')[0] ?? '?')}</b></div>
+        <div class="lc-st-what">${what}</div>
+        <div class="lc-st-qty"><small class="muted">Mois dernier :</small> ${moved.length ? moved.map(([r, q]) => `${resIcon(r)}<b>${fmt(q)} t</b>`).join(' ') : '<small class="muted">rien</small>'}</div>
+        <div class="lc-st-qty"><small class="muted">Total ${verb} :</small> ${tot.length ? tot.map(([r, q]) => `${resIcon(r)}<b>${fmt(q)} t</b>`).join(' ') : '<small class="muted">rien encore</small>'}</div></div></li>`;
+    }).join('');
+    const cap = VEH[l.vtype].cap * vs.length;
+    return `<div class="linebox" style="--lc:${l.color}" data-line="${l.id}">
+      <button class="linecard lc-top" data-act="line" data-id="${l.id}" style="--lc:${l.color}">
+        <span class="lc-head"><i class="dot" style="background:${l.color}"></i><b>${esc(this.lineLabel(l))}</b>${l.paused ? '<span class="pill info">En pause</span>' : ''}<span class="lc-edit">Modifier ›</span></span>
+        <span class="lc-sub"><img class="vic" src="${vIconUrl(l.vtype)}" alt="">${vs.length} × ${VEH[l.vtype].name.toLowerCase()} · ${fmt(cap)} t par tournée · ${fmt(vs.reduce((a, v) => a + v.income, 0))} sesterces de recettes</span>
+      </button>
+      ${n ? `<ol class="lc-stops">${stops}</ol>` : '<p class="warn">Ajoute au moins deux arrêts.</p>'}</div>`;
   }
   /** Ressources proposées en priorité pour un arrêt de chargement */
   private suggestRes(b: Building): ResId[] {
@@ -655,7 +695,7 @@ export class Game {
   private lineEditor(l: Line): string {
     const s = this.s;
     const vs = s.vehicles.filter(v => v.line === l.id);
-    const vtypes = (Object.keys(VEH) as VType[]).filter(t => t !== 'convoi' && hasTech(s, VEH[t].tech));
+    const vtypes = (Object.keys(VEH) as VType[]).filter(t => t !== 'convoi' && t !== 'chaland' && hasTech(s, VEH[t].tech));
     const loaded = this.lineRes(l);
     const stops = l.stops.map((st, i) => {
       const b = getB(s, st.bid);
@@ -912,7 +952,11 @@ export class Game {
         this.setMode({ kind: 'pickStop', line: l.id });
         break;
       }
-      case 'line': this.view.selectedLine = id; this.view.selected = null; this.openPanel(() => this.linesPanel(), 'lines'); break;
+      case 'line': {
+        // mémorise le panneau actuel (et sa sélection) avant d'ouvrir la ligne, pour le bouton « Retour »
+        if (this.panel) { this.history.push({ fn: this.panel, kind: this.panelKind, sel: this.view.selected, line: this.view.selectedLine }); this.panel = null; }
+        this.view.selectedLine = id; this.view.selected = null; this.openPanel(() => this.linesPanel(), 'lines'); break;
+      }
       case 'lines': this.view.selectedLine = null; this.setMode({ kind: 'select' }); break;
       case 'pickstop': if (this.view.selectedLine !== null) this.setMode({ kind: 'pickStop', line: this.view.selectedLine }); break;
       case 'delres': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) { const st = l.stops[Number(t.dataset.i)]; st.res = st.res.filter(r => r !== t.dataset.r); } break; }

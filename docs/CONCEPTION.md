@@ -63,7 +63,8 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 ## 6. Villes, main-d'œuvre, eau, électricité
 - Le joueur **fonde ses villes**. Elles grandissent seules si elles sont approvisionnées,
   et évoluent avec les époques (village → bourg → ville → cité).
-- Les villes fournissent la **main-d'œuvre** dans un rayon donné.
+- Les villes fournissent la **main-d'œuvre** dans un rayon qui grandit avec elles (30 km pour un village,
+  70 km pour une cité). Leurs bras en trop renforcent les ateliers voisins (jusqu'à +50 % d'équipe, +25 % de production).
 - **Eau** : près d'un fleuve, d'un lac ou de la côte, ou dans la portée d'un aqueduc / d'une pompe.
 - **Électricité** (à partir de l'époque IV) : chaque centrale couvre une zone (portée).
 
@@ -101,7 +102,8 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 - **Objectifs historiques** par époque (ex. « Construire le Pont du Gard », « Relier Paris à
   Lyon par le rail ») : ils rapportent argent et points de recherche.
 - **Événements historiques** datés (Peste antonine, invasions, crues…).
-- Améliorations des bâtiments par niveaux.
+- Améliorations des bâtiments par niveaux, avec des matériaux propres à chaque bâtiment (la carrière
+  s'améliore avec de la pierre, la forge avec des briques et du fer…).
 
 ## 10. Interface
 - Ordinateur, tablette et téléphone (souris et tactile).
