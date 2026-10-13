@@ -103,7 +103,8 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
   Lyon par le rail ») : ils rapportent argent et points de recherche.
 - **Événements historiques** datés (Peste antonine, invasions, crues…).
 - Améliorations des bâtiments par niveaux, avec des matériaux propres à chaque bâtiment (la carrière
-  s'améliore avec de la pierre, la forge avec des briques et du fer…).
+  s'améliore avec de la pierre, la ferme et le camp de bûcherons avec du bois, la forge avec de la pierre
+  et des briques, les mines avec du fer et de la pierre…).
 
 ## 10. Interface
 - Ordinateur, tablette et téléphone (souris et tactile).
