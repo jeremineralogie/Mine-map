@@ -35,6 +35,7 @@ export interface Building {
   /** flux du mois en cours (in, out) et du mois précédent (pin, pout) */
   flow?: { in: Stock; out: Stock; pin: Stock; pout: Stock };
   paused?: boolean;       // production mise en pause par le joueur
+  sea?: 'atlantique' | 'mediterranee';  // port de commerce : mer bordant le port
 }
 
 /** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */

@@ -1,6 +1,6 @@
 // Simulation : production, chantiers, main-d'œuvre, villes, véhicules, marché, objectifs, événements.
 import {
-  ANCIENT, BUILD, EVENTS, IMPORT_MULT, LOCAL_SALE, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
+  ANCIENT, BUILD, EVENTS, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
   START_YEAR, TECHS, TIERS, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
 } from './defs';
 import type { Geo } from './geo';
@@ -60,7 +60,7 @@ export const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
 export const hasTech = (s: GameState, t?: string) => !t || s.techs.includes(t);
 export const getB = (s: GameState, id: number) => s.buildings.find(b => b.id === id);
 /** Bâtiments qui stockent toutes les ressources */
-export const isStore = (b: Building) => b.type === 'entrepot' || b.type === 'port';
+export const isStore = (b: Building) => b.type === 'entrepot' || b.type === 'port' || b.type === 'port_mer';
 export const cities = (s: GameState) => s.buildings.filter(b => b.type === 'village' && b.built && b.city);
 
 // ---------- Placement ----------
@@ -88,6 +88,10 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
     else if (!dep) return { ok: false, reason: `Il faut un gisement de ${RES[d.deposit].name.toLowerCase()} (calque Gisements).` };
     else { r.rich = value; r.depName = dep.name; }
   }
+  if (d.coast) {
+    if (!geo.nearSea(x, y, 3)) return { ok: false, reason: 'Un port de commerce doit être construit sur la côte (à moins de 3 km de la mer).' };
+    r.depName = geo.seaOf(x, y) === 'mediterranee' ? 'Méditerranée' : 'Atlantique et Manche';
+  }
   if (d.river) {
     const n = geo.nearestNav(x, y, 3);
     if (!n) return { ok: false, reason: 'Un port fluvial doit être construit au bord d\'un grand fleuve navigable (à moins de 3 km).' };
@@ -112,6 +116,7 @@ export function suggestName(s: GameState, geo: Geo, type: BType, x: number, y: n
   }
   const d = BUILD[type];
   if (d.deposit && d.deposit !== 'cereales') { const r = geo.richness(d.deposit, x, y); if (r.dep) return `${d.name} — ${r.dep.name}`; }
+  if (d.coast) { const c = nearestCity(s, x, y); return c ? `Port de commerce de ${c.name}` : `Port de commerce (${geo.seaOf(x, y) === 'mediterranee' ? 'Méditerranée' : 'Atlantique'})`; }
   if (d.river) {
     const c = nearestCity(s, x, y), n = geo.nearestNav(x, y, 3);
     if (c) return `Port de ${c.name}`;
@@ -136,6 +141,7 @@ export function place(s: GameState, geo: Geo, type: BType, x: number, y: number,
     b.rich = d.deposit === 'cereales' ? Math.max(0.45, value) : value; b.dep = dep ? dep.id : null;
   }
   if (free) { b.built = true; b.need = {}; }
+  if (d.coast) b.sea = geo.seaOf(x, y);
   if (type === 'village') b.city = { pop: 80, stock: { cereales: 12, bois: 6 }, sat: 1, foodSat: 1, tier: 0 };
   return b;
 }
@@ -158,7 +164,7 @@ export function upgradeCost(b: Building): Stock {
   return out;
 }
 /** Rayon de main-d'œuvre d'une ville (il grandit avec elle) */
-export const workRange = (c: Building) => WORK_RANGES[c.city?.tier ?? 0] ?? WORK_RANGE;
+export const workRange = (c: Building, s?: GameState) => (WORK_RANGES[c.city?.tier ?? 0] ?? WORK_RANGE) + (s?.techs.includes('cite_prospere') ? 15 : 0);
 export function maxLevelAllowed(s: GameState) { return s.techs.includes('urbanisme') ? 3 : s.techs.includes('outillage') ? 2 : 1; }
 
 export function demolish(s: GameState, b: Building) {
@@ -232,6 +238,12 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
     if (left > 0) return left;
     if (!b.built) return 0;
   }
+  if (b.type === 'port_mer') {
+    // ce qui se vend outre-mer part aussitôt ; le reste est stocké
+    const total = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
+    const sell = seaPartnersOf(s, b).filter(p => p.buys.includes(res)).reduce((a, p) => a + Math.max(0, seaVolume(s, p) - (s.stats.soldMonth['mer:' + p.id] ?? 0)), 0);
+    return sell + Math.max(0, d.storage * b.level - total);
+  }
   if (isStore(b)) {
     const total = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
     return Math.max(0, d.storage * b.level - total);
@@ -249,6 +261,20 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
     s.market[key] = Math.max(0.4, (s.market[key] ?? 1) * (1 - (b.partner ? 0.012 : 0.004) * qty));
     if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
     else { s.stats.sold[b.partner!] = (s.stats.sold[b.partner!] ?? 0) + qty; s.stats.soldMonth[b.partner!] = (s.stats.soldMonth[b.partner!] ?? 0) + qty; }
+  } else if (b.type === 'port_mer' && b.built) {
+    // vend au partenaire d'outre-mer qui paie le mieux, dans la limite de son volume mensuel
+    let left = qty;
+    for (const p of seaPartnersOf(s, b).filter(p => p.buys.includes(res)).sort((x, y) => seaPrice(s, b, y, res) - seaPrice(s, b, x, res))) {
+      const room = Math.max(0, seaVolume(s, p) - (s.stats.soldMonth['mer:' + p.id] ?? 0)), q = Math.min(left, room);
+      if (q <= 0) continue;
+      const gain = seaPrice(s, b, p, res) * q;
+      s.money += gain; s.stats.income += gain; if (v) v.income += gain;
+      const k = 'mer:' + p.id;
+      s.stats.soldMonth[k] = (s.stats.soldMonth[k] ?? 0) + q; s.stats.sold[k] = (s.stats.sold[k] ?? 0) + q;
+      s.market[k + ':' + res] = Math.max(0.4, (s.market[k + ':' + res] ?? 1) * (1 - 0.01 * q));
+      left -= q;
+    }
+    if (left > 0) { b.stock[res] = (b.stock[res] ?? 0) + left; addFlow(b, 'in', res, left); }
   } else if ((!b.built || b.upgrading) && (b.need[res] ?? 0) > 0) {
     // matériaux livrés directement sur le chantier
     const used = Math.min(qty, b.need[res]!);
@@ -294,6 +320,33 @@ export function sellLocal(s: GameState, b: Building, res: ResId, qty: number) {
   return gain;
 }
 
+// ---------- Commerce maritime ----------
+export function seaPartnersOf(s: GameState, b: Building): SeaPartner[] {
+  const sea = b.sea ?? 'atlantique';
+  void s; return SEA_PARTNERS.filter(p => p.seas.includes(sea));
+}
+export function seaVolume(s: GameState, p: SeaPartner) { return p.volume * (s.techs.includes('monnaie') ? 2 : 1); }
+export function seaPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
+  void b; return RES[res].price * p.mult * (s.market['mer:' + p.id + ':' + res] ?? 1) * (s.techs.includes('negoce') ? 1.2 : 1);
+}
+/** Prix d'une importation par la mer (toujours plus cher que ce que le partenaire rachète) */
+export function seaImportPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
+  const base = RES[res].price * IMPORT_MULT * (s.market['imp:mer:' + p.id + ':' + res] ?? 1) * (s.techs.includes('negoce') ? 0.9 : 1);
+  return p.buys.includes(res) ? Math.max(base, seaPrice(s, b, p, res) * 1.15) : base;
+}
+export function buySea(s: GameState, b: Building, pid: string, res: ResId, qty: number): string | null {
+  const p = SEA_PARTNERS.find(x => x.id === pid)!;
+  const room = BUILD.port_mer.storage * b.level - Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
+  qty = Math.min(qty, Math.floor(room));
+  if (qty <= 0) return 'Le port est plein.';
+  const cost = seaImportPrice(s, b, p, res) * qty;
+  if (s.money < cost) return `Pas assez d'argent (${fmt(cost)} sesterces).`;
+  s.money -= cost; s.stats.expenses += cost;
+  b.stock[res] = (b.stock[res] ?? 0) + qty; addFlow(b, 'in', res, qty);
+  const k = 'imp:mer:' + p.id + ':' + res; s.market[k] = Math.min(1.6, (s.market[k] ?? 1) * (1 + 0.008 * qty));
+  return null;
+}
+
 // ---------- Boucle ----------
 export class Sim {
   s: GameState;
@@ -320,7 +373,7 @@ export class Sim {
     const avail = new Map<number, number>();
     for (const c of cs) avail.set(c.id, Math.floor(c.city!.pop * 0.4));
     const jobs = s.buildings.filter(b => b.built && !b.paused && BUILD[b.type].workers);
-    const near = new Map(jobs.map(b => [b.id, cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= workRange(o.c)).sort((a, z) => a.d - z.d)]));
+    const near = new Map(jobs.map(b => [b.id, cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= workRange(o.c, s)).sort((a, z) => a.d - z.d)]));
     const take = (b: Building, want: number) => {
       for (const { c } of near.get(b.id)!) {
         const a = avail.get(c.id)!, t = Math.min(a, want);
@@ -414,7 +467,8 @@ export class Sim {
     // équipe complète = 100 % ; chaque ouvrier en renfort ajoute la moitié de sa part (jusqu'à +25 %)
     const staffRatio = need ? Math.min(b.staff, need) / need + 0.5 * Math.max(0, b.staff - need) / need : 1;
     const out = Object.values(d.recipe.out)[0]!;
-    return out * LEVEL_MULT[b.level] * staffRatio * (d.deposit ? this.depositFactor(b) : 1);
+    const skilled = this.s.techs.includes('ouvrier_qualifie') && (d.deposit === 'bois' || d.deposit === 'pierre' || d.deposit === 'cereales') ? 1.2 : 1;
+    return out * LEVEL_MULT[b.level] * staffRatio * skilled * (d.deposit ? this.depositFactor(b) : 1);
   }
   production(dt: number) {
     const s = this.s;

@@ -131,6 +131,24 @@ export class Geo {
   /** 0 mer, 1 France, 2 pays voisin, 3 lac */
   maskAt(x: number, y: number) { const k = this.cell(x, y); return k < 0 ? 0 : this.mask[k]; }
   isFrance(x: number, y: number) { return this.maskAt(x, y) === 1; }
+  /** Coordonnées géographiques d'un point (inverse de la projection) */
+  unproj(x: number, y: number): [number, number] {
+    const p = this.data.proj, lat = p.lat0 - y / p.ky;
+    return [p.lon0 + x / (p.kx * Math.cos(lat * Math.PI / 180)), lat];
+  }
+  /** Le point est-il à moins de `km` de la mer ? */
+  nearSea(x: number, y: number, km = 3) {
+    for (let r = 1; r <= km; r += 1) for (let a = 0; a < 16; a++) {
+      const px = x + r * Math.cos(a * Math.PI / 8), py = y + r * Math.sin(a * Math.PI / 8);
+      if (this.maskAt(px, py) === 0) return true;
+    }
+    return false;
+  }
+  /** Mer bordant un point de la côte française */
+  seaOf(x: number, y: number): 'atlantique' | 'mediterranee' {
+    const [lon, lat] = this.unproj(x, y);
+    return lon > 1 && lat < 44.6 ? 'mediterranee' : 'atlantique';
+  }
   elevAt(x: number, y: number) { const k = this.cell(x, y); return k < 0 ? 0 : this.elev[k]; }
   waterDist(x: number, y: number) { const k = this.cell(x, y); return k < 0 ? 0 : this.water[k]; }
 

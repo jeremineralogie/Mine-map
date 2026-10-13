@@ -9,7 +9,7 @@ import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import {
-  DAYS_PER_SEC, Sim, attachNode, buildingStatus, upgradeCost, workRange, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
+  DAYS_PER_SEC, Sim, attachNode, buildingStatus, upgradeCost, workRange, seaPartnersOf, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type GameState, type Line, type RNode, type Stock } from './state';
@@ -555,7 +555,7 @@ export class Game {
 
     if (b.city) {
       const c = b.city, needs = cityNeeds(b), next = TIERS[c.tier + 1];
-      h += this.kpis([[fmt(c.pop), 'habitants'], [fmt(c.pop * 0.4), `ouvriers (rayon ${workRange(b)} km)`], [`${Math.round(c.foodSat * 100)} %`, 'nourriture', c.foodSat >= 0.9 ? 'good' : c.foodSat >= 0.5 ? 'warn' : 'bad'], [`${Math.round(c.sat * 100)} %`, 'confort', c.sat >= 0.9 ? 'good' : c.sat >= 0.5 ? 'warn' : 'bad']]);
+      h += this.kpis([[fmt(c.pop), 'habitants'], [fmt(c.pop * 0.4), `ouvriers (rayon ${workRange(b, s)} km)`], [`${Math.round(c.foodSat * 100)} %`, 'nourriture', c.foodSat >= 0.9 ? 'good' : c.foodSat >= 0.5 ? 'warn' : 'bad'], [`${Math.round(c.sat * 100)} %`, 'confort', c.sat >= 0.9 ? 'good' : c.sat >= 0.5 ? 'warn' : 'bad']]);
       if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
       h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
         const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 6 * 100);
@@ -588,6 +588,17 @@ export class Game {
       h += `<h3>Stock</h3>${this.stockRows(b, [...ins.map(([r]) => r), ...outs.map(([r]) => r)], () => cap)}`;
     }
 
+    if (b.type === 'port_mer' && b.built) {
+      h += `<h3>Partenaires d'outre-mer · ${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique et Manche'}</h3>
+        <p class="muted">Tout ce qu'une ligne décharge ici est vendu au partenaire qui paie le mieux, dans la limite de son volume mensuel ; le surplus est stocké.</p>`;
+      h += seaPartnersOf(s, b).map(p => {
+        const sold = s.stats.soldMonth['mer:' + p.id] ?? 0, vol = seaVolume(s, p);
+        return `<div class="seap"><div class="seap-h"><b>${esc(p.name)}</b><small class="muted">${fmt(sold)} / ${vol} t ce mois</small></div>
+          <div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>
+          <div class="seap-row"><small class="muted">Achète :</small>${p.buys.map(r => `<span class="res">${resIcon(r)}${RES[r].name} <b>${seaPrice(s, b, p, r).toFixed(1)}</b></span>`).join('')}</div>
+          <div class="seap-row"><small class="muted">Vend :</small>${p.sells.map(r => { const pr = seaImportPrice(s, b, p, r); return `<span class="buy">${resIcon(r)}${RES[r].name} ${pr.toFixed(1)}/t <button data-act="importmer" data-id="${b.id}" data-p="${p.id}" data-r="${r}" data-q="10">Acheter 10 t</button></span>`; }).join('')}</div></div>`;
+      }).join('');
+    }
     if (isStore(b) && b.built) {
       const cap = d.storage * b.level, list = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5).sort((x, y) => y[1] - x[1]);
       const total = list.reduce((a, [, q]) => a + q, 0);
@@ -980,6 +991,7 @@ export class Game {
       case 'delall': this.modal(`<h2>Supprimer toutes les lignes ?</h2><p>Les ${s.lines.length} lignes seront supprimées et leurs ${s.vehicles.filter(v => v.line >= 0).length} véhicules revendus à moitié prix. Les routes ne sont pas touchées.</p>`, [
         { label: 'Annuler' }, { label: 'Tout supprimer', primary: true, fn: () => { for (const v of s.vehicles.filter(x => x.line >= 0)) sellVehicle(s, v); s.lines = []; this.view.selectedLine = null; this.toast('Toutes les lignes ont été supprimées.'); this.refresh(); } }]); break;
       case 'sell': { const b = getB(s, id)!; const g = sellLocal(s, b, t.dataset.r as ResId, Number(t.dataset.q)); if (g) this.toast(`Vendu pour ${fmt(g)} sesterces.`, 'good'); break; }
+      case 'importmer': { const b = getB(s, id)!; const err = buySea(s, b, t.dataset.p!, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? 'Cargaison livrée au port.', err ? 'bad' : 'good'); break; }
       case 'import': { const b = getB(s, id)!; const err = buyImport(s, b, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? `Achat livré au poste ${b.name}.`, err ? 'bad' : 'good'); break; }
       case 'goto': { const b = getB(s, id); if (b) { this.centerOn(b.x, b.y, Math.max(this.cam.scale, 3)); this.select({ kind: 'building', id }); } return; }
       case 'save': this.save(); this.toast('Partie sauvegardée.', 'good'); break;
@@ -989,6 +1001,7 @@ export class Game {
         a.download = `mine-map-${year(s)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         break;
       }
+      case 'importmer': { const b = getB(s, id)!; const err = buySea(s, b, t.dataset.p!, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? 'Cargaison livrée au port.', err ? 'bad' : 'good'); break; }
       case 'import': {
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
         inp.onchange = async () => {

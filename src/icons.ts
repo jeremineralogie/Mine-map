@@ -74,6 +74,12 @@ const SVG: Record<BType, string> = {
     `<rect x="6" y="26" width="50" height="9" fill="#a37f52" stroke="#5b4632"/><g stroke="#5b4632" stroke-width="1"><path d="M14 26 v9 M24 26 v9 M34 26 v9 M44 26 v9"/></g>` +
     `<path d="M14 44 h26 l-4 9 h-18 z" fill="#8a5a2b" stroke="#3b2a1e"/><rect x="20" y="45" width="12" height="5" fill="#c9a774"/>` +
     roof(8, 8, 22, 16, '#c8643c', '#a84e2c') + `<g fill="#b98a55" stroke="#5b4632"><rect x="36" y="12" width="7" height="7"/><rect x="45" y="12" width="7" height="7"/><rect x="40" y="5" width="7" height="7"/></g>`),
+  port_mer: plate('#d8e4d2',
+    `<rect x="2" y="30" width="58" height="28" fill="#4f8fc9"/><path d="M2 38 Q16 35 30 38 T60 38 M2 48 Q16 45 30 48 T60 48" stroke="#8cbbe6" stroke-width="1.4" fill="none"/>` +
+    `<rect x="4" y="24" width="54" height="7" fill="#9a9384" stroke="#5f594f"/>` +
+    `<path d="M14 40 Q14 52 30 52 H44 Q52 52 54 44 L54 40 Z" fill="#7a4a24" stroke="#3b2a1e"/><rect x="18" y="41" width="30" height="4" fill="#b98a55"/>` +
+    `<path d="M33 41 V31" stroke="#3b2a1e" stroke-width="1.5"/><path d="M33 31 L44 39 H33 Z" fill="#f4ecd8" stroke="#8a7a58"/>` +
+    roof(6, 6, 24, 15, '#c8643c', '#a84e2c') + `<circle cx="47" cy="13" r="7" fill="#e8e0d0" stroke="#5f594f"/><circle cx="47" cy="13" r="3" fill="#ffd166"/>`),
   poste: plate('#e6dcc6',
     `<rect x="28" y="8" width="3" height="44" fill="#5b4632"/><path d="M31 10 h20 l-5 7 l5 7 h-20 z" fill="#b22234"/>` +
     `<rect x="10" y="40" width="14" height="10" rx="2" fill="#a37f52" stroke="#5b4632"/><rect x="38" y="40" width="14" height="10" rx="2" fill="#a37f52" stroke="#5b4632"/>`),

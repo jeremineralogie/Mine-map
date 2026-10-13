@@ -1,5 +1,5 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
-import { BUILD, RES, ROADS, VEH, WATER_RANGE, WORK_RANGE, type BType, type ResId } from './defs';
+import { BUILD, RES, ROADS, SEA_PARTNERS, VEH, WATER_RANGE, WORK_RANGE, type BType, type ResId } from './defs';
 import type { Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
@@ -125,6 +125,7 @@ export class Renderer {
     // ligne survolée : les autres s'estompent, elle passe au premier plan
     for (const l of lines) if (l !== hl) this.drawLinePath(s, l, !hl && (v.selectedLine === l.id || lines.length === 1), hl ? 0.18 : 1);
     if (hl) this.drawLinePath(s, hl, true, 1, true);
+    this.drawSeaRoutes(s, v);
     this.drawBuildings(s, v, time);
     this.drawVehicles(s, v);
     for (const l of hl ? [hl] : lines) this.drawLineBadges(s, l);
@@ -177,6 +178,23 @@ export class Renderer {
       ctx.font = '10px system-ui, sans-serif'; halo(ctx, d.name, x, y + 7, '#555'); ctx.font = '600 11px system-ui, sans-serif';
     }
     this.world();
+  }
+  /** Port de commerce sélectionné : routes maritimes vers ses partenaires */
+  private drawSeaRoutes(s: GameState, v: View) {
+    if (v.selected?.kind !== 'building') return;
+    const b = s.buildings.find(x => x.id === v.selected!.id);
+    if (!b || b.type !== 'port_mer' || !b.sea) return;
+    const ctx = this.ctx;
+    for (const p of SEA_PARTNERS) {
+      const to = p.to[b.sea]; if (!to) continue;
+      const [tx, ty] = this.geo.proj(to[0], to[1]);
+      const mx = (b.x + tx) / 2, my = (b.y + ty) / 2, dx = tx - b.x, dy = ty - b.y, L = Math.hypot(dx, dy) || 1;
+      const cx = mx - dy / L * L * 0.18, cy = my + dx / L * L * 0.18;   // légère courbe vers le large
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.quadraticCurveTo(cx, cy, tx, ty);
+      ctx.setLineDash([this.px(8), this.px(6)]); ctx.strokeStyle = 'rgba(25,80,140,.85)'; ctx.lineWidth = this.px(2.5); ctx.stroke(); ctx.setLineDash([]);
+      this.screen(); const [sx, sy] = this.cam.toScreen(tx, ty);
+      ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center'; halo(ctx, '⛵ ' + p.name, sx, sy, '#14406e'); this.world();
+    }
   }
   private drawGardSite(s: GameState) {
     if (s.buildings.some(b => b.type === 'pont_du_gard')) return;
