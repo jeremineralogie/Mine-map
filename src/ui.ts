@@ -646,7 +646,7 @@ export class Game {
       const d = BUILD[t], ok = hasTech(s, d.tech);
       const tech = d.tech ? TECHS.find(x => x.id === d.tech)! : null;
       return `<button class="card" data-act="build" data-type="${t}" ${ok ? '' : 'disabled'}>
-        <img src="${bIconUrl(t)}"><span><b>${d.name}${km < 1 && ok ? ` <span class="pill good">−${Math.round((1 - km) * 100)} %</span>` : ''}</b><small>${ok ? `${fmt(buildMoney(s, t))} sesterces · ${costList(scaleStock(d.cost, km))}` : `🔒 ${tech!.name}`}</small>
+        <img src="${bIconUrl(t)}"><span><b>${d.name}${km < 1 && ok ? ` <span class="pill good">−${Math.round((1 - km) * 100)} %</span>` : ''}</b><small>${ok ? `${fmt(buildMoney(s, t))} sesterces${Object.keys(d.cost).length ? ` · ${costList(scaleStock(d.cost, km))}` : ' · sans matériaux'}` : `🔒 ${tech!.name}`}</small>
         <small class="muted">${d.recipe ? (Object.keys(d.recipe.in).length ? (Object.keys(d.recipe.in) as ResId[]).map(r => RES[r].name).join(' + ') + ' → ' : '') + (Object.keys(d.recipe.out) as ResId[]).map(r => RES[r].name).join(', ') : esc(d.desc)}</small></span></button>`;
     };
     // regroupement par catégorie, avec la couleur des pictogrammes

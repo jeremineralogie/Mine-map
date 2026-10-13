@@ -172,7 +172,7 @@ export interface BDef {
 
 export const BUILD: Record<BType, BDef> = {
   entrepot: { name: 'Entrepôt', desc: 'Stocke toutes les ressources. Point de départ des convois de chantier.', era: 1, cost: { bois: 20, pierre: 10 }, money: 100, days: 15, workers: 2, storage: 300, maxLevel: 3, upgrade: { pierre: 20, bois: 8 } },
-  village: { name: 'Village', desc: 'Fournit la main-d\'œuvre et achète ce dont ses habitants ont besoin. Grandit s\'il est bien approvisionné.', era: 1, cost: { bois: 30, pierre: 10 }, money: 150, days: 25, workers: 0, needsWater: true, storage: 0, maxLevel: 1 },
+  village: { name: 'Village', desc: 'Fournit la main-d\'œuvre et achète ce dont ses habitants ont besoin. Grandit s\'il est bien approvisionné.', era: 1, cost: {}, money: 150, days: 25, workers: 0, needsWater: true, storage: 0, maxLevel: 1 },
   bucheron: { name: 'Camp de bûcherons', desc: 'Abat le bois d\'une forêt.', era: 1, cost: { bois: 8 }, money: 50, days: 10, workers: 4, deposit: 'bois', recipe: { in: {}, out: { bois: 8 } }, storage: 60, maxLevel: 3, upgrade: { bois: 14 } },
   carriere: { name: 'Carrière de pierre', desc: 'Extrait la pierre de taille d\'un banc de calcaire.', era: 1, cost: { bois: 15 }, money: 80, days: 15, workers: 6, deposit: 'pierre', recipe: { in: {}, out: { pierre: 5 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 20 } },
   ferme: { name: 'Villa agricole', desc: 'Cultive des céréales. Bien plus productive sur des terres fertiles.', era: 1, cost: { bois: 15, pierre: 5 }, money: 60, days: 12, workers: 5, deposit: 'cereales', recipe: { in: {}, out: { cereales: 10 } }, storage: 80, maxLevel: 3, upgrade: { bois: 18 } },

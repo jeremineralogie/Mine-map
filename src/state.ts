@@ -124,5 +124,7 @@ export function migrate(s: GameState): GameState {
     }
     s.version = 2;
   }
+  // les villages se fondent désormais sans matériaux : les chantiers en cours n'attendent plus rien
+  for (const b of s.buildings) if (b.type === 'village' && !b.built) { b.need = {}; b.incoming = {}; }
   return s;
 }
