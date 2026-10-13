@@ -4,7 +4,7 @@ import {
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
-import { bIconUrl, resImg, vIconUrl } from './icons';
+import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
@@ -633,14 +633,20 @@ export class Game {
 
   private buildPanel(): string {
     const s = this.s;
-    const items = (Object.keys(BUILD) as BType[]).filter(t => !BUILD[t].hidden && BUILD[t].era <= s.era).map(t => {
+    const card = (t: BType) => {
       const d = BUILD[t], ok = hasTech(s, d.tech);
       const tech = d.tech ? TECHS.find(x => x.id === d.tech)! : null;
       return `<button class="card" data-act="build" data-type="${t}" ${ok ? '' : 'disabled'}>
         <img src="${bIconUrl(t)}"><span><b>${d.name}</b><small>${ok ? `${fmt(d.money)} sesterces · ${costList(d.cost)}` : `🔒 ${tech!.name}`}</small>
         <small class="muted">${d.recipe ? (Object.keys(d.recipe.in).length ? (Object.keys(d.recipe.in) as ResId[]).map(r => RES[r].name).join(' + ') + ' → ' : '') + (Object.keys(d.recipe.out) as ResId[]).map(r => RES[r].name).join(', ') : esc(d.desc)}</small></span></button>`;
+    };
+    // regroupement par catégorie, avec la couleur des pictogrammes
+    const types = (Object.keys(BUILD) as BType[]).filter(t => !BUILD[t].hidden && BUILD[t].era <= s.era);
+    const groups = Object.entries(CATEGORY).map(([id, c]) => {
+      const list = types.filter(t => BCAT[t] === id);
+      return list.length ? `<h3 class="cat" style="--cc:${c.color}"><i></i>${c.name}</h3><div class="cards">${list.map(card).join('')}</div>` : '';
     }).join('');
-    return `<h2 class="ph">${IC.build}Construire</h2><p class="muted">Les matériaux sont livrés sur le chantier depuis un entrepôt relié par la route.</p><div class="cards">${items}</div>`;
+    return `<h2 class="ph">${IC.build}Construire</h2><p class="muted">Les matériaux sont livrés sur le chantier depuis un entrepôt relié par la route.</p>${groups}`;
   }
 
   private linesPanel(): string {

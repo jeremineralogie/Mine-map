@@ -1,120 +1,77 @@
 // Icônes vues du dessus (SVG), converties en images pour le canvas.
 import type { BType, ResId, VType } from './defs';
 
-const plate = (fill: string, inner: string) =>
-  `<rect x="3" y="5" width="58" height="56" rx="12" fill="#000" opacity=".22"/>` +
-  `<rect x="2" y="2" width="58" height="56" rx="12" fill="${fill}" stroke="#fff" stroke-width="2.5"/>` + inner;
-
-// toit à deux pans vu du dessus
-const roof = (x: number, y: number, w: number, h: number, c1: string, c2: string, vertical = false) => vertical
-  ? `<rect x="${x}" y="${y}" width="${w / 2}" height="${h}" fill="${c1}"/><rect x="${x + w / 2}" y="${y}" width="${w / 2}" height="${h}" fill="${c2}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#3b2a1e" stroke-width="1"/>`
-  : `<rect x="${x}" y="${y}" width="${w}" height="${h / 2}" fill="${c1}"/><rect x="${x}" y="${y + h / 2}" width="${w}" height="${h / 2}" fill="${c2}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="#3b2a1e" stroke-width="1"/>`;
-const tiles = (x: number, y: number, w: number, h: number) => roof(x, y, w, h, '#c8643c', '#a84e2c');
-const tree = (x: number, y: number, r: number) => `<circle cx="${x + 1}" cy="${y + 1.5}" r="${r}" fill="#1d3d1f" opacity=".35"/><circle cx="${x}" cy="${y}" r="${r}" fill="#3f7d3a"/><circle cx="${x - r * .3}" cy="${y - r * .3}" r="${r * .55}" fill="#5c9e4f"/>`;
-
-const SVG: Record<BType, string> = {
-  entrepot: plate('#d9cdb4',
-    roof(10, 14, 42, 26, '#9c7b54', '#7d5f3e') +
-    `<rect x="12" y="42" width="8" height="7" fill="#8a6a43"/><rect x="22" y="42" width="8" height="7" fill="#a37f52"/><rect x="34" y="43" width="14" height="6" rx="1" fill="#6f7a52"/>`),
-  village: plate('#cfd8b0',
-    `<path d="M10 33 H54 M32 8 V56" stroke="#b8a888" stroke-width="4"/>` +
-    tiles(10, 10, 16, 13) + tiles(36, 10, 18, 12) + tiles(10, 37, 18, 14) + tiles(37, 37, 15, 15) +
-    `<circle cx="32" cy="33" r="5" fill="#d8d0bc" stroke="#8a7d66"/>`),
-  bucheron: plate('#b9cf98',
-    tree(16, 16, 8) + tree(46, 14, 7) + tree(50, 44, 7) +
-    roof(12, 34, 18, 14, '#8a6a43', '#6b5032') +
-    `<g fill="#b98a55" stroke="#6b4a2a"><rect x="34" y="28" width="16" height="4" rx="2"/><rect x="34" y="33" width="16" height="4" rx="2"/><rect x="36" y="38" width="12" height="4" rx="2"/></g>`),
-  carriere: plate('#cfc8b8',
-    `<path d="M10 14 h44 v36 h-44z" fill="#b3ab9a"/><path d="M16 20 h32 v24 h-32z" fill="#958d7c"/><path d="M22 26 h20 v12 h-20z" fill="#7b7466"/>` +
-    `<g fill="#e8e2d2" stroke="#6d665a"><rect x="12" y="50" width="9" height="6"/><rect x="23" y="50" width="9" height="6"/><rect x="44" y="8" width="9" height="6"/></g>`),
-  ferme: plate('#d8cf9a',
-    `<g stroke="#b59a3c" stroke-width="2"><path d="M6 8 L28 8 M6 13 L28 13 M6 18 L28 18 M6 23 L28 23"/></g>` +
-    `<rect x="34" y="6" width="22" height="20" fill="#9fbf6a"/><g stroke="#83a352" stroke-width="2"><path d="M36 6 V26 M41 6 V26 M46 6 V26 M51 6 V26"/></g>` +
-    roof(10, 32, 30, 10, '#c8643c', '#a84e2c') + roof(10, 42, 10, 12, '#c8643c', '#a84e2c', true) + roof(30, 42, 10, 12, '#c8643c', '#a84e2c', true) +
-    `<rect x="20" y="42" width="10" height="12" fill="#e2d7bd"/>`),
-  argiliere: plate('#d6b48f',
-    `<ellipse cx="32" cy="30" rx="22" ry="18" fill="#b5653a"/><ellipse cx="32" cy="30" rx="13" ry="10" fill="#94502c"/>` +
-    `<g fill="#c98a5c" stroke="#6b3a1e"><rect x="8" y="48" width="8" height="6" rx="1"/><rect x="18" y="48" width="8" height="6" rx="1"/></g>`),
-  briqueterie: plate('#dcc4a6',
-    `<circle cx="22" cy="24" r="13" fill="#a24a2a" stroke="#5e2a17" stroke-width="1.5"/><circle cx="22" cy="24" r="5" fill="#ffb347"/><circle cx="22" cy="24" r="2.5" fill="#fff2b3"/>` +
-    roof(38, 10, 16, 28, '#c8643c', '#a84e2c', true) +
-    `<g fill="#c0583a" stroke="#7a3320"><rect x="8" y="44" width="10" height="5"/><rect x="20" y="44" width="10" height="5"/><rect x="32" y="44" width="10" height="5"/><rect x="14" y="50" width="10" height="5"/><rect x="26" y="50" width="10" height="5"/></g>`),
-  mine_fer: plate('#c9a38f',
-    `<path d="M8 40 Q20 22 34 40 Z" fill="#8e3b25"/><path d="M14 40 Q20 30 28 40 Z" fill="#6e2a19"/>` +
-    `<rect x="36" y="10" width="18" height="18" fill="#6b5032"/><path d="M36 10 L54 28 M54 10 L36 28" stroke="#3b2a1e" stroke-width="2"/>` +
-    `<rect x="8" y="44" width="46" height="4" fill="#5a4a3a"/><rect x="38" y="40" width="12" height="7" rx="2" fill="#a0442c" stroke="#3b2a1e"/>`),
-  bas_fourneau: plate('#cdb8a2',
-    `<circle cx="26" cy="28" r="16" fill="#7a5a44" stroke="#3b2a1e" stroke-width="1.5"/><circle cx="26" cy="28" r="8" fill="#e8501c"/><circle cx="26" cy="28" r="4" fill="#ffd166"/>` +
-    `<g fill="#2b2b2b"><rect x="44" y="12" width="10" height="8" rx="1"/><rect x="44" y="22" width="10" height="8" rx="1"/></g>` +
-    `<g fill="#a0442c"><circle cx="46" cy="44" r="3"/><circle cx="52" cy="47" r="3"/><circle cx="47" cy="51" r="3"/></g>`),
-  forge: plate('#d0c4b0',
-    roof(8, 8, 30, 26, '#7a7a7a', '#5e5e5e') +
-    `<rect x="42" y="12" width="12" height="12" fill="#2b2b2b"/><circle cx="48" cy="18" r="3.5" fill="#ff7b29"/>` +
-    `<path d="M14 44 h26 l-4 6 h-18 z" fill="#3a3f47"/><rect x="22" y="50" width="10" height="6" fill="#3a3f47"/>` +
-    `<path d="M44 40 l10 10" stroke="#6b5032" stroke-width="3"/><rect x="40" y="36" width="8" height="6" fill="#4b5563"/>`),
-  mine_plomb: plate('#c3c6c9',
-    `<path d="M8 40 Q20 22 34 40 Z" fill="#555c66"/><path d="M14 40 Q20 30 28 40 Z" fill="#30353b"/>` +
-    `<rect x="36" y="10" width="18" height="18" fill="#6b5032"/><path d="M36 10 L54 28 M54 10 L36 28" stroke="#3b2a1e" stroke-width="2"/>` +
-    `<rect x="8" y="44" width="46" height="4" fill="#5a4a3a"/><rect x="38" y="40" width="12" height="7" rx="2" fill="#8b929b" stroke="#3b2a1e"/>`),
-  saline: plate('#d9e4ea',
-    `<g fill="#a9cbe0" stroke="#7b9bb0"><rect x="8" y="8" width="14" height="12"/><rect x="25" y="8" width="14" height="12"/><rect x="42" y="8" width="13" height="12"/><rect x="8" y="23" width="14" height="12"/><rect x="25" y="23" width="14" height="12"/></g>` +
-    `<g fill="#ffffff" stroke="#c9d3da"><rect x="43" y="24" width="11" height="11"/><rect x="8" y="38" width="14" height="12"/></g>` +
-    `<g fill="#f4f4f4" stroke="#b9c2c9"><path d="M30 52 l6 -12 l6 12 z"/><path d="M42 52 l6 -12 l6 12 z"/></g>`),
-  aqueduc: plate('#d6d2c4',
-    `<rect x="4" y="25" width="56" height="10" fill="#bdb6a4" stroke="#7d7666"/><rect x="4" y="28" width="56" height="4" fill="#6fa8dc"/>` +
-    `<g fill="#9a9384"><rect x="10" y="22" width="4" height="16"/><rect x="24" y="22" width="4" height="16"/><rect x="38" y="22" width="4" height="16"/><rect x="52" y="22" width="4" height="16"/></g>` +
-    `<circle cx="32" cy="48" r="8" fill="#e5e0d0" stroke="#7d7666"/><circle cx="32" cy="48" r="4" fill="#6fa8dc"/>`),
-  pont_du_gard: plate('#c8d7bb',
-    `<rect x="2" y="26" width="58" height="10" fill="#6fa8dc"/>` +
-    `<rect x="4" y="22" width="54" height="18" fill="#d9c8a0" stroke="#8a7a58"/>` +
-    `<g fill="#b9a67c"><rect x="8" y="22" width="5" height="18"/><rect x="20" y="22" width="5" height="18"/><rect x="32" y="22" width="5" height="18"/><rect x="44" y="22" width="5" height="18"/></g>` +
-    `<rect x="4" y="29" width="54" height="3" fill="#8fb8e0"/>`),
-  port: plate('#cfe0c9',
-    `<rect x="2" y="34" width="58" height="24" fill="#6fa8dc"/><path d="M2 40 Q16 37 30 40 T60 40" stroke="#9cc6ea" stroke-width="1.5" fill="none"/>` +
-    `<rect x="6" y="26" width="50" height="9" fill="#a37f52" stroke="#5b4632"/><g stroke="#5b4632" stroke-width="1"><path d="M14 26 v9 M24 26 v9 M34 26 v9 M44 26 v9"/></g>` +
-    `<path d="M14 44 h26 l-4 9 h-18 z" fill="#8a5a2b" stroke="#3b2a1e"/><rect x="20" y="45" width="12" height="5" fill="#c9a774"/>` +
-    roof(8, 8, 22, 16, '#c8643c', '#a84e2c') + `<g fill="#b98a55" stroke="#5b4632"><rect x="36" y="12" width="7" height="7"/><rect x="45" y="12" width="7" height="7"/><rect x="40" y="5" width="7" height="7"/></g>`),
-  port_mer: plate('#d8e4d2',
-    `<rect x="2" y="30" width="58" height="28" fill="#4f8fc9"/><path d="M2 38 Q16 35 30 38 T60 38 M2 48 Q16 45 30 48 T60 48" stroke="#8cbbe6" stroke-width="1.4" fill="none"/>` +
-    `<rect x="4" y="24" width="54" height="7" fill="#9a9384" stroke="#5f594f"/>` +
-    `<path d="M14 40 Q14 52 30 52 H44 Q52 52 54 44 L54 40 Z" fill="#7a4a24" stroke="#3b2a1e"/><rect x="18" y="41" width="30" height="4" fill="#b98a55"/>` +
-    `<path d="M33 41 V31" stroke="#3b2a1e" stroke-width="1.5"/><path d="M33 31 L44 39 H33 Z" fill="#f4ecd8" stroke="#8a7a58"/>` +
-    roof(6, 6, 24, 15, '#c8643c', '#a84e2c') + `<circle cx="47" cy="13" r="7" fill="#e8e0d0" stroke="#5f594f"/><circle cx="47" cy="13" r="3" fill="#ffd166"/>`),
-  poste: plate('#e6dcc6',
-    `<rect x="28" y="8" width="3" height="44" fill="#5b4632"/><path d="M31 10 h20 l-5 7 l5 7 h-20 z" fill="#b22234"/>` +
-    `<rect x="10" y="40" width="14" height="10" rx="2" fill="#a37f52" stroke="#5b4632"/><rect x="38" y="40" width="14" height="10" rx="2" fill="#a37f52" stroke="#5b4632"/>`),
+// ---- Bâtiments : pictogrammes (pastille colorée par catégorie, symbole blanc) ----
+/** Couleurs des catégories de bâtiments */
+export const CATEGORY: Record<string, { name: string; color: string }> = {
+  logistique: { name: 'Logistique', color: '#1d5fa8' },
+  commerce: { name: 'Commerce', color: '#7048b6' },
+  extraction: { name: 'Extraction', color: '#8a5a2b' },
+  nature: { name: 'Agriculture et forêt', color: '#2f9e44' },
+  artisanat: { name: 'Artisanat', color: '#d9480f' },
+  ville: { name: 'Ville', color: '#b42318' },
+  ouvrage: { name: 'Grands ouvrages', color: '#0c7c8c' },
 };
+export const BCAT: Record<BType, string> = {
+  entrepot: 'logistique', port: 'logistique', port_mer: 'commerce', poste: 'commerce',
+  carriere: 'extraction', argiliere: 'extraction', mine_fer: 'extraction', mine_plomb: 'extraction', saline: 'extraction',
+  ferme: 'nature', bucheron: 'nature', briqueterie: 'artisanat', bas_fourneau: 'artisanat', forge: 'artisanat',
+  village: 'ville', aqueduc: 'ouvrage', pont_du_gard: 'ouvrage',
+};
+const badge = (t: BType, glyph: string) => {
+  const c = CATEGORY[BCAT[t]].color;
+  return `<circle cx="32" cy="33.5" r="28" fill="#000" opacity=".22"/><circle cx="32" cy="31" r="28" fill="${c}" stroke="#fff" stroke-width="3"/>` +
+    `<circle cx="32" cy="31" r="23.5" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="1.2"/>` +
+    `<g fill="#fff" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">${glyph.replace(/\{c\}/g, c)}</g>`;
+};
+const G: Record<BType, string> = {
+  entrepot: `<path d="M16 28 L32 18 L48 28 V44 H16 Z" stroke-width="0"/><rect x="22" y="32" width="20" height="12" fill="{c}" stroke-width="0"/><path d="M22 36h20M22 40h20" stroke-width="1.6"/>`,
+  village: `<path d="M14 44 V30 L22 23 L30 30 V44 Z M30 44 V27 L39 19 L48 27 V44 Z" stroke-width="0"/><rect x="19" y="36" width="5" height="8" fill="{c}" stroke-width="0"/><rect x="36" y="34" width="6" height="10" fill="{c}" stroke-width="0"/>`,
+  bucheron: `<path d="M24 14 L33 28 H28 L35 38 H13 L20 28 H15 Z" stroke-width="0"/><rect x="22" y="38" width="4" height="7" stroke-width="0"/><path d="M38 44 L46 24" stroke-width="2.6" fill="none"/><path d="M43 22 Q50 22 50 28 L45 29 Z" stroke-width="0"/>`,
+  carriere: `<rect x="15" y="34" width="12" height="9" rx="1"/><rect x="29" y="34" width="12" height="9" rx="1"/><rect x="22" y="24" width="12" height="9" rx="1"/><path d="M38 16 L48 26" stroke-width="3.4" fill="none"/><path d="M42 14 L50 22" stroke-width="3.4" fill="none"/>`,
+  ferme: `<path d="M32 46 V20" stroke-width="2.6" fill="none"/><g stroke-width="0"><ellipse cx="32" cy="17" rx="3" ry="5"/><ellipse cx="26.5" cy="24" rx="3" ry="5" transform="rotate(-30 26.5 24)"/><ellipse cx="37.5" cy="24" rx="3" ry="5" transform="rotate(30 37.5 24)"/><ellipse cx="26.5" cy="32" rx="3" ry="5" transform="rotate(-30 26.5 32)"/><ellipse cx="37.5" cy="32" rx="3" ry="5" transform="rotate(30 37.5 32)"/></g>`,
+  argiliere: `<path d="M24 16 H40 L38 21 Q46 26 45 35 Q44 45 32 45 Q20 45 19 35 Q18 26 26 21 Z" stroke-width="0"/><path d="M22 31 Q32 35 42 31" stroke="{c}" stroke-width="2" fill="none"/>`,
+  briqueterie: `<g stroke-width="0"><rect x="14" y="34" width="11" height="6" rx="1"/><rect x="27" y="34" width="11" height="6" rx="1"/><rect x="20" y="27" width="11" height="6" rx="1"/><rect x="40" y="34" width="10" height="6" rx="1"/></g><path d="M40 28 Q35 22 40 15 Q42 20 45 18 Q49 24 44 28 Z" stroke-width="0"/>`,
+  mine_fer: `<path d="M14 44 Q14 24 32 22 Q50 24 50 44 Z" stroke-width="0"/><path d="M24 44 Q24 33 32 33 Q40 33 40 44 Z" fill="{c}" stroke-width="0"/><path d="M38 14 L46 22 M41 12 L35 18" stroke-width="2.6" fill="none"/>`,
+  bas_fourneau: `<path d="M21 45 L25 20 H39 L43 45 Z" stroke-width="0"/><path d="M28 45 V38 Q32 33 36 38 V45 Z" fill="{c}" stroke-width="0"/><path d="M32 18 Q28 13 32 8 Q33 12 35 11 Q37 15 34 18 Z" stroke-width="0"/>`,
+  forge: `<path d="M15 26 H44 Q44 32 38 33 L36 36 H24 L22 33 Q15 32 15 26 Z" stroke-width="0"/><rect x="25" y="36" width="10" height="5"/><rect x="20" y="41" width="20" height="4" rx="1"/><path d="M44 16 L50 22" stroke-width="3" fill="none"/>`,
+  mine_plomb: `<path d="M14 40 Q14 24 30 22 Q46 24 46 40 Z" stroke-width="0"/><path d="M23 40 Q23 32 30 32 Q37 32 37 40 Z" fill="{c}" stroke-width="0"/><path d="M33 42 L37 36 H50 L46 42 Z" stroke="{c}" stroke-width="1.2"/>`,
+  saline: `<path d="M13 44 L26 22 L39 44 Z" stroke-width="0"/><path d="M33 44 L42 29 L51 44 Z" stroke-width="0"/><g fill="{c}" stroke-width="0"><rect x="24" y="33" width="3" height="3"/><rect x="21" y="39" width="3" height="3"/><rect x="41" y="37" width="2.6" height="2.6"/></g>`,
+  aqueduc: `<path d="M12 20 H52 V25 H12 Z" stroke-width="0"/><path d="M12 25 V44 H18 V34 Q22 29 26 34 V44 H30 V34 Q34 29 38 34 V44 H42 V34 Q46 29 50 34 V44 H52 V25 Z" stroke-width="0"/><path d="M14 22.5 H50" stroke="{c}" stroke-width="1.6"/>`,
+  pont_du_gard: `<path d="M12 15 H52 V19 H12 Z M12 19 V27 H52 V19 Z" stroke-width="0"/><path d="M14 27 V31 Q16 28 18 31 V27 M22 27 V31 Q24 28 26 31 M30 27 V31 Q32 28 34 31 M38 27 V31 Q40 28 42 31 M46 27 V31 Q48 28 50 31" stroke="{c}" stroke-width="1.5" fill="none"/><path d="M12 31 H52 V46 H46 V38 Q41 32 36 38 V46 H28 V38 Q23 32 18 38 V46 H12 Z" stroke-width="0"/>`,
+  poste: `<path d="M22 46 V14" stroke-width="3" fill="none"/><path d="M23 15 H45 L40 22 L45 29 H23 Z" stroke-width="0"/><path d="M15 46 H32" stroke-width="3" fill="none"/>`,
+  port: `<path d="M32 15 V42" stroke-width="2.8" fill="none"/><circle cx="32" cy="16" r="3" fill="none" stroke-width="2.4"/><path d="M24 23 H40" stroke-width="2.6" fill="none"/><path d="M17 34 Q18 45 32 45 Q46 45 47 34" stroke-width="2.8" fill="none"/><path d="M14 37 L17 33 L21 37 M43 37 L47 33 L50 37" stroke-width="2.4" fill="none"/>`,
+  port_mer: `<path d="M31 12 V36" stroke-width="2.4" fill="none"/><path d="M33 13 L46 33 H33 Z" stroke-width="0"/><path d="M29 17 L19 33 H29 Z" stroke-width="0"/><path d="M14 37 H50 L45 44 H19 Z" stroke-width="0"/><path d="M12 48 q5 -2.5 10 0 t10 0 t10 0 t10 0" stroke-width="1.8" fill="none"/>`,
+};
+const SVG = Object.fromEntries((Object.keys(G) as BType[]).map(t => [t, badge(t, G[t])])) as Record<BType, string>;
 
-// Véhicules vus du dessus, orientés vers la droite (angle 0)
-const VSVG: Record<Exclude<VType, 'chaland'>, string> & Partial<Record<VType, string>> = {
-  charrette:
-    `<g transform="translate(0 4)">` +
-    `<rect x="4" y="13" width="28" height="22" rx="2" fill="#a0784c" stroke="#4a3320" stroke-width="1.5"/>` +
-    `<path d="M8 17 h20 M8 24 h20 M8 31 h20" stroke="#7a5832" stroke-width="1.5"/>` +
-    `<rect x="9" y="8" width="8" height="5" rx="1.5" fill="#3b2a1e"/><rect x="9" y="35" width="8" height="5" rx="1.5" fill="#3b2a1e"/>` +
-    `<path d="M32 24 h10" stroke="#4a3320" stroke-width="2.5"/>` +
-    `<ellipse cx="50" cy="17" rx="10" ry="5" fill="#8b5a2b" stroke="#3b2a1e"/><ellipse cx="50" cy="31" rx="10" ry="5" fill="#9c6b3a" stroke="#3b2a1e"/>` +
-    `<circle cx="60" cy="17" r="3" fill="#6b4423"/><circle cx="60" cy="31" r="3" fill="#7a4f2a"/></g>`,
-  chariot:
-    `<g transform="translate(0 4)">` +
-    `<rect x="2" y="12" width="30" height="24" rx="3" fill="#ece3cf" stroke="#4a3320" stroke-width="1.5"/>` +
-    `<path d="M8 12 v24 M16 12 v24 M24 12 v24" stroke="#cbbf9f" stroke-width="2"/>` +
-    `<rect x="6" y="7" width="8" height="5" rx="1.5" fill="#3b2a1e"/><rect x="6" y="36" width="8" height="5" rx="1.5" fill="#3b2a1e"/>` +
-    `<path d="M32 24 h8" stroke="#4a3320" stroke-width="2.5"/>` +
-    `<ellipse cx="50" cy="18" rx="11" ry="4.5" fill="#5a3a22" stroke="#24170d"/><ellipse cx="50" cy="30" rx="11" ry="4.5" fill="#e8e0d0" stroke="#5a4a3a"/>` +
-    `<circle cx="61" cy="18" r="2.5" fill="#3b2a1e"/><circle cx="61" cy="30" r="2.5" fill="#c9bfae"/></g>`,
-  barge:
-    `<g transform="translate(0 4)">` +
-    `<path d="M3 24 Q6 12 16 12 H52 Q61 12 62 24 Q61 36 52 36 H16 Q6 36 3 24 Z" fill="#8a5a2b" stroke="#3b2a1e" stroke-width="1.5"/>` +
-    `<path d="M10 24 Q12 16 18 16 H50 Q56 16 57 24 Q56 32 50 32 H18 Q12 32 10 24 Z" fill="#b98a55"/>` +
-    `<g fill="#d8c9a8" stroke="#6b5032"><rect x="20" y="18" width="10" height="6"/><rect x="32" y="18" width="10" height="6"/><rect x="20" y="25" width="10" height="6"/><rect x="32" y="25" width="10" height="6"/></g>` +
-    `<rect x="46" y="21" width="6" height="6" rx="1" fill="#5b4632"/></g>`,
-  convoi:
-    `<g transform="translate(0 4)">` +
-    `<rect x="4" y="13" width="28" height="22" rx="2" fill="#a0784c" stroke="#4a3320" stroke-width="1.5"/>` +
-    `<g fill="#d8d2c2" stroke="#6d665a"><rect x="7" y="16" width="10" height="7"/><rect x="18" y="16" width="10" height="7"/><rect x="12" y="25" width="10" height="7"/></g>` +
-    `<path d="M32 24 h10" stroke="#4a3320" stroke-width="2.5"/>` +
-    `<ellipse cx="50" cy="17" rx="10" ry="5" fill="#8b5a2b" stroke="#3b2a1e"/><ellipse cx="50" cy="31" rx="10" ry="5" fill="#9c6b3a" stroke="#3b2a1e"/></g>`,
+// ---- Véhicules : miniatures vues du dessus (orientées vers la droite) ----
+const VDEFS = `<defs>
+  <filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="1.4" dy="2" stdDeviation="1.1" flood-color="#2b1d10" flood-opacity=".45"/></filter>
+  <pattern id="pl" width="5" height="2.4" patternUnits="userSpaceOnUse"><rect width="5" height="2.4" fill="#a87a48"/><path d="M0 2.1H5" stroke="#6e4a26" stroke-width=".5"/></pattern>
+  <pattern id="pl2" width="5" height="2.4" patternUnits="userSpaceOnUse"><rect width="5" height="2.4" fill="#c49a64"/><path d="M0 2.1H5" stroke="#8a6438" stroke-width=".5"/></pattern>
+</defs>`;
+const blk = (x: number, y: number, w = 6, h = 4) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ece5d3" stroke="#7d7464" stroke-width=".8"/><rect x="${x}" y="${y}" width="${w}" height="1.2" fill="#fff" opacity=".6"/>`;
+const ox = (x: number, y: number, c1: string, c2: string) => `<ellipse cx="${x}" cy="${y}" rx="9.5" ry="4.6" fill="${c1}" stroke="#2f2015" stroke-width=".8"/><ellipse cx="${x + 9}" cy="${y}" rx="3.4" ry="2.8" fill="${c2}" stroke="#2f2015" stroke-width=".7"/><path d="M${x + 10} ${y - 2.6} l2.5 -2 M${x + 10} ${y + 2.6} l2.5 2" stroke="#e8dcc0" stroke-width="1.1" stroke-linecap="round"/>`;
+const horse = (x: number, y: number, c: string) => `<ellipse cx="${x}" cy="${y}" rx="9" ry="3.6" fill="${c}" stroke="#24170d" stroke-width=".8"/><ellipse cx="${x + 9.5}" cy="${y}" rx="3.6" ry="1.9" fill="${c}" stroke="#24170d" stroke-width=".7"/><path d="M${x + 5} ${y} h6" stroke="#1a110a" stroke-width="1.2"/>`;
+const wheels = (xs: number[]) => xs.map(x => `<rect x="${x}" y="8" width="7" height="5" rx="1.5" fill="#3b2a1e"/><rect x="${x}" y="35" width="7" height="5" rx="1.5" fill="#3b2a1e"/>`).join('');
+const cart = (load: string) => `${VDEFS}<g filter="url(#s)" transform="translate(0 4)">${wheels([9])}
+  <rect x="3" y="12" width="28" height="24" rx="2" fill="url(#pl)" stroke="#4a3320" stroke-width="1.4"/>${load}
+  <path d="M31 24 h12 M42 16 v16" stroke="#4a3320" stroke-width="2.2"/>${ox(49, 17, '#8b5a2b', '#7a4a22')}${ox(49, 31, '#a06b3a', '#8b5a2b')}</g>`;
+const hull = (fill: string, load: string) => `${VDEFS}<g filter="url(#s)" transform="translate(0 4)">
+  <path d="M2 24 Q5 11 16 11 H52 Q62 11 63 24 Q62 37 52 37 H16 Q5 37 2 24 Z" fill="${fill}" stroke="#2f1d0e" stroke-width="1.5"/>
+  <path d="M8 24 Q10 15 18 15 H50 Q57 15 58 24 Q57 33 50 33 H18 Q10 33 8 24 Z" fill="url(#pl)"/>${load}
+  <path d="M3 24 L-2 24" stroke="#3b2a1e" stroke-width="2.2"/><circle cx="54" cy="24" r="1.8" fill="#3b2a1e"/>
+  <path d="M20 11 l-3 -6 M30 11 l-3 -6 M20 37 l-3 6 M30 37 l-3 6" stroke="#5b3d1f" stroke-width="1.6" stroke-linecap="round"/></g>`;
+const VSVG: Record<VType, string> = {
+  charrette: cart(`<g stroke="#4a2e14" stroke-width=".7"><rect x="6" y="15" width="22" height="4" rx="2" fill="#a0723f"/><rect x="6" y="20" width="22" height="4" rx="2" fill="#b8854c"/><rect x="6" y="25" width="22" height="4" rx="2" fill="#a0723f"/><rect x="6" y="30" width="22" height="4" rx="2" fill="#b8854c"/></g>`),
+  convoi: cart(`${blk(6, 15, 9, 7)}${blk(17, 15, 9, 7)}${blk(11, 25, 9, 7)}`),
+  chariot: `${VDEFS}<g filter="url(#s)" transform="translate(0 4)">${wheels([4, 22])}
+    <rect x="1" y="12" width="32" height="24" rx="5" fill="#efe6d0" stroke="#6b5a3e" stroke-width="1.3"/>
+    <path d="M7 12 v24 M14 12 v24 M21 12 v24 M28 12 v24" stroke="#d3c39d" stroke-width="2.2"/><rect x="1" y="22.5" width="32" height="3" fill="#e2d5b4"/>
+    <path d="M33 24 h8 M40 17 v14" stroke="#4a3320" stroke-width="2"/>${horse(50, 18, '#5a3a22')}${horse(50, 30, '#e8e0d0')}</g>`,
+  barge: hull('#6e4422', `${blk(19, 17, 8, 6)}${blk(29, 17, 8, 6)}${blk(19, 25, 8, 6)}${blk(29, 25, 8, 6)}<rect x="40" y="18" width="9" height="12" rx="1" fill="#c9a774" stroke="#6e4a26"/><path d="M40 24h9" stroke="#6e4a26" stroke-width=".7"/>`),
+  chaland: hull('#8a5a2b', `<rect x="18" y="17" width="31" height="14" fill="url(#pl2)"/>${blk(20, 18, 7, 5)}${blk(29, 18, 7, 5)}${blk(24, 25, 7, 5)}${blk(38, 21, 8, 6)}`),
 };
 
 function toImg(svg: string) {
@@ -124,7 +81,6 @@ function toImg(svg: string) {
 }
 
 export const BICON = Object.fromEntries(Object.entries(SVG).map(([k, v]) => [k, toImg(v)])) as Record<BType, HTMLImageElement>;
-(VSVG as Record<string, string>).chaland = VSVG.barge;
 export const VICON = Object.fromEntries(Object.entries(VSVG).map(([k, v]) => [k, toImg(v)])) as Record<VType, HTMLImageElement>;
 /** URL d'icône pour l'interface HTML */
 export const bIconUrl = (t: BType) => BICON[t].src;

@@ -107,8 +107,8 @@ select { font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 7px; b
 .sat i { display: block; height: 100%; background: var(--c); }
 .cards { display: grid; gap: 8px; }
 .card { display: flex; gap: 10px; align-items: center; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
-.card img { width: 48px; height: 48px; flex: none; }
-.card span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.card > img { width: 48px; height: 48px; flex: none; }
+.card > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .card small { font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .card:not(:disabled):hover { border-color: var(--accent2); }
 .row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; }
@@ -452,3 +452,5 @@ table.eco td.neg { color: #b42318; font-weight: 700; }
 .seap-h { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .seap-row { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 12.5px; }
 .seap-row .buy { margin: 0; gap: 4px; }
+#panelBody h3.cat { display: flex; align-items: center; gap: 8px; color: var(--ink); }
+#panelBody h3.cat i { width: 14px; height: 14px; border-radius: 50%; background: var(--cc); box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--cc); }
