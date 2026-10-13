@@ -518,6 +518,8 @@ export class Game {
       <input class="name" data-field="name" data-id="${b.id}" value="${esc(b.name)}"><small class="muted">${sub}</small>
       <span class="pill ${st.level}">${st.label}</span></div></div>
       ${st.hint ? `<p class="hint ${st.level}">${esc(st.hint)}</p>` : ''}<p class="muted desc">${esc(d.desc)}</p>`;
+    if (b.partner ? b.node !== null : b.built && b.type !== 'village')
+      h += `<div class="actions top"><button class="primary" data-act="newline" data-id="${b.id}">+ Nouvelle ligne depuis ${b.partner ? 'ce poste' : 'ici'}</button></div>`;
 
     if (b.partner) {
       const p = PARTNERS.find(x => x.id === b.partner)!;
@@ -532,7 +534,6 @@ export class Game {
       }).join('')}</div>`;
       const st = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5);
       h += `<h3>Marchandises achetées en attente (${fmt(st.reduce((a, [, q]) => a + q, 0))} / ${BUILD.poste.storage} t)</h3>${st.length ? `<div class="chips">${st.map(([r, q]) => resChip(r, q)).join(' ')}</div><p class="muted">Crée une ligne qui les <b>charge</b> ici pour les rapporter dans tes entrepôts.</p>` : '<p class="muted">Aucune.</p>'}`;
-      if (b.node !== null) h += `<div class="actions"><button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ce poste</button></div>`;
       return h;
     }
 
@@ -629,7 +630,6 @@ export class Game {
     h += '<div class="actions">';
     if (b.built && !b.upgrading && d.recipe) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre la production' : '⏸ Mettre en pause'}</button>`;
     if (!b.built || b.upgrading) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre le chantier' : '⏸ Mettre le chantier en pause'}</button>`;
-    if (b.built && b.type !== 'village') h += `<button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ici</button>`;
     if (b.built && !b.upgrading && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
       const km = costMult(s), cost = Math.round(d.money * LEVEL_COST[b.level + 1] * km);
