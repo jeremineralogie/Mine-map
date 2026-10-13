@@ -454,3 +454,21 @@ table.eco td.neg { color: #b42318; font-weight: 700; }
 .seap-row .buy { margin: 0; gap: 4px; }
 #panelBody h3.cat { display: flex; align-items: center; gap: 8px; color: var(--ink); }
 #panelBody h3.cat i { width: 14px; height: 14px; border-radius: 50%; background: var(--cc); box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--cc); }
+
+/* ---- Nouvelle ligne en haut, onglets segmentés, effets, onglets ressources ---- */
+.actions.top { margin: 4px 0 10px; }
+.tabs.seg { gap: 0; background: var(--paper2); border-radius: 12px; padding: 3px; display: inline-flex; flex-wrap: nowrap; }
+.tabs.seg button { border: 0; background: transparent; border-radius: 9px; padding: 6px 12px; }
+.tabs.seg button.on { background: var(--ink); color: #fff; }
+.mods { display: flex; flex-direction: column; gap: 6px; }
+.mod { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-radius: 10px; padding: 7px 10px; font-size: 13px; border: 1px solid; }
+.mod.good { background: #ebfbee; border-color: #b2f2bb; color: #1e6b31; }
+.mod.bad { background: #fff0ef; border-color: #ffc9c9; color: #a1251a; }
+.mod small { white-space: nowrap; opacity: .8; }
+.res-head { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
+.res-head h3 { margin: 0 !important; color: var(--ink) !important; text-transform: none !important; letter-spacing: 0 !important; font-size: 18px !important; }
+.ri.huge { width: 48px; height: 48px; }
+table.eco tr.click { cursor: pointer; }
+table.eco tr.click:hover td { background: #faf3e6; }
+.row .grow { flex: 1; min-width: 0; text-align: left; line-height: 1.3; }
+.row > .num { white-space: nowrap; }

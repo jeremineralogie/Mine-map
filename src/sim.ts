@@ -1,6 +1,6 @@
 // Simulation : production, chantiers, main-d'œuvre, villes, véhicules, marché, objectifs, événements.
 import {
-  ANCIENT, BUILD, EVENTS, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
+  ANCIENT, BUILD, EVENTS, SPARE_NAMES, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
   START_YEAR, TECHS, TIERS, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
 } from './defs';
 import type { Geo } from './geo';
@@ -80,7 +80,7 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
     if (s.buildings.some(b => b.type === type)) return { ok: false, reason: 'Déjà construit.' };
   }
   if (s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 2.5)) return { ok: false, reason: 'Trop près d\'un autre bâtiment.' };
-  if (!free && s.money < d.money) return { ok: false, reason: `Pas assez d'argent (${fmt(d.money)} sesterces).` };
+  if (!free && s.money < buildMoney(s, type)) return { ok: false, reason: `Pas assez d'argent (${fmt(buildMoney(s, type))} sesterces).` };
   const r: PlaceCheck = { ok: true, rich: 1 };
   if (d.deposit) {
     const { value, dep } = geo.richness(d.deposit, x, y);
@@ -112,7 +112,12 @@ export function suggestName(s: GameState, geo: Geo, type: BType, x: number, y: n
       if (d < bd && !s.buildings.some(b => b.name === n)) { bd = d; best = n; }
     }
     if (best) return best;
-    return 'Vicus ' + (cities(s).length + 1);
+    // aucun lieu antique libre à proximité : un nom de réserve jamais utilisé
+    const used = new Set(s.buildings.map(b => b.name));
+    const spare = SPARE_NAMES.find(n => !used.has(n));
+    if (spare) return spare;
+    let i = 1; while (used.has('Vicus ' + i)) i++;
+    return 'Vicus ' + i;
   }
   const d = BUILD[type];
   if (d.deposit && d.deposit !== 'cereales') { const r = geo.richness(d.deposit, x, y); if (r.dep) return `${d.name} — ${r.dep.name}`; }
@@ -135,7 +140,7 @@ function nearestCity(s: GameState, x: number, y: number) {
 export function place(s: GameState, geo: Geo, type: BType, x: number, y: number, name: string, free = false) {
   const d = BUILD[type];
   const b = makeBuilding(s, type, x, y, name);
-  if (!free) { s.money -= d.money; s.stats.expenses += d.money; }
+  if (!free) { const m = buildMoney(s, type); s.money -= m; s.stats.expenses += m; b.need = scaleStock(d.cost, costMult(s)); }
   if (d.deposit) {
     const { value, dep } = geo.richness(d.deposit, x, y);
     b.rich = d.deposit === 'cereales' ? Math.max(0.45, value) : value; b.dep = dep ? dep.id : null;
@@ -149,11 +154,11 @@ export function place(s: GameState, geo: Geo, type: BType, x: number, y: number,
 export function upgrade(s: GameState, b: Building) {
   const d = BUILD[b.type];
   const next = b.level + 1;
-  const cost = Math.round(d.money * LEVEL_COST[next]);
+  const cost = Math.round(d.money * LEVEL_COST[next] * costMult(s));
   if (s.money < cost) return `Pas assez d'argent (${fmt(cost)}).`;
   s.money -= cost; s.stats.expenses += cost;
   b.upgrading = true; b.work = 0;
-  b.need = upgradeCost(b);
+  b.need = scaleStock(upgradeCost(b), costMult(s));
   return null;
 }
 /** Matériaux nécessaires pour passer au niveau suivant */
@@ -209,7 +214,7 @@ function partnerMods(s: GameState, pid: string) {
 export function priceAt(s: GameState, b: Building, res: ResId) {
   const base = RES[res].price * (s.market[b.id + ':' + res] ?? 1);
   if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1); }
-  return base * (1 + 0.1 * (b.city?.tier ?? 0));
+  return base * (1 + 0.1 * (b.city?.tier ?? 0)) * demandMult(s, res);
 }
 export function cityNeeds(b: Building): Stock {
   const c = b.city!; const t = TIERS[c.tier], out: Stock = {};
@@ -282,6 +287,16 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
     if (qty > used) { b.stock[res] = (b.stock[res] ?? 0) + qty - used; }
   } else { b.stock[res] = (b.stock[res] ?? 0) + qty; addFlow(b, 'in', res, qty); }
 }
+
+// ---------- Effets temporaires (événements historiques) ----------
+export const activeMods = (s: GameState) => s.mods.filter(m => m.until > s.day);
+/** Multiplicateur de coût des constructions et améliorations (remise en cours) */
+export const costMult = (s: GameState) => activeMods(s).filter(m => m.kind === 'discount').reduce((a, m) => a * m.mult, 1);
+export const prodMult = (s: GameState) => activeMods(s).filter(m => m.kind === 'prod').reduce((a, m) => a * m.mult, 1);
+export const demandMult = (s: GameState, res: ResId) => activeMods(s).filter(m => m.kind === 'demand' && m.res?.includes(res)).reduce((a, m) => a * m.mult, 1);
+/** Coût en argent d'une construction, remise comprise */
+export const buildMoney = (s: GameState, type: BType) => Math.round(BUILD[type].money * costMult(s));
+export function scaleStock(c: Stock, k: number): Stock { const o: Stock = {}; for (const [r, q] of Object.entries(c)) o[r as ResId] = Math.ceil(q! * k); return o; }
 
 // ---------- Commerce ----------
 export function partnerVolume(s: GameState, pid: string) { return PARTNERS.find(p => p.id === pid)!.volume * (s.techs.includes('monnaie') ? 2 : 1); }
@@ -394,6 +409,11 @@ export class Sim {
     const s = this.s;
     for (const b of s.buildings) {
       if ((b.built && !b.upgrading) || b.paused) continue;   // chantier en pause : les travaux s'arrêtent
+      // amélioration : le bâtiment utilise d'abord ce qu'il a lui-même produit (bûches d'un camp de bûcherons…)
+      if (b.upgrading) for (const r of Object.keys(b.need) as ResId[]) {
+        const free = Math.max(0, (b.need[r] ?? 0) - (b.incoming[r] ?? 0)), own = Math.floor(b.stock[r] ?? 0), t = Math.min(free, own);
+        if (t > 0) { b.stock[r]! -= t; addFlow(b, 'out', r, t); b.need[r]! -= t; if (b.need[r]! <= 0.001) delete b.need[r]; }
+      }
       const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
       if (left > 0.001) continue;
       b.work += dt;
@@ -467,7 +487,8 @@ export class Sim {
     // équipe complète = 100 % ; chaque ouvrier en renfort ajoute la moitié de sa part (jusqu'à +25 %)
     const staffRatio = need ? Math.min(b.staff, need) / need + 0.5 * Math.max(0, b.staff - need) / need : 1;
     const out = Object.values(d.recipe.out)[0]!;
-    const skilled = this.s.techs.includes('ouvrier_qualifie') && (d.deposit === 'bois' || d.deposit === 'pierre' || d.deposit === 'cereales') ? 1.2 : 1;
+    const event = prodMult(this.s);
+    const skilled = event * (this.s.techs.includes('ouvrier_qualifie') && (d.deposit === 'bois' || d.deposit === 'pierre' || d.deposit === 'cereales') ? 1.2 : 1);
     return out * LEVEL_MULT[b.level] * staffRatio * skilled * (d.deposit ? this.depositFactor(b) : 1);
   }
   production(dt: number) {
@@ -596,7 +617,8 @@ export class Sim {
         while (room >= 1 && moved) {
           moved = false;
           for (const r of st.res) {
-            if (room < 1 || (b.stock[r] ?? 0) < 1) continue;
+            const reserved = b.upgrading ? Math.max(0, (b.need[r] ?? 0) - (b.incoming[r] ?? 0)) : 0;
+            if (room < 1 || (b.stock[r] ?? 0) - reserved < 1) continue;
             b.stock[r]! -= 1; addFlow(b, 'out', r, 1); v.cargo[r] = (v.cargo[r] ?? 0) + 1; room -= 1; moved = true;
             lineMoved(l, v.stop % l.stops.length, r, 1);
           }
@@ -741,6 +763,9 @@ export class Sim {
         else if (f.kind === 'pop') for (const c of cities(s)) c.city!.pop *= f.mult;
         else if (f.kind === 'partnerClosed') s.mods.push({ kind: 'closed', partner: f.partner, mult: 1, until: s.day + f.months * MONTH });
         else if (f.kind === 'partnerBoost') s.mods.push({ kind: 'boost', partner: f.partner, mult: f.mult, until: s.day + f.months * MONTH });
+        else if (f.kind === 'discount') s.mods.push({ kind: 'discount', mult: f.mult, until: s.day + f.months * MONTH });
+        else if (f.kind === 'demand') s.mods.push({ kind: 'demand', res: f.res, mult: f.mult, until: s.day + f.months * MONTH });
+        else if (f.kind === 'prod') s.mods.push({ kind: 'prod', mult: f.mult, until: s.day + f.months * MONTH });
       }
       s.log.unshift({ day: s.day, text: `${e.title} — ${e.text}` });
       this.notify.event(`${y < 0 ? -y + ' av. J.-C.' : y} — ${e.title}`, e.text);

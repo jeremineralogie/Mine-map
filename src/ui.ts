@@ -9,7 +9,7 @@ import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import {
-  DAYS_PER_SEC, Sim, attachNode, buildingStatus, upgradeCost, workRange, seaPartnersOf, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
+  DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPartnersOf, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type GameState, type Line, type RNode, type Stock } from './state';
@@ -617,15 +617,23 @@ export class Game {
     }
 
     const usedBy = s.lines.filter(l => l.stops.some(st => st.bid === b.id));
-    if (usedBy.length) h += `<h3>Lignes desservant ce bâtiment</h3>${usedBy.map(l => this.lineCard(l)).join('')}`;
+    if (usedBy.length) {
+      // deux onglets : les lignes qui partent d'ici (chargement) et celles qui y arrivent (déchargement)
+      const dep = usedBy.filter(l => l.stops.some(st => st.bid === b.id && st.action === 'load'));
+      const arr = usedBy.filter(l => l.stops.some(st => st.bid === b.id && st.action === 'unload'));
+      const tab = this.bLineTab === 'depart' && !dep.length ? 'arrivee' : this.bLineTab === 'arrivee' && !arr.length ? 'depart' : this.bLineTab;
+      const list = tab === 'depart' ? dep : arr;
+      h += `<h3>Lignes de ce bâtiment</h3><div class="tabs seg"><button data-act="bltab" data-r="depart" class="${tab === 'depart' ? 'on' : ''}">↗ Au départ d'ici <b>${dep.length}</b></button><button data-act="bltab" data-r="arrivee" class="${tab === 'arrivee' ? 'on' : ''}">↘ Arrivant ici <b>${arr.length}</b></button></div>
+        ${list.map(l => this.lineCard(l)).join('') || `<p class="muted">Aucune ligne ${tab === 'depart' ? 'ne charge ici' : 'ne décharge ici'}.</p>`}`;
+    }
     h += '<div class="actions">';
     if (b.built && !b.upgrading && d.recipe) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre la production' : '⏸ Mettre en pause'}</button>`;
     if (!b.built || b.upgrading) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre le chantier' : '⏸ Mettre le chantier en pause'}</button>`;
     if (b.built && b.type !== 'village') h += `<button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ici</button>`;
     if (b.built && !b.upgrading && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
-      const cost = Math.round(d.money * LEVEL_COST[b.level + 1]);
-      h += `<button data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1} (${fmt(cost)} + ${costList(upgradeCost(b))})${allowed ? '' : ' — technologie requise'}</button>`;
+      const km = costMult(s), cost = Math.round(d.money * LEVEL_COST[b.level + 1] * km);
+      h += `<button data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1}${km < 1 ? ` (remise −${Math.round((1 - km) * 100)} %)` : ''} (${fmt(cost)} + ${costList(scaleStock(upgradeCost(b), km))})${allowed ? '' : ' — technologie requise'}</button>`;
     }
     h += `<button class="danger" data-act="demolish" data-id="${b.id}">Démolir</button></div>`;
     return h;
@@ -633,11 +641,12 @@ export class Game {
 
   private buildPanel(): string {
     const s = this.s;
+    const km = costMult(s);
     const card = (t: BType) => {
       const d = BUILD[t], ok = hasTech(s, d.tech);
       const tech = d.tech ? TECHS.find(x => x.id === d.tech)! : null;
       return `<button class="card" data-act="build" data-type="${t}" ${ok ? '' : 'disabled'}>
-        <img src="${bIconUrl(t)}"><span><b>${d.name}</b><small>${ok ? `${fmt(d.money)} sesterces · ${costList(d.cost)}` : `🔒 ${tech!.name}`}</small>
+        <img src="${bIconUrl(t)}"><span><b>${d.name}${km < 1 && ok ? ` <span class="pill good">−${Math.round((1 - km) * 100)} %</span>` : ''}</b><small>${ok ? `${fmt(buildMoney(s, t))} sesterces · ${costList(scaleStock(d.cost, km))}` : `🔒 ${tech!.name}`}</small>
         <small class="muted">${d.recipe ? (Object.keys(d.recipe.in).length ? (Object.keys(d.recipe.in) as ResId[]).map(r => RES[r].name).join(' + ') + ' → ' : '') + (Object.keys(d.recipe.out) as ResId[]).map(r => RES[r].name).join(', ') : esc(d.desc)}</small></span></button>`;
     };
     // regroupement par catégorie, avec la couleur des pictogrammes
@@ -661,9 +670,11 @@ export class Game {
     const tabs = s.lines.length ? `<div class="tabs"><button data-act="lfilter" data-r="all" class="${this.lineFilter === 'all' ? 'on' : ''}">Toutes <b>${s.lines.length}</b></button>${resUsed.map(r => `<button data-act="lfilter" data-r="${r}" class="${this.lineFilter === r ? 'on' : ''}">${resIcon(r)}${RES[r].name} <b>${s.lines.filter(l => this.lineRes(l).includes(r)).length}</b></button>`).join('')}</div>` : '';
     const shown = this.lineFilter === 'all' ? s.lines : s.lines.filter(l => this.lineRes(l).includes(this.lineFilter as ResId));
     const rows = tabs + shown.map(l => this.lineCard(l)).join('');
-    return `<h2 class="ph">${IC.lines}Lignes de transport</h2><p class="muted">Chaque ligne relie des arrêts : on y charge une ou plusieurs ressources, puis on les décharge plus loin (entrepôt, atelier, ville ou poste-frontière).</p>
-      ${rows || '<p>Aucune ligne pour l\'instant.</p>'}<div class="actions"><button class="primary" data-act="newline">Nouvelle ligne</button>
-      ${s.lines.length ? `<button data-act="pauseall">${s.lines.every(l => l.paused) ? '▶ Reprendre toutes' : '⏸ Tout mettre en pause'}</button><button class="danger" data-act="delall">Supprimer toutes les lignes</button>` : ''}</div>`;
+    return `<h2 class="ph">${IC.lines}Lignes de transport</h2>
+      <div class="actions top"><button class="primary" data-act="newline">+ Nouvelle ligne</button>
+      ${s.lines.length ? `<button data-act="pauseall">${s.lines.every(l => l.paused) ? '▶ Reprendre toutes' : '⏸ Tout mettre en pause'}</button><button class="danger" data-act="delall">Supprimer toutes les lignes</button>` : ''}</div>
+      <p class="muted">Chaque ligne relie des arrêts : on y charge une ou plusieurs ressources, puis on les décharge plus loin (entrepôt, atelier, ville ou poste-frontière).</p>
+      ${rows || '<p>Aucune ligne pour l\'instant.</p>'}`;
   }
   /** Nom court d'un bâtiment (sans le nom du gisement) */
   private short(id: number) { const b = getB(this.s, id); return b ? b.name.split(' — ')[0] : '?'; }
@@ -807,21 +818,50 @@ export class Game {
       }
     }
     const res = (Object.keys(RES) as ResId[]).filter(r => (stock[r] ?? 0) >= 0.5 || (prod[r] ?? 0) > 0 || (use[r] ?? 0) > 0);
+    if (this.ecoTab !== 'all' && !res.includes(this.ecoTab)) this.ecoTab = 'all';
+    const tabs = `<div class="tabs"><button data-act="ecotab" data-r="all" class="${this.ecoTab === 'all' ? 'on' : ''}">Vue d'ensemble</button>${res.map(r => `<button data-act="ecotab" data-r="${r}" class="${this.ecoTab === r ? 'on' : ''}">${resIcon(r)}${RES[r].name}</button>`).join('')}</div>`;
+    if (this.ecoTab !== 'all') return `<h2 class="ph">${IC.economy}Économie</h2>${tabs}${this.resourceTab(this.ecoTab, stock, prod, use, cityStock)}`;
+    h = h.replace(`<h2 class="ph">${IC.economy}Économie</h2>`, `<h2 class="ph">${IC.economy}Économie</h2>${tabs}${this.modsHtml()}`);
     h += `<h3>Ressources (par mois)</h3>`;
     h += res.length ? `<table class="eco"><tr><th></th><th class="num">stock</th><th class="num">produit</th><th class="num">consommé</th><th class="num">bilan</th></tr>
       ${res.map(r => {
         const bal = (prod[r] ?? 0) - (use[r] ?? 0);
-        return `<tr><td>${resChip(r)}</td><td class="num">${fmt(stock[r] ?? 0)}</td><td class="num">${(prod[r] ?? 0).toFixed(1)}</td><td class="num">${(use[r] ?? 0).toFixed(1)}</td>
+        return `<tr class="click" data-act="ecotab" data-r="${r}"><td>${resChip(r)}</td><td class="num">${fmt(stock[r] ?? 0)}</td><td class="num">${(prod[r] ?? 0).toFixed(1)}</td><td class="num">${(use[r] ?? 0).toFixed(1)}</td>
           <td class="num ${bal > 0.05 ? 'pos' : bal < -0.05 ? 'neg' : ''}">${bal > 0.05 ? '▲ +' : bal < -0.05 ? '▼ −' : ''}${Math.abs(bal).toFixed(1)}</td></tr>`;
       }).join('')}</table>
-      <p class="muted">Stock : entrepôts et ateliers. Consommé : besoins des villes et matières premières des ateliers, à plein régime. Réserves dans les villes : ${(Object.entries(cityStock) as [ResId, number][]).filter(([, q]) => q >= 0.5).map(([r, q]) => resChip(r, q)).join(' ') || 'aucune'}.</p>`
+      <p class="muted">Touche une ressource pour voir le détail. Stock : entrepôts et ateliers. Consommé : besoins des villes et matières premières des ateliers, à plein régime.</p>`
       : '<p class="muted">Aucune ressource pour l\'instant.</p>';
+    return h;
+  }
+
+  /** Onglet d'une ressource : qui la produit, qui la consomme, où elle est stockée, à quel prix */
+  private resourceTab(r: ResId, stock: Stock, prod: Stock, use: Stock, cityStock: Stock): string {
+    const s = this.s, bal = (prod[r] ?? 0) - (use[r] ?? 0);
+    let h = `<div class="res-head">${resIcon(r, 'ri huge')}<div><h3>${RES[r].name}</h3><small class="muted">Prix de base ${RES[r].price} sesterces la tonne</small></div></div>`;
+    h += this.kpis([[`${fmt(stock[r] ?? 0)} t`, 'en stock'], [`${(prod[r] ?? 0).toFixed(1)} t`, 'produit / mois'], [`${(use[r] ?? 0).toFixed(1)} t`, 'consommé / mois'],
+      [`${bal >= 0 ? '+' : '−'}${Math.abs(bal).toFixed(1)} t`, 'bilan / mois', bal > 0.05 ? 'good' : bal < -0.05 ? 'bad' : '']]);
+    const row = (b: Building, main: string, sub: string) => `<button class="row" data-act="goto" data-id="${b.id}"><img class="vic" src="${bIconUrl(b.type)}" alt=""><span class="grow"><b>${esc(b.name.split(' — ')[0])}</b><br><small class="muted">${sub}</small></span><b class="num">${main}</b></button>`;
+    const producers = s.buildings.filter(b => b.built && BUILD[b.type].recipe?.out[r]);
+    h += `<h3>Production</h3>${producers.map(b => { const d = BUILD[b.type], rate = this.sim.rate(b) * d.recipe!.out[r]! / Object.values(d.recipe!.out)[0]!; return row(b, `${rate.toFixed(1)} t/mois`, `${buildingStatus(this.sim, b).label} · stock ${fmt(b.stock[r] ?? 0)} t`); }).join('') || '<p class="muted">Aucun bâtiment ne produit cette ressource.</p>'}`;
+    const cityUsers = s.buildings.filter(b => b.city && b.built && cityNeeds(b)[r]);
+    const shops = s.buildings.filter(b => b.built && BUILD[b.type].recipe?.in[r]);
+    h += `<h3>Consommation</h3>${cityUsers.map(b => { const q = cityNeeds(b)[r]!; const m = q ? (b.city!.stock[r] ?? 0) / q : 0; return row(b, `${q.toFixed(1)} t/mois`, `${TIERS[b.city!.tier].name} · réserve ${m >= 1 ? Math.floor(m) + ' mois' : 'moins d\'un mois'} · achète ${priceAt(s, b, r).toFixed(1)} sest./t`); }).join('')}
+      ${shops.map(b => { const d = BUILD[b.type], q = this.sim.rate(b) * d.recipe!.in[r]! / Object.values(d.recipe!.out)[0]!; return row(b, `${q.toFixed(1)} t/mois`, `matière première · stock ${fmt(b.stock[r] ?? 0)} t`); }).join('')}
+      ${!cityUsers.length && !shops.length ? '<p class="muted">Rien ne consomme cette ressource pour l\'instant.</p>' : ''}`;
+    const stores = s.buildings.filter(b => isStore(b) && (b.stock[r] ?? 0) >= 0.5).sort((a, z) => (z.stock[r] ?? 0) - (a.stock[r] ?? 0));
+    h += `<h3>Stocks</h3>${stores.map(b => row(b, `${fmt(b.stock[r]!)} t`, BUILD[b.type].name)).join('') || '<p class="muted">Aucun entrepôt n\'en contient.</p>'}
+      ${(cityStock[r] ?? 0) >= 0.5 ? `<p class="muted">Réserves dans les villes : ${fmt(cityStock[r]!)} t.</p>` : ''}`;
+    const buyers = s.buildings.filter(b => b.partner && PARTNERS.find(p => p.id === b.partner)!.buys.includes(r));
+    h += `<h3>Où la vendre</h3>${buyers.map(b => row(b, `${priceAt(s, b, r).toFixed(1)} /t`, 'Partenaire étranger (poste-frontière)')).join('')}
+      ${cityUsers.length ? '' : ''}<p class="muted">Vente sur place depuis un entrepôt : ${localPrice(s, r).toFixed(1)} sesterces la tonne.</p>`;
     return h;
   }
 
   // ---------- Arbre de recherche (plein écran) ----------
   private treeSel: string | null = null;
   private lineFilter: ResId | 'all' = 'all';
+  private bLineTab: 'depart' | 'arrivee' = 'depart';
+  private ecoTab: ResId | 'all' = 'all';
   private treeKey = '';
   openTree() { $('treeView').hidden = false; this.treeKey = ''; this.renderTree(); }
   closeTree() { $('treeView').hidden = true; }
@@ -903,6 +943,22 @@ export class Game {
         <small class="muted">Choisis ton ordre de recherche ; l'époque suivante s'ouvre quand tout l'arbre est découvert.</small></footer></div>`;
   }
 
+  /** Effets des événements historiques encore actifs */
+  private modsHtml(): string {
+    const s = this.s, mods = activeMods(s);
+    if (!mods.length) return '';
+    const pn = (id?: string) => PARTNERS.find(p => p.id === id)?.name ?? id ?? '';
+    const pct = (m: number) => `${m >= 1 ? '+' : '−'}${Math.round(Math.abs(m - 1) * 100)} %`;
+    const label = (m: typeof mods[number]) => m.kind === 'discount' ? `Constructions et améliorations ${pct(m.mult)}`
+      : m.kind === 'demand' ? `Les villes paient ${(m.res ?? []).map(r => RES[r].name.toLowerCase()).join(', ')} ${pct(m.mult)}`
+      : m.kind === 'prod' ? `Production des ateliers ${pct(m.mult)}`
+      : m.kind === 'growth' ? `Croissance des villes ${pct(m.mult)}`
+      : m.kind === 'closed' ? `Frontière fermée : ${pn(m.partner)}`
+      : `${pn(m.partner)} paie ${pct(m.mult)}`;
+    const good = (m: typeof mods[number]) => m.kind === 'closed' ? false : m.kind === 'discount' ? m.mult < 1 : m.mult >= 1;
+    return `<h3>Effets historiques en cours</h3><div class="mods">${mods.map(m => `<div class="mod ${good(m) ? 'good' : 'bad'}"><b>${label(m)}</b><small>encore ${Math.max(1, Math.ceil((m.until - s.day) / 30.44))} mois</small></div>`).join('')}</div>`;
+  }
+
   private objectivesPanel(): string {
     const s = this.s;
     const objs = OBJECTIVES.filter(o => o.era === s.era);
@@ -913,6 +969,7 @@ export class Game {
       <p>Arbre de recherche : <b>${techN} / ${techT}</b> · Objectifs : <b>${doneN} / ${objs.length}</b></p>
       <div class="bar"><i style="width:${Math.round(techN / techT * 100)}%"></i></div>
       <p class="muted">L'époque s'achève quand tout son arbre de recherche est débloqué. Les objectifs historiques sont facultatifs : ils rapportent argent et points de recherche.</p>
+      ${this.modsHtml()}
       ${rows}<h3>Journal</h3><ul class="log">${log || '<li class="muted">Rien à signaler.</li>'}</ul>`;
   }
 
@@ -992,6 +1049,8 @@ export class Game {
       case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; const n = b.staff, site = !b.built || b.upgrading; this.sim.staffing();
         this.toast(site ? (b.paused ? `${b.name} : chantier en pause.` : `${b.name} : chantier relancé.`) : b.paused ? `${b.name} : production en pause, ${n} ouvrier${n > 1 ? 's' : ''} libéré${n > 1 ? 's' : ''} pour les autres ateliers.` : `${b.name} : production relancée.`); } break; }
       case 'pausel': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) { l.paused = !l.paused; this.toast(l.paused ? 'Ligne en pause : les véhicules chargés terminent leur livraison, puis s\'arrêtent.' : 'Ligne relancée.'); } break; }
+      case 'bltab': this.bLineTab = t.dataset.r as 'depart' | 'arrivee'; break;
+      case 'ecotab': this.ecoTab = t.dataset.r as ResId | 'all'; $('panelBody').scrollTop = 0; break;
       case 'lfilter': this.lineFilter = t.dataset.r as ResId | 'all'; break;
       case 'pauseall': { const all = s.lines.every(l => l.paused); for (const l of s.lines) l.paused = !all; break; }
       case 'delall': this.modal(`<h2>Supprimer toutes les lignes ?</h2><p>Les ${s.lines.length} lignes seront supprimées et leurs ${s.vehicles.filter(v => v.line >= 0).length} véhicules revendus à moitié prix. Les routes ne sont pas touchées.</p>`, [

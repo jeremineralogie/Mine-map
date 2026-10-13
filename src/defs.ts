@@ -221,7 +221,26 @@ export const ANCIENT: [string, number, number][] = [
   ['Agedincum', 3.28, 48.2], ['Lugdunum Convenarum', 0.56, 43.03], ['Aquae Sextiae', 5.45, 43.53], ['Andematunnum', 5.33, 47.86],
   ['Nemetocenna', 2.78, 50.29], ['Juliomagus', -0.55, 47.47], ['Limonum', 0.34, 46.58], ['Augustoritum', 1.26, 45.83],
   ['Divona', 1.44, 44.45], ['Aginnum', 0.62, 44.2], ['Cularo', 5.72, 45.19], ['Genava', 6.14, 46.2],
+  ['Alesia', 4.5, 47.54], ['Bibracte', 4.04, 46.92], ['Gergovia', 3.12, 45.71], ['Uxellodunum', 1.7, 44.95],
+  ['Noviodunum', 3.16, 47.0], ['Autricum', 1.49, 48.45], ['Augustobona', 4.08, 48.3], ['Caesaromagus', 2.08, 49.43],
+  ['Augusta Suessionum', 3.32, 49.38], ['Augusta Viromanduorum', 3.29, 49.85], ['Nemetacum', 2.77, 50.29], ['Tarvenna', 2.25, 50.63],
+  ['Bagacum', 3.81, 50.3], ['Noviomagus Lexoviorum', 0.23, 49.15], ['Augustodurum', -0.7, 49.28], ['Coriallo', -1.62, 49.64],
+  ['Fanum Martis', -2.05, 48.43], ['Vorgium', -3.58, 48.24], ['Darioritum', -2.76, 47.66], ['Ratiatum', -1.73, 47.12],
+  ['Segora', -0.77, 46.94], ['Iculisma', 0.16, 45.65], ['Vesunna', 0.72, 45.18], ['Cadurcum', 1.44, 44.45],
+  ['Segodunum', 2.57, 44.35], ['Anderitum', 3.3, 44.72], ['Ruessium', 3.9, 45.05], ['Forum Segusiavorum', 4.07, 45.66],
+  ['Lugdunum Consoranorum', 1.15, 43.0], ['Beneharnum', -0.37, 43.33], ['Aquae Tarbellicae', -1.05, 43.71], ['Lactora', 0.62, 43.93],
+  ['Elusa', 0.12, 43.85], ['Ruscino', 2.9, 42.72], ['Baeterrae', 3.21, 43.34], ['Luteva', 3.32, 43.73],
+  ['Arausio', 4.81, 44.14], ['Avennio', 4.81, 43.95], ['Carpentorate', 5.05, 44.06], ['Vasio', 5.07, 44.24],
+  ['Apta Julia', 5.4, 43.88], ['Forum Voconii', 6.4, 43.47], ['Telo Martius', 5.93, 43.12], ['Olbia', 6.12, 43.08],
+  ['Valentia', 4.89, 44.93], ['Dea Augusta', 5.37, 44.75], ['Vapincum', 6.08, 44.56], ['Eburodunum', 6.49, 44.56],
+  ['Augustum', 5.7, 45.4], ['Boutae', 6.13, 45.9], ['Cabillonum', 4.85, 46.78], ['Matisco', 4.83, 46.31],
+  ['Dibio', 5.04, 47.32], ['Epomanduodurum', 6.74, 47.47], ['Mediomatrici', 6.18, 49.12], ['Tullum', 5.89, 48.68],
+  ['Nasium', 5.37, 48.62], ['Segodunum Rutenorum', 2.57, 44.35], ['Mariana', 9.47, 42.6], ['Urcinium', 8.74, 41.92],
 ];
+/** Noms de réserve quand aucun lieu antique n'est proche */
+export const SPARE_NAMES = ['Vicus Novus', 'Noviomagus', 'Mediolanum', 'Condatomagus', 'Brivodurum', 'Ebrodunum', 'Augustoritum', 'Uxantis',
+  'Vindinum', 'Belisama', 'Lemovicum', 'Durocasses', 'Condivicnum', 'Rotomagus Minor', 'Vicus Albus', 'Novientum', 'Aballo', 'Brivas',
+  'Cambodunum', 'Lugdunum Minor', 'Vicus Aquensis', 'Castrum Novum', 'Forum Iulium', 'Vicus Vetus', 'Avaricum Minor', 'Ernodurum'];
 
 // ---- Partenaires commerciaux (postes-frontières, côté français) ----
 export interface Partner { id: string; name: string; lon: number; lat: number; buys: ResId[]; sells: ResId[]; mult: number; volume: number; }
@@ -326,19 +345,26 @@ export type EventEffect =
   | { kind: 'growth'; mult: number; months: number }
   | { kind: 'pop'; mult: number }
   | { kind: 'partnerClosed'; partner: string; months: number }
-  | { kind: 'partnerBoost'; partner: string; mult: number; months: number };
+  | { kind: 'partnerBoost'; partner: string; mult: number; months: number }
+  /** remise sur les constructions et améliorations (argent et matériaux) */
+  | { kind: 'discount'; mult: number; months: number }
+  /** les villes paient davantage certaines ressources */
+  | { kind: 'demand'; res: ResId[]; mult: number; months: number }
+  /** production de tous les ateliers multipliée */
+  | { kind: 'prod'; mult: number; months: number };
 
 export interface HistEvent { year: number; title: string; text: string; effects: EventEffect[]; }
 export const EVENTS: HistEvent[] = [
   { year: -46, title: 'Triomphe de César', text: 'César célèbre à Rome sa victoire sur les Gaules. Rome réclame fer et outils : l\'Italie paie 50 % plus cher pendant 2 ans.', effects: [{ kind: 'partnerBoost', partner: 'italie', mult: 1.5, months: 24 }] },
   { year: -43, title: 'Fondation de Lugdunum', text: 'Munatius Plancus fonde Lugdunum au confluent du Rhône et de la Saône. Les colons apportent de nouveaux savoirs.', effects: [{ kind: 'rp', amount: 6 }] },
   { year: -27, title: 'Auguste réorganise les Gaules', text: 'Les trois provinces (Aquitaine, Lyonnaise, Belgique) sont créées. L\'administration stimule la croissance des villes pendant 5 ans.', effects: [{ kind: 'growth', mult: 1.4, months: 60 }] },
-  { year: -12, title: 'Autel des Trois Gaules', text: 'Drusus inaugure l\'autel fédéral de Lugdunum. Les notables gaulois financent tes chantiers.', effects: [{ kind: 'money', amount: 500 }] },
+  { year: -12, title: 'Autel des Trois Gaules', text: 'Drusus inaugure l\'autel fédéral de Lugdunum. Rome et les notables gaulois financent tes chantiers : constructions et améliorations coûtent 30 % de moins (argent et matériaux) pendant 3 ans.', effects: [{ kind: 'discount', mult: 0.7, months: 36 }] },
   { year: 9, title: 'Désastre de Varus', text: 'Trois légions sont anéanties en Germanie. Le commerce avec la Germanie est interrompu pendant 3 ans.', effects: [{ kind: 'partnerClosed', partner: 'germanie', months: 36 }] },
+  { year: 14, title: 'Mort d\'Auguste', text: 'Tibère succède à Auguste et lance de grands travaux en Gaule : les ateliers produisent 15 % de plus pendant 2 ans.', effects: [{ kind: 'prod', mult: 1.15, months: 24 }] },
   { year: 48, title: 'Discours de Claude', text: 'L\'empereur Claude, né à Lugdunum, ouvre le Sénat aux notables gaulois. Les villes gagnent en prestige.', effects: [{ kind: 'growth', mult: 1.3, months: 36 }, { kind: 'rp', amount: 5 }] },
-  { year: 65, title: 'Incendie de Lugdunum', text: 'Un grand incendie ravage Lugdunum. Les villes doivent reconstruire : la demande de pierre et de bois s\'envole.', effects: [{ kind: 'pop', mult: 0.95 }] },
+  { year: 65, title: 'Incendie de Lugdunum', text: 'Un grand incendie ravage Lugdunum. Les villes doivent reconstruire : pendant 2 ans, elles paient la pierre, le bois et les briques 50 % plus cher.', effects: [{ kind: 'pop', mult: 0.95 }, { kind: 'demand', res: ['pierre', 'bois', 'briques'], mult: 1.5, months: 24 }] },
   { year: 69, title: 'L\'année des quatre empereurs', text: 'Guerre civile dans l\'Empire. Le commerce avec l\'Italie est désorganisé pendant 1 an.', effects: [{ kind: 'partnerClosed', partner: 'italie', months: 12 }] },
-  { year: 165, title: 'Peste antonine', text: 'Une épidémie venue d\'Orient frappe l\'Empire : les villes perdent 10 % de leurs habitants.', effects: [{ kind: 'pop', mult: 0.9 }] },
+  { year: 165, title: 'Peste antonine', text: 'Une épidémie venue d\'Orient frappe l\'Empire : les villes perdent 10 % de leurs habitants et les ateliers tournent au ralenti (−15 % de production pendant 3 ans).', effects: [{ kind: 'pop', mult: 0.9 }, { kind: 'prod', mult: 0.85, months: 36 }] },
   { year: 212, title: 'Édit de Caracalla', text: 'Tous les hommes libres de l\'Empire deviennent citoyens romains. Les villes attirent de nouveaux habitants.', effects: [{ kind: 'growth', mult: 1.3, months: 60 }] },
   { year: 256, title: 'Invasions germaniques', text: 'Francs et Alamans franchissent le Rhin. Le commerce avec la Germanie et la Belgique est coupé pendant 5 ans.', effects: [{ kind: 'partnerClosed', partner: 'germanie', months: 60 }, { kind: 'partnerClosed', partner: 'belgique', months: 60 }] },
 ];

@@ -89,7 +89,7 @@ export interface GameState {
   stats: { produced: Stock; food: number; sold: Record<string, number>; soldMonth: Record<string, number>; income: number; expenses: number; };
   objectives: string[];
   events: number[];
-  mods: { kind: 'growth' | 'closed' | 'boost'; partner?: string; mult: number; until: number }[];
+  mods: { kind: 'growth' | 'closed' | 'boost' | 'discount' | 'demand' | 'prod'; partner?: string; res?: ResId[]; mult: number; until: number }[];
   market: Record<string, number>;
   negMonths: number;
   over: boolean;

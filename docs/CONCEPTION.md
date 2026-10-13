@@ -101,8 +101,11 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
   **L'époque suivante s'ouvre quand tout l'arbre de l'époque est débloqué** ; les objectifs historiques sont des bonus.
 - **Objectifs historiques** par époque (ex. « Construire le Pont du Gard », « Relier Paris à
   Lyon par le rail ») : ils rapportent argent et points de recherche.
-- **Événements historiques** datés (Peste antonine, invasions, crues…).
-- Améliorations des bâtiments par niveaux, avec des matériaux propres à chaque bâtiment (la carrière
+- **Événements historiques** datés, aux effets concrets et temporaires : remise sur les chantiers (autel des
+  Trois Gaules), prix de rachat des villes en hausse (incendie de Lugdunum), production en hausse ou en baisse,
+  croissance des villes, frontières fermées… Les effets en cours sont listés dans Économie et Objectifs.
+- Améliorations des bâtiments par niveaux ; un bâtiment en amélioration utilise d'abord sa propre production
+  (bûches du camp de bûcherons, pierre de la carrière…) avant de recevoir des convois, avec des matériaux propres à chaque bâtiment (la carrière
   s'améliore avec de la pierre, la ferme et le camp de bûcherons avec du bois, la forge avec de la pierre
   et des briques, les mines avec du fer et de la pierre…).
 
