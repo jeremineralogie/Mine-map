@@ -38,7 +38,11 @@ export interface Building {
 }
 
 /** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */
-export interface Stop { bid: number; action: 'load' | 'unload'; res: ResId[]; }
+export interface Stop {
+  bid: number; action: 'load' | 'unload'; res: ResId[];
+  /** déchargement : part du chargement de départ à déposer ici (en %, 100 = tout ce qui reste) */
+  share?: number;
+}
 /** `name` vide : le nom est déduit des arrêts (départ → arrivée) */
 export interface Line { id: number; name: string; vtype: VType; stops: Stop[]; color: string; paused?: boolean; }
 
@@ -48,6 +52,8 @@ export interface Vehicle {
   line: number;          // -1 pour un convoi de chantier
   stop: number;
   cargo: Stock;          // chargement, éventuellement plusieurs ressources
+  ref?: Stock;           // chargement au départ du dernier arrêt de chargement (base des pourcentages)
+  drop?: Stock;          // quantités déjà déposées à l'arrêt en cours
   state: 'go' | 'load' | 'unload' | 'lost' | 'parked';   // parked : ligne en pause, véhicule à l'arrêt
   path: { x: number; y: number }[];
   speeds: number[];

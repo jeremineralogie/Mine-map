@@ -40,7 +40,7 @@ export class Game {
   speed = 1;
   view: View = {
     layers: { deposits: true, water: false, workers: false, trade: true }, depositFilter: 'all',
-    selected: null, selectedLine: null, showLines: [], draft: null, ghost: null, hoverEdge: null,
+    selected: null, selectedLine: null, showLines: [], hoverLine: null, draft: null, ghost: null, hoverEdge: null,
   };
   roadType: RoadType = 'chemin';
   private roadFrom: Snap | null = null;
@@ -124,6 +124,7 @@ export class Game {
   private visibleLines(): number[] {
     const s = this.s, v = this.view;
     if (v.selectedLine !== null) return [v.selectedLine];
+    if (v.hoverLine !== null && !this.panel) v.hoverLine = null;
     if (this.panelKind === 'lines') return s.lines.map(l => l.id);
     if (v.selected?.kind === 'building') { const id = v.selected.id; return s.lines.filter(l => l.stops.some(st => st.bid === id)).map(l => l.id); }
     if (v.selected?.kind === 'vehicle') { const veh = s.vehicles.find(x => x.id === v.selected!.id); return veh && veh.line >= 0 ? [veh.line] : []; }
@@ -164,6 +165,8 @@ export class Game {
     $('panelClose').onclick = () => this.closePanel();
     $('menuBtn').onclick = () => this.openPanel(() => this.menuPanel());
     $('panelBody').addEventListener('click', e => this.panelClick(e));
+    $('panelBody').addEventListener('mouseover', e => { const c = (e.target as HTMLElement).closest<HTMLElement>('.linecard[data-act=line]'); this.view.hoverLine = c ? Number(c.dataset.id) : null; });
+    $('panelBody').addEventListener('mouseleave', () => { this.view.hoverLine = null; });
     $('panelBody').addEventListener('change', e => this.panelChange(e));
     window.addEventListener('keydown', e => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
@@ -224,7 +227,7 @@ export class Game {
     else if (m.kind === 'build') html = `Place : <b>${BUILD[m.type].name}</b>. ${BUILD[m.type].deposit ? 'Sur un gisement de ' + RES[BUILD[m.type].deposit!].name.toLowerCase() + '. ' : ''}<button data-a="cancel">Annuler</button>`;
     else if (m.kind === 'road') {
       const types = (Object.keys(ROADS) as RoadType[]).map(t => `<button data-a="${t}" class="${this.roadType === t ? 'on' : ''}" ${hasTech(this.s, ROADS[t].tech) ? '' : 'disabled'}>${ROADS[t].name} (${ROADS[t].perKm}/km)</button>`).join('');
-      html = `${types} <span class="sep"></span>${this.roadFrom ? 'Touche le point suivant : bâtiment, route existante (crée un carrefour) ou terrain.' : 'Touche un bâtiment, une route existante ou le terrain pour commencer.'} <span id="quote"></span> ${this.roadFrom ? '<button data-a="end" class="primary">Terminer</button>' : ''}<button data-a="cancel">Fermer</button>`;
+      html = `${types} <span class="sep"></span>${this.roadFrom ? 'Touche l\'arrivée : un bâtiment ou une route termine le tracé ; un point du terrain ajoute un virage.' : 'Touche un bâtiment, une route existante ou le terrain pour commencer.'} <span id="quote"></span> ${this.roadFrom ? '<button data-a="end" class="primary">Terminer</button>' : ''}<button data-a="cancel">Fermer</button>`;
     }
     else if (m.kind === 'demolish') html = 'Touche une route ou un bâtiment à démolir. <button data-a="cancel">Terminer</button>';
     else if (m.kind === 'pickStop') html = 'Touche un bâtiment pour l\'ajouter comme arrêt de la ligne. <button data-a="cancel">Terminer</button>';
@@ -236,6 +239,7 @@ export class Game {
     const ptrs = new Map<number, { x: number; y: number }>();
     let downAt: { x: number; y: number } | null = null, dragged = false, pinch = 0;
     c.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return; // seul le bouton gauche agit sur la carte
       c.setPointerCapture(e.pointerId);
       ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
       if (ptrs.size === 1) { downAt = { x: e.offsetX, y: e.offsetY }; dragged = false; }
@@ -266,7 +270,8 @@ export class Game {
     c.addEventListener('pointercancel', up);
     c.addEventListener('wheel', e => { e.preventDefault(); this.cam.zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
     c.addEventListener('dblclick', () => { if (this.mode.kind === 'road') this.endRoad(); });
-    c.addEventListener('contextmenu', e => { e.preventDefault(); this.cancel(); });
+    // clic droit : ne construit rien, revient simplement à la sélection
+    c.addEventListener('contextmenu', e => { e.preventDefault(); this.roadFrom = null; this.view.draft = null; this.view.ghost = null; if (this.mode.kind !== 'start') this.setMode({ kind: 'select' }); });
   }
 
   private hover(sx: number, sy: number) {
@@ -398,9 +403,17 @@ export class Game {
       if (q.bridges) this.toast(`Pont${q.bridges > 1 ? 's' : ''} construit${q.bridges > 1 ? 's' : ''}${q.rivers.length ? ' sur : ' + q.rivers.join(', ') : ''}.`);
       if (junctions) this.toast(`${junctions} carrefour${junctions > 1 ? 's' : ''} créé${junctions > 1 ? 's' : ''} avec les routes croisées.`);
     }
+    this.rerouteAll();
+    // arrivée sur un bâtiment, un carrefour ou une route existante : la route est terminée, retour à la sélection
+    if (snap.bid !== undefined || snap.node || snap.edge !== undefined) {
+      this.roadFrom = null; this.view.draft = null;
+      this.setMode({ kind: 'select' });
+      this.toast('Route terminée.', 'good');
+      return;
+    }
+    // arrivée en terrain libre : on continue le tracé depuis ce point (pour contourner un relief)
     this.roadFrom = { node: b, x: b.x, y: b.y, bid: b.b };
     this.view.draft = { pts: [{ x: b.x, y: b.y }], cursor: null, valid: true };
-    this.rerouteAll();
     this.updateHint();
   }
   private ensureNode(p: Snap): RNode {
@@ -569,7 +582,8 @@ export class Game {
     const usedBy = s.lines.filter(l => l.stops.some(st => st.bid === b.id));
     if (usedBy.length) h += `<h3>Lignes desservant ce bâtiment</h3>${usedBy.map(l => this.lineCard(l)).join('')}`;
     h += '<div class="actions">';
-    if (b.built && d.recipe) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre la production' : '⏸ Mettre en pause'}</button>`;
+    if (b.built && !b.upgrading && d.recipe) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre la production' : '⏸ Mettre en pause'}</button>`;
+    if (!b.built || b.upgrading) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre le chantier' : '⏸ Mettre le chantier en pause'}</button>`;
     if (b.built && b.type !== 'village') h += `<button data-act="newline" data-id="${b.id}">Nouvelle ligne depuis ici</button>`;
     if (b.built && !b.upgrading && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
@@ -598,7 +612,12 @@ export class Game {
       const l = s.lines.find(x => x.id === this.view.selectedLine);
       if (l) return this.lineEditor(l);
     }
-    const rows = s.lines.map(l => this.lineCard(l)).join('');
+    // onglets par ressource transportée
+    const resUsed = [...new Set(s.lines.flatMap(l => this.lineRes(l)))];
+    if (this.lineFilter !== 'all' && !resUsed.includes(this.lineFilter)) this.lineFilter = 'all';
+    const tabs = s.lines.length ? `<div class="tabs"><button data-act="lfilter" data-r="all" class="${this.lineFilter === 'all' ? 'on' : ''}">Toutes <b>${s.lines.length}</b></button>${resUsed.map(r => `<button data-act="lfilter" data-r="${r}" class="${this.lineFilter === r ? 'on' : ''}">${resIcon(r)}${RES[r].name} <b>${s.lines.filter(l => this.lineRes(l).includes(r)).length}</b></button>`).join('')}</div>` : '';
+    const shown = this.lineFilter === 'all' ? s.lines : s.lines.filter(l => this.lineRes(l).includes(this.lineFilter as ResId));
+    const rows = tabs + shown.map(l => this.lineCard(l)).join('');
     return `<h2 class="ph">${IC.lines}Lignes de transport</h2><p class="muted">Chaque ligne relie des arrêts : on y charge une ou plusieurs ressources, puis on les décharge plus loin (entrepôt, atelier, ville ou poste-frontière).</p>
       ${rows || '<p>Aucune ligne pour l\'instant.</p>'}<div class="actions"><button class="primary" data-act="newline">Nouvelle ligne</button>
       ${s.lines.length ? `<button data-act="pauseall">${s.lines.every(l => l.paused) ? '▶ Reprendre toutes' : '⏸ Tout mettre en pause'}</button><button class="danger" data-act="delall">Supprimer toutes les lignes</button>` : ''}</div>`;
@@ -658,7 +677,11 @@ export class Game {
         what = `<div class="chips sel">${st.res.map(r => `<button class="reschip" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">${resChip(r)} ✕</button>`).join('') || '<small class="warn">choisis au moins une ressource</small>'}</div>
           <select data-field="addres" data-i="${i}"><option value="">+ Ajouter une ressource…</option>
           ${sugg.filter(r => others.includes(r)).map(opt).join('')}<option disabled>──────</option>${others.filter(r => !sugg.includes(r)).map(opt).join('')}</select>`;
-      } else what = `<small class="muted">Dépose tout ce que le bâtiment accepte${b?.city || b?.partner ? ' (vente)' : ''}.</small>`;
+      } else {
+        const sh = st.share ?? 100;
+        what = `<label class="share">Déposer <select data-field="share" data-i="${i}">${[100, 75, 66, 50, 33, 25, 10].map(p => `<option value="${p}" ${sh === p ? 'selected' : ''}>${p === 100 ? 'tout le reste' : p + ' % du chargement'}</option>`).join('')}</select></label>
+          <small class="muted">${b?.city || b?.partner ? 'Vente' : 'Dépôt'}${sh < 100 ? ` de ${sh} % de ce qui a été chargé au départ ; le reste continue vers l'arrêt suivant` : ' de tout ce que le bâtiment accepte'}.</small>`;
+      }
       return `<div class="stop"><span class="n" style="background:${l.color}">${i + 1}</span><span class="grow">${role} <b>${esc(b?.name ?? '?')}</b> ${warn}<br>
         <select data-field="action" data-i="${i}"><option value="load" ${st.action === 'load' ? 'selected' : ''}>Charger</option><option value="unload" ${st.action === 'unload' ? 'selected' : ''}>Décharger</option></select>
         ${what}</span>
@@ -741,6 +764,7 @@ export class Game {
 
   // ---------- Arbre de recherche (plein écran) ----------
   private treeSel: string | null = null;
+  private lineFilter: ResId | 'all' = 'all';
   private treeKey = '';
   openTree() { $('treeView').hidden = false; this.treeKey = ''; this.renderTree(); }
   closeTree() { $('treeView').hidden = true; }
@@ -904,8 +928,10 @@ export class Game {
       }
       case 'research': this.sim.research(t.dataset.id!); break;
       case 'nextera': this.notifier().chapter(); break;
-      case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; const n = b.staff; this.sim.staffing(); this.toast(b.paused ? `${b.name} : production en pause, ${n} ouvrier${n > 1 ? 's' : ''} libéré${n > 1 ? 's' : ''} pour les autres ateliers.` : `${b.name} : production relancée.`); } break; }
+      case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; const n = b.staff, site = !b.built || b.upgrading; this.sim.staffing();
+        this.toast(site ? (b.paused ? `${b.name} : chantier en pause.` : `${b.name} : chantier relancé.`) : b.paused ? `${b.name} : production en pause, ${n} ouvrier${n > 1 ? 's' : ''} libéré${n > 1 ? 's' : ''} pour les autres ateliers.` : `${b.name} : production relancée.`); } break; }
       case 'pausel': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) { l.paused = !l.paused; this.toast(l.paused ? 'Ligne en pause : les véhicules chargés terminent leur livraison, puis s\'arrêtent.' : 'Ligne relancée.'); } break; }
+      case 'lfilter': this.lineFilter = t.dataset.r as ResId | 'all'; break;
       case 'pauseall': { const all = s.lines.every(l => l.paused); for (const l of s.lines) l.paused = !all; break; }
       case 'delall': this.modal(`<h2>Supprimer toutes les lignes ?</h2><p>Les ${s.lines.length} lignes seront supprimées et leurs ${s.vehicles.filter(v => v.line >= 0).length} véhicules revendus à moitié prix. Les routes ne sont pas touchées.</p>`, [
         { label: 'Annuler' }, { label: 'Tout supprimer', primary: true, fn: () => { for (const v of s.vehicles.filter(x => x.line >= 0)) sellVehicle(s, v); s.lines = []; this.view.selectedLine = null; this.toast('Toutes les lignes ont été supprimées.'); this.refresh(); } }]); break;
@@ -945,6 +971,7 @@ export class Game {
         st.action = t.value as 'load' | 'unload';
         if (st.action === 'load' && !st.res.length && b) st.res = this.suggestRes(b).slice(0, 1);
       } break;
+      case 'share': if (l) l.stops[Number(t.dataset.i)].share = Number(t.value); break;
       case 'addres': if (l && t.value) { const st = l.stops[Number(t.dataset.i)]; if (!st.res.includes(t.value as ResId)) st.res.push(t.value as ResId); } break;
       case 'depfilter': this.view.depositFilter = t.value as ResId | 'all'; this.view.layers.deposits = true; break;
     }

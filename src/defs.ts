@@ -232,12 +232,13 @@ export const PARTNERS: Partner[] = [
 ];
 
 // ---- Véhicules ----
-export type VType = 'charrette' | 'chariot' | 'barge' | 'convoi';
+export type VType = 'charrette' | 'chariot' | 'barge' | 'convoi' | 'chaland';
 export interface VDef { name: string; cap: number; speed: number; price: number; upkeep: number; tech?: string; water?: boolean; }
 export const VEH: Record<VType, VDef> = {
   charrette: { name: 'Charrette à bœufs', cap: 4, speed: 18, price: 120, upkeep: 2 },
   chariot: { name: 'Chariot à chevaux', cap: 3, speed: 32, price: 220, upkeep: 4, tech: 'attelage' },
   barge: { name: 'Barge fluviale', cap: 12, speed: 26, price: 300, upkeep: 3, tech: 'navigation', water: true },
+  chaland: { name: 'Chaland de chantier', cap: 10, speed: 22, price: 0, upkeep: 0, water: true },
   convoi: { name: 'Convoi de chantier', cap: 6, speed: 20, price: 0, upkeep: 0 },
 };
 

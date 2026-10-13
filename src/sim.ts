@@ -218,7 +218,12 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
     if (!p.buys.includes(res) || partnerMods(s, p.id).closed) return 0;
     return Math.max(0, partnerVolume(s, p.id) - (s.stats.soldMonth[p.id] ?? 0));
   }
-  if (!b.built) return 0;
+  // chantier : accepte les matériaux qui lui manquent encore (livrés par une ligne)
+  if (!b.built || b.upgrading) {
+    const left = (b.need[res] ?? 0) - (b.incoming[res] ?? 0);
+    if (left > 0) return left;
+    if (!b.built) return 0;
+  }
   if (isStore(b)) {
     const total = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
     return Math.max(0, d.storage * b.level - total);
@@ -236,6 +241,11 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
     s.market[key] = Math.max(0.4, (s.market[key] ?? 1) * (1 - (b.partner ? 0.012 : 0.004) * qty));
     if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
     else { s.stats.sold[b.partner!] = (s.stats.sold[b.partner!] ?? 0) + qty; s.stats.soldMonth[b.partner!] = (s.stats.soldMonth[b.partner!] ?? 0) + qty; }
+  } else if ((!b.built || b.upgrading) && (b.need[res] ?? 0) > 0) {
+    // matériaux livrés directement sur le chantier
+    const used = Math.min(qty, b.need[res]!);
+    b.need[res]! -= used; if (b.need[res]! <= 0.001) delete b.need[res];
+    if (qty > used) { b.stock[res] = (b.stock[res] ?? 0) + qty - used; }
   } else { b.stock[res] = (b.stock[res] ?? 0) + qty; addFlow(b, 'in', res, qty); }
 }
 
@@ -322,7 +332,7 @@ export class Sim {
   construction(dt: number) {
     const s = this.s;
     for (const b of s.buildings) {
-      if (b.built && !b.upgrading) continue;
+      if ((b.built && !b.upgrading) || b.paused) continue;   // chantier en pause : les travaux s'arrêtent
       const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
       if (left > 0.001) continue;
       b.work += dt;
@@ -343,27 +353,36 @@ export class Sim {
 
   dispatchConvoys() {
     const s = this.s;
-    const sites = s.buildings.filter(b => (!b.built || b.upgrading) && b.node !== null);
+    const sites = s.buildings.filter(b => (!b.built || b.upgrading) && !b.paused && (b.node !== null || BUILD[b.type].river));
     if (!sites.length) return;
-    const stores = s.buildings.filter(b => isStore(b) && b.built && b.node !== null);
+    const stores = s.buildings.filter(b => isStore(b) && b.built);
     for (const site of sites) {
       const active = s.vehicles.filter(v => v.line === -1 && v.target === site.id).length;
       if (active >= 3) continue;
       const missing = (Object.keys(site.need) as ResId[]).filter(r => (site.need[r] ?? 0) - (site.incoming[r] ?? 0) > 0.001);
       if (!missing.length) continue;
-      const { dist } = dijkstra(s, site.node!);
-      const cands = stores.filter(w => w.id !== site.id && dist.has(w.node!) && missing.some(r => (w.stock[r] ?? 0) >= 1))
-        .sort((a, z) => dist.get(a.node!)! - dist.get(z.node!)!);
-      const w = cands[0];
-      if (!w) continue;
-      const r = missing.find(x => (w.stock[x] ?? 0) >= 1)!;
-      const qty = Math.min(VEH.convoi.cap, Math.floor(w.stock[r]!), Math.ceil(site.need[r]! - (site.incoming[r] ?? 0)));
+      const has = (w: Building) => w.id !== site.id && missing.some(r => (w.stock[r] ?? 0) >= 1);
+      // 1) par la route, depuis l'entrepôt relié le plus proche
+      let w: Building | undefined, path: { pts: { x: number; y: number }[]; speed: number[] } | null = null, boat = false;
+      if (site.node !== null) {
+        const { dist } = dijkstra(s, site.node);
+        w = stores.filter(x => x.node !== null && dist.has(x.node) && has(x)).sort((a, z) => dist.get(a.node!)! - dist.get(z.node!)!)[0];
+        if (w) path = findPath(s, w.node!, site.node);
+      }
+      // 2) un port en chantier peut être ravitaillé par bateau depuis un entrepôt ou un port au bord d'un fleuve
+      if (!path && BUILD[site.type].river) {
+        const cands = stores.filter(x => has(x) && this.geo.nearestNav(x.x, x.y, 4))
+          .map(x => ({ x, p: this.geo.riverPath(x.x, x.y, site.x, site.y) })).filter(o => o.p).sort((a, z) => a.p!.len - z.p!.len);
+        if (cands[0]) { w = cands[0].x; const p = cands[0].p!; path = { pts: p.pts, speed: p.pts.slice(1).map(() => 1) }; boat = true; }
+      }
+      if (!w || !path) continue;
+      const type: VType = boat ? 'chaland' : 'convoi';
+      const r = missing.find(x => (w!.stock[x] ?? 0) >= 1)!;
+      const qty = Math.min(VEH[type].cap, Math.floor(w.stock[r]!), Math.ceil(site.need[r]! - (site.incoming[r] ?? 0)));
       if (qty <= 0) continue;
-      const path = findPath(s, w.node!, site.node!);
-      if (!path) continue;
       w.stock[r]! -= qty; addFlow(w, 'out', r, qty);
       site.incoming[r] = (site.incoming[r] ?? 0) + qty;
-      const v = newVehicle(s, 'convoi', -1, w);
+      const v = newVehicle(s, type, -1, w);
       v.cargo = { [r]: qty }; v.target = site.id; v.from = w.id; v.at = null;
       setPath(v, path);
       s.vehicles.push(v);
@@ -522,9 +541,12 @@ export class Sim {
       // attend d'être plein, au plus 6 jours
       if ((cargoTotal(v.cargo) >= cap || v.timer >= 6 || !st.res.length) && v.timer >= 0.5) this.next(v);
     } else {
+      const share = st.share ?? 100, drop = v.drop ??= {};
       for (const [r, q] of Object.entries(v.cargo) as [ResId, number][]) {
-        const n = Math.min(q, Math.floor(accepts(s, b, r)));
-        if (n > 0) { deliver(s, b, r, n, v); v.cargo[r] = q - n; }
+        // part à déposer ici : un pourcentage du chargement de départ (100 % = tout ce qui reste)
+        const allow = share >= 100 ? q : Math.max(0, Math.round((v.ref?.[r] ?? q) * share / 100) - (drop[r] ?? 0));
+        const n = Math.min(q, allow, Math.floor(accepts(s, b, r)));
+        if (n > 0) { deliver(s, b, r, n, v); v.cargo[r] = q - n; drop[r] = (drop[r] ?? 0) + n; }
         if ((v.cargo[r] ?? 0) <= 0) delete v.cargo[r];
       }
       if (v.timer >= 0.5) this.next(v);
@@ -532,6 +554,9 @@ export class Sim {
   }
   private next(v: Vehicle) {
     const l = this.s.lines.find(x => x.id === v.line)!;
+    // en quittant un arrêt de chargement, on mémorise le chargement (base des pourcentages de déchargement)
+    if (l.stops[v.stop % l.stops.length]?.action === 'load') v.ref = { ...v.cargo };
+    v.drop = {};
     v.stop = (v.stop + 1) % l.stops.length;
     if (!this.route(v)) { v.state = 'lost'; v.timer = 2; }
   }
@@ -568,7 +593,7 @@ export class Sim {
       let t = 0; for (let i = 0; i < TIERS.length; i++) if (city.pop >= TIERS[i].minPop) t = i;
       if (t > city.tier) this.notify.toast(`${c.name} devient un${t === 3 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
       city.tier = t;
-      s.rp += 0.4 + city.pop / 1000;
+      s.rp += 0.2 + city.pop / 2500;   // recherche volontairement lente : chaque technologie se mérite
     }
     for (const k of Object.keys(s.market)) {
       const m = s.market[k] + (1 - s.market[k]) * 0.08 + (Math.random() - 0.5) * 0.04;
@@ -705,7 +730,9 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     if (b.node === null) return { label: 'Non relié', level: 'info', hint: 'Trace une route jusqu\'à ce poste pour y commercer.' };
     return { label: 'Commerce ouvert', level: 'good' };
   }
+  if ((!b.built || b.upgrading) && b.paused) return { label: 'Chantier en pause', level: 'info', hint: 'Les livraisons et les travaux sont suspendus.' };
   if (!b.built || b.upgrading) {
+    if (b.node === null && d.river) return { label: 'Chantier : livraison par bateau', level: 'info', hint: 'Sans route, les matériaux arrivent par le fleuve depuis un entrepôt ou un port au bord de l\'eau.' };
     if (b.node === null) return { label: 'Chantier non relié', level: 'warn', hint: 'Trace une route jusqu\'à un entrepôt pour livrer les matériaux.' };
     const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
     return { label: left > 0 ? (b.upgrading ? 'Amélioration : livraison' : 'Chantier : livraison') : (b.upgrading ? 'Amélioration en cours' : 'Travaux en cours'), level: 'info' };

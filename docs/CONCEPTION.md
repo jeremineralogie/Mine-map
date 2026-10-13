@@ -53,6 +53,8 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 - Départ : un petit capital et un petit stock de matériaux dans un **entrepôt de départ**.
 - Chaque bâtiment coûte de l'argent **et des matériaux livrés sur le chantier** par
   charrette depuis un entrepôt relié par route.
+- Un chantier peut être mis en pause. Les lignes peuvent aussi livrer des matériaux sur un chantier.
+- Un port fluvial non relié par la route est ravitaillé par chaland depuis un entrepôt ou un port au bord du fleuve.
 - La construction prend un peu de temps ; chaque **amélioration** prend plus de temps
   que la précédente.
 - Le **relief** influence le coût des routes ; traverser un fleuve impose un **pont**.
@@ -69,9 +71,12 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 - Routes **dessinées à la main** (et supprimables). Une route peut partir d'un bâtiment, d'un carrefour,
   du terrain ou **du milieu d'une route existante** (un carrefour y est créé). Deux routes qui se croisent
   forment automatiquement un carrefour. Les véhicules empruntent le chemin le plus rapide du réseau.
+  Dès que la route atteint un bâtiment, un carrefour ou une route existante, le tracé se termine et l'on
+  revient à la sélection ; un point en terrain libre ajoute un virage. Le clic droit ramène à la sélection.
 - **Chaque ligne est créée à la main** : véhicule, arrêts dans l'ordre (départ → étapes → arrivée, puis retour),
   et à chaque arrêt de chargement **une ou plusieurs ressources** : un véhicule peut transporter plusieurs
-  matériaux à la fois, dans la limite de sa capacité.
+  matériaux à la fois, dans la limite de sa capacité. À chaque arrêt de déchargement, on choisit la part
+  du chargement de départ à déposer (25 %, 50 %, tout le reste…).
 - Sur la carte, une ligne est tracée le long de ses routes, avec le sens de circulation, les arrêts
   numérotés, le départ, l'arrivée et les matériaux chargés.
 - Les véhicules sont **visibles** et se déplacent sur la carte.

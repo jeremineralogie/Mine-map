@@ -80,7 +80,7 @@ const SVG: Record<BType, string> = {
 };
 
 // Véhicules vus du dessus, orientés vers la droite (angle 0)
-const VSVG: Record<VType, string> = {
+const VSVG: Record<Exclude<VType, 'chaland'>, string> & Partial<Record<VType, string>> = {
   charrette:
     `<g transform="translate(0 4)">` +
     `<rect x="4" y="13" width="28" height="22" rx="2" fill="#a0784c" stroke="#4a3320" stroke-width="1.5"/>` +
@@ -118,6 +118,7 @@ function toImg(svg: string) {
 }
 
 export const BICON = Object.fromEntries(Object.entries(SVG).map(([k, v]) => [k, toImg(v)])) as Record<BType, HTMLImageElement>;
+(VSVG as Record<string, string>).chaland = VSVG.barge;
 export const VICON = Object.fromEntries(Object.entries(VSVG).map(([k, v]) => [k, toImg(v)])) as Record<VType, HTMLImageElement>;
 /** URL d'icône pour l'interface HTML */
 export const bIconUrl = (t: BType) => BICON[t].src;

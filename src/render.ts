@@ -24,6 +24,8 @@ export interface View {
   selectedLine: number | null;
   /** lignes à afficher sur la carte (tracé, sens, départ et arrivée) */
   showLines: number[];
+  /** ligne survolée dans un panneau : mise en surbrillance */
+  hoverLine: number | null;
   /** état d'un bâtiment (pastille d'alerte sur la carte) */
   status?: (b: Building) => { level: 'good' | 'info' | 'warn' | 'bad' };
   draft: { pts: { x: number; y: number }[]; cursor: { x: number; y: number } | null; valid: boolean; snap?: 'building' | 'node' | 'edge' | null } | null;
@@ -117,11 +119,15 @@ export class Renderer {
     if (v.layers.deposits) this.drawDeposits(s, v);
     this.drawGardSite(s);
     this.drawRoads(s, v);
-    const lines = v.showLines.map(id => s.lines.find(l => l.id === id)).filter(Boolean) as Line[];
-    for (const l of lines) this.drawLinePath(s, l, v.selectedLine === l.id || lines.length === 1);
+    const ids = v.hoverLine !== null && !v.showLines.includes(v.hoverLine) ? [...v.showLines, v.hoverLine] : v.showLines;
+    const lines = ids.map(id => s.lines.find(l => l.id === id)).filter(Boolean) as Line[];
+    const hl = v.hoverLine !== null ? lines.find(l => l.id === v.hoverLine) : undefined;
+    // ligne survolée : les autres s'estompent, elle passe au premier plan
+    for (const l of lines) if (l !== hl) this.drawLinePath(s, l, !hl && (v.selectedLine === l.id || lines.length === 1), hl ? 0.18 : 1);
+    if (hl) this.drawLinePath(s, hl, true, 1, true);
     this.drawBuildings(s, v, time);
     this.drawVehicles(s, v);
-    for (const l of lines) this.drawLineBadges(s, l);
+    for (const l of hl ? [hl] : lines) this.drawLineBadges(s, l);
     this.drawDraft(v);
     this.drawGhost(s, v);
   }
@@ -230,7 +236,7 @@ export class Renderer {
     }
     return legs;
   }
-  private drawLinePath(s: GameState, l: Line, strong: boolean) {
+  private drawLinePath(s: GameState, l: Line, strong: boolean, alpha = 1, glow = false) {
     const ctx = this.ctx, legs = this.legs(s, l), n = l.stops.length;
     this.screen();
     legs.forEach((pts, i) => {
@@ -240,7 +246,8 @@ export class Renderer {
       if (sp.length < 2) return;
       const path = () => { ctx.beginPath(); sp.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
       ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-      ctx.globalAlpha = strong ? 1 : 0.75;
+      ctx.globalAlpha = (strong ? 1 : 0.75) * alpha;
+      if (glow) { path(); ctx.strokeStyle = l.color; ctx.globalAlpha = 0.25; ctx.lineWidth = 18; ctx.stroke(); ctx.globalAlpha = 1; }
       if (!pts.length) ctx.setLineDash([6, 6]);           // pas d'itinéraire : tracé en pointillés
       else if (ret) ctx.setLineDash([2, 7]);              // trajet retour : pointillés fins
       path(); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = (ret ? 4 : strong ? 9 : 6); ctx.stroke();
