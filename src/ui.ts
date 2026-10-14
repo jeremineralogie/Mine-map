@@ -8,7 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
-import {
+import { foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPartnersOf, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
@@ -557,6 +557,17 @@ export class Game {
     if (b.city) {
       const c = b.city, needs = cityNeeds(b), next = TIERS[c.tier + 1];
       h += this.kpis([[fmt(c.pop), 'habitants'], [fmt(c.pop * 0.4), `ouvriers (rayon ${workRange(b, s)} km)`], [`${Math.round(c.foodSat * 100)} %`, 'nourriture', c.foodSat >= 0.9 ? 'good' : c.foodSat >= 0.5 ? 'warn' : 'bad'], [`${Math.round(c.sat * 100)} %`, 'confort', c.sat >= 0.9 ? 'good' : c.sat >= 0.5 ? 'warn' : 'bad']]);
+      {
+        const fr = foodReserve(b), fq = needs.cereales ?? 0;
+        const got = c.lastGot, short = got !== undefined && got < fq * 0.98;
+        const why = c.foodSat < 0.98 ? 'La ville manque de céréales : des habitants s\'en vont.'
+          : fr < RESERVE_TO_GROW ? `Il faut au moins ${RESERVE_TO_GROW} mois de réserve pour grandir : livre un peu plus que ce qu'elle mange.`
+          : short ? 'La ville vit sur sa réserve : elle ne grandit que si elle reçoit au moins ce qu\'elle mange.'
+          : c.growing === false ? 'La ville ne grandit pas ce mois-ci.' : 'Réserve suffisante et livraisons régulières : la ville grandit.';
+        h += `<div class="reserve ${fr >= RESERVE_TO_GROW && !short ? 'good' : fr >= 0.25 ? 'warn' : 'bad'}">${resIcon('cereales', 'ri big')}<div><b>Réserve : ${fr >= 1 ? `${fr.toFixed(1).replace('.', ',')} mois` : fr > 0.02 ? `${Math.round(fr * 30)} jours` : 'vide'}</b>
+          <small>${fmt(c.stock.cereales ?? 0)} t de céréales · mange ${fq.toFixed(1)} t/mois, chaque jour${got !== undefined ? ` · reçu le mois dernier : ${fmt(got)} t` : ''}</small>
+          <small>${why}</small></div></div>`;
+      }
       if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
       h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
         const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 6 * 100);
@@ -572,7 +583,8 @@ export class Game {
 
     if (d.recipe && b.built) {
       const need = this.sim.workersNeeded(b), rate = this.sim.rate(b), cap = d.storage * b.level;
-      const items: [string, string, string?][] = [[`${rate.toFixed(1)} t`, 'par mois', rate > 0 ? 'good' : 'bad'], [`${b.staff} / ${need}`, b.staff > need ? `ouvriers (+${Math.round(50 * (b.staff - need) / need)} % de renfort)` : 'ouvriers', b.staff >= need ? 'good' : b.staff ? 'warn' : 'bad']];
+      const outR = Object.keys(d.recipe.out)[0] as ResId, real = b.flow ? b.flow.pin[outR] ?? 0 : undefined;
+      const items: [string, string, string?][] = [[real === undefined ? '—' : `${fmt(real)} t`, 'produites le mois dernier (réel)', real === undefined ? undefined : real >= rate * 0.8 ? 'good' : real > 0 ? 'warn' : 'bad'], [`${rate.toFixed(1)} t`, 'par mois au maximum', rate > 0 ? 'good' : 'bad'], [`${b.staff} / ${need}`, b.staff > need ? `ouvriers (+${Math.round(50 * (b.staff - need) / need)} % de renfort)` : 'ouvriers', b.staff >= need ? 'good' : b.staff ? 'warn' : 'bad']];
       if (d.deposit && b.dep !== null) items.push([`${Math.round(this.sim.depositFactor(b) / b.rich * 100)} %`, 'rendement du gisement']);
       items.push([`${fmt(b.produced)} t`, 'produites au total']);
       h += this.kpis(items);
@@ -805,7 +817,7 @@ export class Game {
     }).join('')}<p class="muted">Relie un poste-frontière par la route, puis livre-lui des marchandises avec une ligne, ou achète-lui des ressources depuis sa fiche.</p>`;
 
     // bilan des ressources
-    const stock: Stock = {}, prod: Stock = {}, use: Stock = {}, cityStock: Stock = {};
+    const stock: Stock = {}, prod: Stock = {}, real: Stock = {}, use: Stock = {}, cityStock: Stock = {};
     const add = (o: Stock, r: ResId, q: number) => { o[r] = (o[r] ?? 0) + q; };
     for (const b of s.buildings) {
       if (b.city) { for (const [r, q] of Object.entries(cityNeeds(b)) as [ResId, number][]) { add(use, r, q); add(cityStock, r, b.city.stock[r] ?? 0); } continue; }
@@ -813,36 +825,36 @@ export class Game {
       const d = BUILD[b.type];
       if (d.recipe && b.built) {
         const rate = this.sim.rate(b), main = Object.values(d.recipe.out)[0]!;
-        for (const [r, q] of Object.entries(d.recipe.out) as [ResId, number][]) add(prod, r, rate * q / main);
+        for (const [r, q] of Object.entries(d.recipe.out) as [ResId, number][]) { add(prod, r, rate * q / main); add(real, r, b.flow?.pin[r] ?? 0); }
         for (const [r, q] of Object.entries(d.recipe.in) as [ResId, number][]) add(use, r, rate * q / main);
       }
     }
     const res = (Object.keys(RES) as ResId[]).filter(r => (stock[r] ?? 0) >= 0.5 || (prod[r] ?? 0) > 0 || (use[r] ?? 0) > 0);
     if (this.ecoTab !== 'all' && !res.includes(this.ecoTab)) this.ecoTab = 'all';
     const tabs = `<div class="tabs"><button data-act="ecotab" data-r="all" class="${this.ecoTab === 'all' ? 'on' : ''}">Vue d'ensemble</button>${res.map(r => `<button data-act="ecotab" data-r="${r}" class="${this.ecoTab === r ? 'on' : ''}">${resIcon(r)}${RES[r].name}</button>`).join('')}</div>`;
-    if (this.ecoTab !== 'all') return `<h2 class="ph">${IC.economy}Économie</h2>${tabs}${this.resourceTab(this.ecoTab, stock, prod, use, cityStock)}`;
+    if (this.ecoTab !== 'all') return `<h2 class="ph">${IC.economy}Économie</h2>${tabs}${this.resourceTab(this.ecoTab, stock, prod, real, use, cityStock)}`;
     h = h.replace(`<h2 class="ph">${IC.economy}Économie</h2>`, `<h2 class="ph">${IC.economy}Économie</h2>${tabs}${this.modsHtml()}`);
     h += `<h3>Ressources (par mois)</h3>`;
-    h += res.length ? `<table class="eco"><tr><th></th><th class="num">stock</th><th class="num">produit</th><th class="num">consommé</th><th class="num">bilan</th></tr>
+    h += res.length ? `<table class="eco"><tr><th></th><th class="num">stock</th><th class="num">produit<br><small>réel / max</small></th><th class="num">consommé</th><th class="num">bilan</th></tr>
       ${res.map(r => {
         const bal = (prod[r] ?? 0) - (use[r] ?? 0);
-        return `<tr class="click" data-act="ecotab" data-r="${r}"><td>${resChip(r)}</td><td class="num">${fmt(stock[r] ?? 0)}</td><td class="num">${(prod[r] ?? 0).toFixed(1)}</td><td class="num">${(use[r] ?? 0).toFixed(1)}</td>
+        return `<tr class="click" data-act="ecotab" data-r="${r}"><td>${resChip(r)}</td><td class="num">${fmt(stock[r] ?? 0)}</td><td class="num">${(prod[r] ?? 0) > 0 ? `${fmt(real[r] ?? 0)} <small class="muted">/ ${(prod[r] ?? 0).toFixed(1)}</small>` : '0'}</td><td class="num">${(use[r] ?? 0).toFixed(1)}</td>
           <td class="num ${bal > 0.05 ? 'pos' : bal < -0.05 ? 'neg' : ''}">${bal > 0.05 ? '▲ +' : bal < -0.05 ? '▼ −' : ''}${Math.abs(bal).toFixed(1)}</td></tr>`;
       }).join('')}</table>
-      <p class="muted">Touche une ressource pour voir le détail. Stock : entrepôts et ateliers. Consommé : besoins des villes et matières premières des ateliers, à plein régime.</p>`
+      <p class="muted">Touche une ressource pour voir le détail. Stock : entrepôts et ateliers. Produit : réellement le mois dernier / maximum théorique. Consommé : besoins des villes et matières premières des ateliers, à plein régime. Le bilan compare les maximums.</p>`
       : '<p class="muted">Aucune ressource pour l\'instant.</p>';
     return h;
   }
 
   /** Onglet d'une ressource : qui la produit, qui la consomme, où elle est stockée, à quel prix */
-  private resourceTab(r: ResId, stock: Stock, prod: Stock, use: Stock, cityStock: Stock): string {
+  private resourceTab(r: ResId, stock: Stock, prod: Stock, real: Stock, use: Stock, cityStock: Stock): string {
     const s = this.s, bal = (prod[r] ?? 0) - (use[r] ?? 0);
     let h = `<div class="res-head">${resIcon(r, 'ri huge')}<div><h3>${RES[r].name}</h3><small class="muted">Prix de base ${RES[r].price} sesterces la tonne</small></div></div>`;
-    h += this.kpis([[`${fmt(stock[r] ?? 0)} t`, 'en stock'], [`${(prod[r] ?? 0).toFixed(1)} t`, 'produit / mois'], [`${(use[r] ?? 0).toFixed(1)} t`, 'consommé / mois'],
+    h += this.kpis([[`${fmt(stock[r] ?? 0)} t`, 'en stock'], [`${fmt(real[r] ?? 0)} t`, 'produit le mois dernier (réel)'], [`${(prod[r] ?? 0).toFixed(1)} t`, 'produit / mois au maximum'], [`${(use[r] ?? 0).toFixed(1)} t`, 'consommé / mois'],
       [`${bal >= 0 ? '+' : '−'}${Math.abs(bal).toFixed(1)} t`, 'bilan / mois', bal > 0.05 ? 'good' : bal < -0.05 ? 'bad' : '']]);
     const row = (b: Building, main: string, sub: string) => `<button class="row" data-act="goto" data-id="${b.id}"><img class="vic" src="${bIconUrl(b.type)}" alt=""><span class="grow"><b>${esc(b.name.split(' — ')[0])}</b><br><small class="muted">${sub}</small></span><b class="num">${main}</b></button>`;
     const producers = s.buildings.filter(b => b.built && BUILD[b.type].recipe?.out[r]);
-    h += `<h3>Production</h3>${producers.map(b => { const d = BUILD[b.type], rate = this.sim.rate(b) * d.recipe!.out[r]! / Object.values(d.recipe!.out)[0]!; return row(b, `${rate.toFixed(1)} t/mois`, `${buildingStatus(this.sim, b).label} · stock ${fmt(b.stock[r] ?? 0)} t`); }).join('') || '<p class="muted">Aucun bâtiment ne produit cette ressource.</p>'}`;
+    h += `<h3>Production</h3>${producers.map(b => { const d = BUILD[b.type], rate = this.sim.rate(b) * d.recipe!.out[r]! / Object.values(d.recipe!.out)[0]!; const real = b.flow ? b.flow.pin[r] ?? 0 : undefined; return row(b, `${real === undefined ? '—' : fmt(real)} t <small class="muted">/ ${rate.toFixed(1)} max</small>`, `réel le mois dernier / maximum théorique · ${buildingStatus(this.sim, b).label} · stock ${fmt(b.stock[r] ?? 0)} t`); }).join('') || '<p class="muted">Aucun bâtiment ne produit cette ressource.</p>'}`;
     const cityUsers = s.buildings.filter(b => b.city && b.built && cityNeeds(b)[r]);
     const shops = s.buildings.filter(b => b.built && BUILD[b.type].recipe?.in[r]);
     h += `<h3>Consommation</h3>${cityUsers.map(b => { const q = cityNeeds(b)[r]!; const m = q ? (b.city!.stock[r] ?? 0) / q : 0; return row(b, `${q.toFixed(1)} t/mois`, `${TIERS[b.city!.tier].name} · réserve ${m >= 1 ? Math.floor(m) + ' mois' : 'moins d\'un mois'} · achète ${priceAt(s, b, r).toFixed(1)} sest./t`); }).join('')}

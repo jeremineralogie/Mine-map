@@ -216,6 +216,14 @@ export function priceAt(s: GameState, b: Building, res: ResId) {
   if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1); }
   return base * (1 + 0.1 * (b.city?.tier ?? 0)) * demandMult(s, res);
 }
+/** Réserve de céréales d'une ville, en mois de consommation */
+export function foodReserve(b: Building) {
+  const q = cityNeeds(b).cereales ?? 0;
+  return q > 0 ? (b.city!.stock.cereales ?? 0) / q : 99;
+}
+/** Une ville ne grandit que si elle est nourrie, garde au moins un mois de céréales d'avance
+ *  et reçoit au moins ce qu'elle mange (elle ne grandit pas en vidant sa réserve) */
+export const RESERVE_TO_GROW = 1;
 export function cityNeeds(b: Building): Stock {
   const c = b.city!; const t = TIERS[c.tier], out: Stock = {};
   for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * c.pop / 100;
@@ -264,7 +272,7 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
     s.money += gain; s.stats.income += gain; if (v) v.income += gain;
     const key = b.id + ':' + res;
     s.market[key] = Math.max(0.4, (s.market[key] ?? 1) * (1 - (b.partner ? 0.012 : 0.004) * qty));
-    if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
+    if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; const got = b.city.got ??= {}; got[res] = (got[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
     else { s.stats.sold[b.partner!] = (s.stats.sold[b.partner!] ?? 0) + qty; s.stats.soldMonth[b.partner!] = (s.stats.soldMonth[b.partner!] ?? 0) + qty; }
   } else if (b.type === 'port_mer' && b.built) {
     // vend au partenaire d'outre-mer qui paie le mieux, dans la limite de son volume mensuel
@@ -376,6 +384,7 @@ export class Sim {
     this.staffing();
     this.construction(dtDays);
     this.production(dtDays);
+    this.consumption(dtDays);
     this.vehicles(dtDays);
     this.dispatchTimer -= dtDays;
     if (this.dispatchTimer <= 0) { this.dispatchTimer = 1; this.dispatchConvoys(); }
@@ -513,6 +522,18 @@ export class Sim {
         b.produced += 1;
         if (b.dep !== null) s.extracted[b.dep] = (s.extracted[b.dep] ?? 0) + 1;
         b.acc -= 1;
+      }
+    }
+  }
+
+  // ----- Consommation des villes, au jour le jour -----
+  consumption(dt: number) {
+    for (const c of cities(this.s)) {
+      const city = c.city!, want = city.want ??= {}, ate = city.ate ??= {};
+      for (const [r, q] of Object.entries(cityNeeds(c)) as [ResId, number][]) {
+        const w = q * dt / MONTH, have = city.stock[r] ?? 0, t = Math.min(have, w);
+        city.stock[r] = have - t;
+        want[r] = (want[r] ?? 0) + w; ate[r] = (ate[r] ?? 0) + t;
       }
     }
   }
@@ -658,15 +679,18 @@ export class Sim {
     const growthMult = s.mods.filter(m => m.kind === 'growth' && m.until > s.day).reduce((a, m) => a * m.mult, 1) * (s.techs.includes('urbanisme') ? 1.25 : 1);
     for (const c of cities(s)) {
       const city = c.city!;
-      const needs = cityNeeds(c);
+      const want = city.want ?? {}, ate = city.ate ?? {};
       let satSum = 0, n = 0;
-      for (const [r, q] of Object.entries(needs) as [ResId, number][]) {
-        const have = city.stock[r] ?? 0, sat = q > 0 ? Math.min(1, have / q) : 1;
-        city.stock[r] = Math.max(0, have - q);
+      for (const r of Object.keys(cityNeeds(c)) as ResId[]) {
+        const w = want[r] ?? 0, sat = w > 0 ? Math.min(1, (ate[r] ?? 0) / w) : 1;
         if (r === 'cereales') city.foodSat = sat; else { satSum += sat; n++; }
       }
+      const supplied = (city.got?.cereales ?? 0) >= (want.cereales ?? 0) * 0.98;
+      city.lastGot = city.got?.cereales ?? 0;
+      city.want = {}; city.ate = {}; city.got = {};
       city.sat = n ? satSum / n : 1;
-      if (city.foodSat >= 0.9) {
+      city.growing = city.foodSat >= 0.98 && supplied && foodReserve(c) >= RESERVE_TO_GROW;
+      if (city.growing) {
         let rate = (0.012 + 0.03 * city.sat) * growthMult;
         const next = TIERS[city.tier + 1];
         // pour passer au palier suivant, la ville doit déjà recevoir ses nouveaux biens
@@ -675,7 +699,10 @@ export class Sim {
           if (newGoods.some(r => (city.stock[r] ?? 0) <= 0)) { rate = 0; city.pop = Math.min(city.pop, next.minPop - 1); }
         }
         city.pop *= 1 + rate;
-      } else if (city.foodSat < 0.5) city.pop = Math.max(20, city.pop * 0.96);
+      } else if (city.foodSat < 0.98) {
+        // ville mal nourrie : une partie des habitants s'en va, jusqu'à ce que la nourriture suffise
+        city.pop = Math.max(20, city.pop * (1 - Math.min(0.06, 0.3 * (1 - city.foodSat))));
+      }
       let t = 0; for (let i = 0; i < TIERS.length; i++) if (city.pop >= TIERS[i].minPop) t = i;
       if (t > city.tier) this.notify.toast(`${c.name} devient un${t === 3 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
       city.tier = t;
@@ -841,6 +868,9 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     const c = b.city;
     if (c.foodSat < 0.5) return { label: 'Famine', level: 'bad', hint: 'Livre des céréales à la ville.' };
     if (c.foodSat < 0.9) return { label: 'Mal nourrie', level: 'warn', hint: 'La ville manque de céréales.' };
+    if (c.foodSat < 0.98) return { label: 'Un peu juste', level: 'warn', hint: 'Il manque un peu de céréales : quelques habitants partent.' };
+    if (foodReserve(b) < RESERVE_TO_GROW) return { label: 'Stable', level: 'info', hint: 'La ville est nourrie mais ne grandit pas : il lui faut au moins un mois de céréales en réserve.' };
+    if (c.growing === false) return { label: 'Stable', level: 'info', hint: 'La ville vit sur sa réserve : livre-lui au moins ce qu\'elle mange chaque mois pour qu\'elle grandisse.' };
     if (c.sat < 0.5) return { label: 'Nourrie, peu de confort', level: 'warn', hint: 'Livre aussi les autres biens demandés pour accélérer la croissance.' };
     return { label: 'En croissance', level: 'good' };
   }

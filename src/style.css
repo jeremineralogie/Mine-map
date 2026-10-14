@@ -472,3 +472,12 @@ table.eco tr.click { cursor: pointer; }
 table.eco tr.click:hover td { background: #faf3e6; }
 .row .grow { flex: 1; min-width: 0; text-align: left; line-height: 1.3; }
 .row > .num { white-space: nowrap; }
+
+/* Réserve de nourriture d'une ville */
+.reserve { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; margin: 8px 0; border: 1px solid transparent; }
+.reserve > div { display: flex; flex-direction: column; gap: 2px; }
+.reserve b { font-size: 15px; }
+.reserve small { color: inherit; opacity: .85; }
+.reserve.good { background: #e8f5ea; color: #1f6b2d; border-color: #cbe6cf; }
+.reserve.warn { background: #fff4e3; color: #8a4b00; border-color: #f3dcb6; }
+.reserve.bad { background: #ffeceb; color: #a1251a; border-color: #f5c8c3; }

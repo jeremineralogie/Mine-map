@@ -6,7 +6,15 @@ export type Stock = Partial<Record<ResId, number>>;
 export interface RNode { id: number; x: number; y: number; b?: number; }
 export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; }
 
-export interface City { pop: number; stock: Stock; sat: number; foodSat: number; tier: number; }
+export interface City {
+  pop: number; stock: Stock; sat: number; foodSat: number; tier: number;
+  /** consommation du mois en cours : quantités voulues et réellement mangées (au jour le jour) */
+  want?: Stock; ate?: Stock;
+  /** livraisons reçues ce mois-ci */
+  got?: Stock;
+  /** céréales reçues le mois dernier ; la ville a-t-elle grandi ce mois-ci */
+  lastGot?: number; growing?: boolean;
+}
 
 export interface Building {
   id: number;
