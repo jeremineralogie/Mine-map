@@ -8,7 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
-import { tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
+import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
@@ -32,6 +32,8 @@ const cargoList = (c: Stock) => (Object.entries(c) as [ResId, number][]).filter(
 const costList = (c: Partial<Record<ResId, number>>) => (Object.entries(c) as [ResId, number][]).map(([r, q]) => resChip(r, q)).join(' ');
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
+/** Consommation lisible : « 12,3 t/mois (environ 0,4 t/jour) » */
+const perMonth = (q: number) => { const d = q / 30.44; return `${q.toFixed(1).replace('.', ',')} t/mois (${d >= 0.1 ? `environ ${d.toFixed(1).replace('.', ',')}` : 'moins de 0,1'} t/jour)`; };
 
 export class Game {
   s!: GameState;
@@ -742,10 +744,10 @@ export class Game {
         const why = c.foodSat < 0.98 ? 'La ville manque de céréales : des habitants s\'en vont.'
           : fr < RESERVE_TO_GROW ? `Il faut au moins ${RESERVE_TO_GROW} mois de réserve pour grandir : livre un peu plus que ce qu'elle mange.`
           : short ? 'La ville vit sur sa réserve : elle ne grandit que si elle reçoit au moins ce qu\'elle mange.'
-          : missingNextGoods(b).length ? 'Nourriture suffisante, mais la ville attend les biens du palier suivant pour grandir.'
+          : missingNextGoods(b).length ? `Nourriture suffisante. ${cityShortages(b).map(r => `Manque ${RES[r].name.toLowerCase()}`).join(' · ')}.`
           : c.growing === false ? 'La ville ne grandit pas ce mois-ci.' : 'Réserve suffisante et livraisons régulières : la ville grandit.';
         h += `<div class="reserve ${fr >= RESERVE_TO_GROW && !short ? 'good' : fr >= 0.25 ? 'warn' : 'bad'}">${resIcon('cereales', 'ri big')}<div><b>Réserve : ${fr >= 1 ? `${fr.toFixed(1).replace('.', ',')} mois` : fr > 0.02 ? `${Math.round(fr * 30)} jours` : 'vide'}</b>
-          <small>${fmt(c.stock.cereales ?? 0)} t de céréales · mange ${fq.toFixed(1)} t/mois, chaque jour${got !== undefined ? ` · reçu le mois dernier : ${fmt(got)} t` : ''}</small>
+          <small>${fmt(c.stock.cereales ?? 0)} t de céréales · mange ${perMonth(fq)}${got !== undefined ? ` · reçu le mois dernier : ${fmt(got)} t` : ''}</small>
           <small>${why}</small></div></div>`;
       }
       h += `<p class="muted">Recherche : <b>+${String(RP_TIER[c.tier]).replace('.', ',')} point/mois</b> (palier ${TIERS[c.tier].name.toLowerCase()})${next ? ` · ${String(RP_TIER[c.tier + 1]).replace('.', ',')} en devenant ${next.name.toLowerCase()}` : ''}</p>`;
@@ -755,7 +757,7 @@ export class Game {
         const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 12 * 100);
         return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${months >= 1 ? `${Math.floor(months)} mois` : have > 0.5 ? '< 1 mois' : '<span class="bad">rupture</span>'}</b></div>
           <div class="gauge ${months < 1 ? 'low' : ''}"><i style="width:${pct}%;background:${RES[r].color}"></i></div>
-          <small class="flux muted">${q.toFixed(1)} t/mois · réserve ${fmt(have)} t · achète ${priceAt(s, b, r).toFixed(1)} sest./t</small></div></div>`;
+          <small class="flux muted">${perMonth(q)} · réserve ${fmt(have)} t · achète ${priceAt(s, b, r).toFixed(1)} sest./t</small></div></div>`;
       }).join('')}</div>`;
       if (next) {
         const cur = tierGoods(c.tier, s.era), newGoods = tierGoods(c.tier + 1, s.era).filter(r => !cur.includes(r));

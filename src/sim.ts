@@ -240,6 +240,12 @@ export function missingNextGoods(b: Building): ResId[] {
   const cur = tierGoods(c.tier, era);
   return tierGoods(c.tier + 1, era).filter(r => !cur.includes(r) && (c.stock[r] ?? 0) <= 0);
 }
+/** Ce qui manque à une ville : besoins actuels sans stock, puis biens du palier suivant */
+export function cityShortages(b: Building): ResId[] {
+  const c = b.city!, cur = (Object.keys(cityNeeds(b)) as ResId[]).filter(r => r !== 'cereales' && (c.stock[r] ?? 0) < 0.5);
+  return [...new Set([...cur, ...missingNextGoods(b)])];
+}
+const manque = (rs: ResId[]) => rs.map(r => `Manque ${RES[r].name.toLowerCase()}`).join(' · ');
 /** Une ville ne grandit que si elle est nourrie, garde au moins un mois de céréales d'avance
  *  et reçoit au moins ce qu'elle mange (elle ne grandit pas en vidant sa réserve) */
 export const RESERVE_TO_GROW = 1;
@@ -1060,10 +1066,10 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     if (c.foodSat < 0.9) return { label: 'Mal nourrie', level: 'warn', hint: 'La ville manque de céréales.' };
     if (c.foodSat < 0.98) return { label: 'Un peu juste', level: 'warn', hint: 'Il manque un peu de céréales : quelques habitants partent.' };
     const miss = missingNextGoods(b);
-    if (miss.length) return { label: 'Bloquée avant le palier', level: 'warn', hint: `Pour devenir ${TIERS[c.tier + 1].name.toLowerCase()}, la ville doit recevoir : ${miss.map(r => RES[r].name.toLowerCase()).join(', ')}.` };
+    if (miss.length) return { label: 'Bloquée avant le palier', level: 'warn', hint: manque(cityShortages(b)) };
     if (foodReserve(b) < RESERVE_TO_GROW) return { label: 'Stable', level: 'info', hint: 'La ville est nourrie mais ne grandit pas : il lui faut au moins un mois de céréales en réserve.' };
     if (c.growing === false) return { label: 'Stable', level: 'info', hint: 'La ville vit sur sa réserve : livre-lui au moins ce qu\'elle mange chaque mois pour qu\'elle grandisse.' };
-    if (c.sat < 0.5) return { label: 'Nourrie, peu de confort', level: 'warn', hint: 'Livre aussi les autres biens demandés pour accélérer la croissance.' };
+    if (c.sat < 0.5) return { label: 'Nourrie, peu de confort', level: 'warn', hint: manque(cityShortages(b)) || 'Livre aussi les autres biens demandés pour accélérer la croissance.' };
     return { label: 'En croissance', level: 'good' };
   }
   if (isStore(b)) {
