@@ -828,7 +828,14 @@ export class Game {
       ${n ? `<ol class="lc-stops">${stops}</ol>` : '<p class="warn">Ajoute au moins deux arrêts.</p>'}</div>`;
   }
   /** Ressources proposées en priorité pour un arrêt de chargement */
+  /** Ce qu'un partenaire étranger (poste-frontière ou comptoir) vend ; null pour un bâtiment ordinaire */
+  private foreignSells(b: Building): ResId[] | null {
+    if (b.partner) return PARTNERS.find(p => p.id === b.partner)!.sells;
+    if (b.type === 'comptoir') return SEA_PARTNERS.find(p => p.id === b.sp)?.sells ?? [];
+    return null;
+  }
   private suggestRes(b: Building): ResId[] {
+    const fs = this.foreignSells(b); if (fs) return fs;
     const d = BUILD[b.type];
     const out = d.recipe ? Object.keys(d.recipe.out) as ResId[] : [];
     const stock = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 1).map(([r]) => r);
@@ -866,6 +873,11 @@ export class Game {
           ${sum > 100 ? '<small class="warn">Le total dépasse 100 % : la place manquera pour tout charger.</small>' : ''}
           <select data-field="addres" data-i="${i}"><option value="">+ Ajouter une ressource…</option>
           ${sugg.filter(r => others.includes(r)).map(opt).join('')}<option disabled>──────</option>${others.filter(r => !sugg.includes(r)).map(opt).join('')}</select>`;
+        const fs = b ? this.foreignSells(b) : null;
+        if (b && fs) {
+          const bad = st.res.filter(r => !fs.includes(r));
+          what += `<p class="hint info">Achat automatique au chargement : ${st.res.filter(r => fs.includes(r)).map(r => `${RES[r].name.toLowerCase()} ${(b.partner ? importPrice(s, b, r) : seaImportPrice(s, b, SEA_PARTNERS.find(p => p.id === b.sp)!, r)).toFixed(1)} sest./t`).join(', ') || '—'}.</p>${bad.length ? `<small class="warn">${esc(b.name)} ne vend pas : ${bad.map(r => RES[r].name.toLowerCase()).join(', ')}</small>` : ''}`;
+        }
         const fill = st.share ?? 100, allFixed = st.res.length > 0 && st.res.every(r => st.pct?.[r]);
         if (allFixed) what += `<small class="muted">Chargement prévu : ${st.res.map(r => `${fmt(Math.max(1, Math.round(cap * st.pct![r]! / 100)))} t de ${RES[r].name.toLowerCase()}`).join(', ')}. Le véhicule repart quand tout est chargé, ou au bout de 6 jours.</small>`;
         else what += `<div><small class="muted">« libre » : la ressource se partage la place restante avec les autres ressources libres.</small></div><label class="share">Remplir le véhicule à <select data-field="share" data-i="${i}">${[100, 75, 50, 25].map(p => `<option value="${p}" ${fill === p ? 'selected' : ''}>${p === 100 ? 'plein' : p + ' %'} (${fmt(Math.max(1, Math.floor(cap * p / 100)))} t)</option>`).join('')}</select></label>

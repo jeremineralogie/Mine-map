@@ -673,12 +673,20 @@ export class Sim {
         : Math.max(1, Math.floor(cap * Math.min(100, st.share ?? 100) / 100));
       if (!b.city) {
         let room = target - cargoTotal(v.cargo), moved = true;
+        // chez un partenaire étranger, le véhicule achète sur place ce qu'il charge (au prix d'importation)
+        const sells = (r: ResId) => b.partner ? PARTNERS.find(p => p.id === b.partner)!.sells.includes(r)
+          : b.type === 'comptoir' ? !!SEA_PARTNERS.find(p => p.id === b.sp)?.sells.includes(r) : false;
         while (room >= 1 && moved) {
           moved = false;
           for (const r of st.res) {
             const reserved = b.upgrading ? Math.max(0, (b.need[r] ?? 0) - (b.incoming[r] ?? 0)) : 0;
             const q = quota(r);
-            if (room < 1 || (b.stock[r] ?? 0) - reserved < 1 || (q !== null && (v.cargo[r] ?? 0) >= q)) continue;
+            if (room < 1 || (q !== null && (v.cargo[r] ?? 0) >= q)) continue;
+            if ((b.stock[r] ?? 0) - reserved < 1 && sells(r)) {
+              const m0 = s.money;
+              if (!(b.partner ? buyImport(s, b, r, 1) : buySea(s, b, b.sp!, r, 1))) { v.income -= m0 - s.money; addFlow(b, 'in', r, 1); }
+            }
+            if ((b.stock[r] ?? 0) - reserved < 1) continue;
             b.stock[r]! -= 1; addFlow(b, 'out', r, 1); v.cargo[r] = (v.cargo[r] ?? 0) + 1; room -= 1; moved = true;
             lineMoved(l, v.stop % l.stops.length, r, 1);
           }
