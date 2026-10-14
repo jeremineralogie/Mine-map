@@ -1,6 +1,6 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
 import { RP_TIER,
-  BRANCHES, BUILD, ERAS, LEVEL_COST, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
+  BRANCHES, BUILD, ERAS, LEVEL_COST, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
@@ -9,7 +9,7 @@ import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { missingNextGoods, foodReserve, RESERVE_TO_GROW,
-  DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPartnersOf, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
+  DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type Edge, type GameState, type Line, type RNode, type Stock } from './state';
@@ -349,7 +349,7 @@ export class Game {
           const d = BUILD[b.type];
           void d;
           // premier arrêt : on charge ; arrêts suivants : on décharge (modifiable ensuite)
-          const action = l.stops.length === 0 && !b.city && !b.partner ? 'load' : 'unload';
+          const action = l.stops.length === 0 && !b.city && !b.partner && b.type !== 'comptoir' ? 'load' : 'unload';
           l.stops.push({ bid: b.id, action, res: action === 'load' ? this.suggestRes(b).slice(0, 1) : [] });
           this.toast(`Arrêt ajouté : ${b.name}`);
           this.refresh();
@@ -527,6 +527,22 @@ export class Game {
     this.panelScrollAt = 0; this.panelHold = false; this.refresh(); $('panelBody').scrollTop = 0;
   }
 
+  /** Lignes d'un bâtiment, en deux onglets : au départ d'ici / arrivant ici */
+  private buildingLines(b: Building): string {
+    const s = this.s; let h = '';
+    const usedBy = s.lines.filter(l => l.stops.some(st => st.bid === b.id));
+    if (usedBy.length) {
+      // deux onglets : les lignes qui partent d'ici (chargement) et celles qui y arrivent (déchargement)
+      const dep = usedBy.filter(l => l.stops.some(st => st.bid === b.id && st.action === 'load'));
+      const arr = usedBy.filter(l => l.stops.some(st => st.bid === b.id && st.action === 'unload'));
+      const tab = this.bLineTab === 'depart' && !dep.length ? 'arrivee' : this.bLineTab === 'arrivee' && !arr.length ? 'depart' : this.bLineTab;
+      const list = tab === 'depart' ? dep : arr;
+      h += `<h3>Lignes de ce bâtiment</h3><div class="tabs seg"><button data-act="bltab" data-r="depart" class="${tab === 'depart' ? 'on' : ''}">↗ Au départ d'ici <b>${dep.length}</b></button><button data-act="bltab" data-r="arrivee" class="${tab === 'arrivee' ? 'on' : ''}">↘ Arrivant ici <b>${arr.length}</b></button></div>
+        ${list.map(l => this.lineCard(l)).join('') || `<p class="muted">Aucune ligne ${tab === 'depart' ? 'ne charge ici' : 'ne décharge ici'}.</p>`}`;
+    }
+    return h;
+  }
+
   private detailPanel(): string {
     const sel = this.view.selected, s = this.s;
     if (!sel) return '';
@@ -588,6 +604,23 @@ export class Game {
       if (top) h += `<div class="actions top">${top}</div>`;
     }
 
+    if (b.type === 'comptoir') {
+      const p = SEA_PARTNERS.find(x => x.id === b.sp)!, sold = s.stats.soldMonth['mer:' + p.id] ?? 0, vol = seaVolume(s, p);
+      const ports = s.buildings.filter(x => x.type === 'port_mer' && x.built && x.sea === b.sea);
+      h += this.kpis([[`${fmt(sold)} / ${vol} t`, 'vendu ce mois'], [`${fmt(s.stats.sold['mer:' + p.id] ?? 0)} t`, 'vendu au total'], [`${ports.length}`, `port${ports.length > 1 ? 's' : ''} de commerce sur cette mer`]]);
+      h += `<div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>`;
+      if (!ports.length) h += `<p class="hint warn">Construis un port de commerce sur la côte ${b.sea === 'mediterranee' ? 'méditerranéenne' : 'atlantique ou de la Manche'} pour y envoyer des navires.</p>`;
+      h += `<h3>Ils achètent <small class="muted">— livre-leur avec un navire marchand (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${seaPrice(s, b, p, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
+      h += `<h3>Ils vendent <small class="muted">— les achats attendent ici qu'un navire vienne les charger</small></h3><div class="stocks">${p.sells.map(r => {
+        const pr = seaImportPrice(s, b, p, r);
+        return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${pr.toFixed(1)} <small class="muted">sest./t</small></b></div>
+          <div class="buy"><button data-act="importmer" data-id="${b.id}" data-p="${p.id}" data-r="${r}" data-q="10">Acheter 10 t (${fmt(pr * 10)})</button><button data-act="importmer" data-id="${b.id}" data-p="${p.id}" data-r="${r}" data-q="20">20 t (${fmt(pr * 20)})</button></div></div></div>`;
+      }).join('')}</div>`;
+      const st = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5);
+      h += `<h3>Marchandises achetées en attente (${fmt(st.reduce((a, [, q]) => a + q, 0))} / ${BUILD.comptoir.storage} t)</h3>${st.length ? `<div class="chips">${st.map(([r, q]) => resChip(r, q)).join(' ')}</div>` : '<p class="muted">Aucune.</p>'}`;
+      h += this.buildingLines(b);
+      return h;
+    }
     if (b.partner) {
       const p = PARTNERS.find(x => x.id === b.partner)!;
       const sold = s.stats.soldMonth[p.id] ?? 0, vol = partnerVolume(s, p.id), closed = partnerClosed(s, p.id);
@@ -671,15 +704,17 @@ export class Game {
     }
 
     if (b.type === 'port_mer' && b.built) {
-      h += `<h3>Partenaires d'outre-mer · ${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique et Manche'}</h3>
-        <p class="muted">Tout ce qu'une ligne décharge ici est vendu au partenaire qui paie le mieux, dans la limite de son volume mensuel ; le surplus est stocké.</p>`;
-      h += seaPartnersOf(s, b).map(p => {
+      const cs = s.buildings.filter(c => c.type === 'comptoir' && c.sea === b.sea), sp = VEH.navire.speed;
+      h += `<h3>Routes maritimes · ${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique, Manche et mer du Nord'}</h3>
+        <p class="muted">Les navires marchands partent d'ici vers les comptoirs d'outre-mer : ce qu'ils y déchargent est vendu, et ils peuvent y charger ce que tu as acheté au comptoir.</p>`;
+      h += cs.map(c => {
+        const p = SEA_PARTNERS.find(x => x.id === c.sp)!, route = this.geo.seaPath(b.x, b.y, c.x, c.y);
         const sold = s.stats.soldMonth['mer:' + p.id] ?? 0, vol = seaVolume(s, p);
-        return `<div class="seap"><div class="seap-h"><b>${esc(p.name)}</b><small class="muted">${fmt(sold)} / ${vol} t ce mois</small></div>
-          <div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>
-          <div class="seap-row"><small class="muted">Achète :</small>${p.buys.map(r => `<span class="res">${resIcon(r)}${RES[r].name} <b>${seaPrice(s, b, p, r).toFixed(1)}</b></span>`).join('')}</div>
-          <div class="seap-row"><small class="muted">Vend :</small>${p.sells.map(r => { const pr = seaImportPrice(s, b, p, r); return `<span class="buy">${resIcon(r)}${RES[r].name} ${pr.toFixed(1)}/t <button data-act="importmer" data-id="${b.id}" data-p="${p.id}" data-r="${r}" data-q="10">Acheter 10 t</button></span>`; }).join('')}</div></div>`;
-      }).join('');
+        return `<div class="seap"><div class="seap-h"><b>${esc(p.name)}</b><small class="muted">${route ? `${fmt(route.len)} km · ${Math.max(1, Math.round(route.len / sp))} j de mer` : 'inaccessible'}</small></div>
+          <div class="seap-row"><small class="muted">Achète :</small>${p.buys.map(r => `<span class="res">${resIcon(r)}${RES[r].name} <b>${seaPrice(s, c, p, r).toFixed(1)}</b></span>`).join('')}</div>
+          <div class="seap-row"><small class="muted">Vend :</small>${p.sells.map(r => `<span class="res">${resIcon(r)}${RES[r].name}</span>`).join('')}</div>
+          <div class="seap-row"><small class="muted">${fmt(sold)} / ${vol} t vendues ce mois</small><span class="grow"></span>${route ? `<button class="primary" data-act="sealine" data-id="${b.id}" data-c="${c.id}">+ Ligne de navire</button>` : ''}<button data-act="goto" data-id="${c.id}">Voir</button></div></div>`;
+      }).join('') || '<p class="muted">Aucun comptoir sur cette mer.</p>';
     }
     if (isStore(b) && b.built) {
       const cap = d.storage * b.level, list = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5).sort((x, y) => y[1] - x[1]);
@@ -698,16 +733,7 @@ export class Game {
       if (d.workers && b.built) h += `<p>Ouvriers : <b>${b.staff} / ${this.sim.workersNeeded(b)}</b></p>`;
     }
 
-    const usedBy = s.lines.filter(l => l.stops.some(st => st.bid === b.id));
-    if (usedBy.length) {
-      // deux onglets : les lignes qui partent d'ici (chargement) et celles qui y arrivent (déchargement)
-      const dep = usedBy.filter(l => l.stops.some(st => st.bid === b.id && st.action === 'load'));
-      const arr = usedBy.filter(l => l.stops.some(st => st.bid === b.id && st.action === 'unload'));
-      const tab = this.bLineTab === 'depart' && !dep.length ? 'arrivee' : this.bLineTab === 'arrivee' && !arr.length ? 'depart' : this.bLineTab;
-      const list = tab === 'depart' ? dep : arr;
-      h += `<h3>Lignes de ce bâtiment</h3><div class="tabs seg"><button data-act="bltab" data-r="depart" class="${tab === 'depart' ? 'on' : ''}">↗ Au départ d'ici <b>${dep.length}</b></button><button data-act="bltab" data-r="arrivee" class="${tab === 'arrivee' ? 'on' : ''}">↘ Arrivant ici <b>${arr.length}</b></button></div>
-        ${list.map(l => this.lineCard(l)).join('') || `<p class="muted">Aucune ligne ${tab === 'depart' ? 'ne charge ici' : 'ne décharge ici'}.</p>`}`;
-    }
+    h += this.buildingLines(b);
     h += '<div class="actions">';
     if (b.built && !b.upgrading && d.recipe) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre la production' : '⏸ Mettre en pause'}</button>`;
     if (!b.built || b.upgrading) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre le chantier' : '⏸ Mettre le chantier en pause'}</button>`;
@@ -770,10 +796,10 @@ export class Game {
       const role = i === 0 ? 'Départ' : i === n - 1 ? 'Terminus' : `Arrêt ${i}`;
       const b = getB(s, st.bid), moved = (Object.entries(month[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
       const tot = (Object.entries(total[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
-      const verb = st.action === 'load' ? 'chargé' : b?.city || b?.partner ? 'vendu' : 'déposé';
+      const verb = st.action === 'load' ? 'chargé' : b?.city || b?.partner || b?.type === 'comptoir' ? 'vendu' : 'déposé';
       const what = st.action === 'load'
         ? `<span class="lc-act load">Charge</span> ${st.res.map(r => resChip(r) + (st.pct?.[r] ? ` <small>${st.pct[r]} %</small>` : '')).join(' ') || '<small class="warn">aucune ressource choisie</small>'}${(st.share ?? 100) < 100 ? ` <small>jusqu'à ${st.share} % du véhicule</small>` : ''}`
-        : `<span class="lc-act unload">${b?.city || b?.partner ? 'Vend' : 'Dépose'}</span> ${st.res.map(r => resChip(r)).join(' ')} <small>${(st.share ?? 100) >= 100 ? (st.res.length ? 'tout' : 'tout le reste') : `${st.share} % du chargement`}</small>`;
+        : `<span class="lc-act unload">${b?.city || b?.partner || b?.type === 'comptoir' ? 'Vend' : 'Dépose'}</span> ${st.res.map(r => resChip(r)).join(' ')} <small>${(st.share ?? 100) >= 100 ? (st.res.length ? 'tout' : 'tout le reste') : `${st.share} % du chargement`}</small>`;
       return `<li class="${i === 0 ? 'first' : i === n - 1 ? 'last' : ''}"><span class="lc-dot">${i + 1}</span><div class="lc-stop">
         <div class="lc-st-head"><span class="lc-role">${role}</span><b>${esc(b?.name.split(' — ')[0] ?? '?')}</b></div>
         <div class="lc-st-what">${what}</div>
@@ -806,11 +832,14 @@ export class Game {
       const role = i === 0 ? '<span class="stopTag start">Départ</span>' : i === l.stops.length - 1 ? '<span class="stopTag end">Arrivée</span>' : '<span class="stopTag">Étape</span>';
       let warn = '';
       const water = VEH[l.vtype].water;
-      if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 8)) warn = '<small class="warn">trop loin d\'un fleuve navigable (plus de 8 km) : les barges ne peuvent pas y accoster</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
+      if (b && VEH[l.vtype].sea) {
+        if (b.type !== 'port_mer' && b.type !== 'comptoir') warn = '<small class="warn">un navire n\'accoste qu\'à un port de commerce ou à un comptoir</small>';
+        else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.seaPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">pas de route maritime depuis l\'arrêt précédent (autre mer)</small>'; }
+      } else if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 8)) warn = '<small class="warn">trop loin d\'un fleuve navigable (plus de 8 km) : les barges ne peuvent pas y accoster</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
       else if (b && b.node === null) warn = '<small class="warn">non relié par la route</small>';
       else if (b && i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && p.node !== null && b.node !== null && !findPath(s, p.node, b.node)) warn = '<small class="warn">aucun itinéraire depuis l\'arrêt précédent</small>'; }
       if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && !isStore(b)) {
-        const ok = loaded.filter(r => BUILD[b.type].recipe?.in[r]);
+        const ok = b.type === 'comptoir' ? loaded.filter(r => SEA_PARTNERS.find(p => p.id === b.sp)!.buys.includes(r)) : loaded.filter(r => BUILD[b.type].recipe?.in[r]);
         if (!ok.length) warn += ' <small class="warn">ce bâtiment n\'accepte aucun de ces matériaux</small>';
       }
       let what = '';
@@ -826,7 +855,7 @@ export class Game {
           ${sugg.filter(r => others.includes(r)).map(opt).join('')}<option disabled>──────</option>${others.filter(r => !sugg.includes(r)).map(opt).join('')}</select>`;
         const fill = st.share ?? 100, allFixed = st.res.length > 0 && st.res.every(r => st.pct?.[r]);
         if (allFixed) what += `<small class="muted">Chargement prévu : ${st.res.map(r => `${fmt(Math.max(1, Math.round(cap * st.pct![r]! / 100)))} t de ${RES[r].name.toLowerCase()}`).join(', ')}. Le véhicule repart quand tout est chargé, ou au bout de 6 jours.</small>`;
-        else what += `<small class="muted">« libre » : la ressource se partage la place restante avec les autres ressources libres.</small><label class="share">Remplir le véhicule à <select data-field="share" data-i="${i}">${[100, 75, 50, 25].map(p => `<option value="${p}" ${fill === p ? 'selected' : ''}>${p === 100 ? 'plein' : p + ' %'} (${fmt(Math.max(1, Math.floor(cap * p / 100)))} t)</option>`).join('')}</select></label>
+        else what += `<div><small class="muted">« libre » : la ressource se partage la place restante avec les autres ressources libres.</small></div><label class="share">Remplir le véhicule à <select data-field="share" data-i="${i}">${[100, 75, 50, 25].map(p => `<option value="${p}" ${fill === p ? 'selected' : ''}>${p === 100 ? 'plein' : p + ' %'} (${fmt(Math.max(1, Math.floor(cap * p / 100)))} t)</option>`).join('')}</select></label>
           <small class="muted">Le véhicule repart dès qu'il a chargé ${fill >= 100 ? 'sa pleine capacité' : `${fill} % de sa capacité`}, ou au bout de 6 jours d'attente.</small>`;
       } else {
         const sh = st.share ?? 100;
@@ -834,7 +863,7 @@ export class Game {
         what = `<div class="chips sel"><small class="muted">Décharger :</small> ${st.res.map(r => `<button class="reschip" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">${resChip(r)} ✕</button>`).join('') || '<small><b>toutes les ressources</b></small>'}</div>
           ${offer.length ? `<select data-field="addres" data-i="${i}"><option value="">${st.res.length ? '+ Décharger aussi…' : '+ Ne décharger que…'}</option>${offer.map(r => `<option value="${r}">${RES[r].name}</option>`).join('')}</select>` : ''}`;
         what += `<label class="share">Déposer <select data-field="share" data-i="${i}">${[100, 75, 66, 50, 33, 25, 10].map(p => `<option value="${p}" ${sh === p ? 'selected' : ''}>${p === 100 ? 'tout le reste' : p + ' % du chargement'}</option>`).join('')}</select></label>
-          <small class="muted">${b?.city || b?.partner ? 'Vente' : 'Dépôt'}${sh < 100 ? ` de ${sh} % de ce qui a été chargé au départ ; le reste continue vers l'arrêt suivant` : ' de tout ce que le bâtiment accepte'}.</small>`;
+          <small class="muted">${b?.city || b?.partner || b?.type === 'comptoir' ? 'Vente' : 'Dépôt'}${sh < 100 ? ` de ${sh} % de ce qui a été chargé au départ ; le reste continue vers l'arrêt suivant` : ' de tout ce que le bâtiment accepte'}.</small>`;
       }
       return `<div class="stop" data-i="${i}"><span class="handle" data-i="${i}" title="Glisser pour changer l'ordre des arrêts">⠿</span><span class="n" style="background:${l.color}">${i + 1}</span><span class="grow">${role} <b>${esc(b?.name ?? '?')}</b> ${warn}<br>
         <select data-field="action" data-i="${i}"><option value="load" ${st.action === 'load' ? 'selected' : ''}>Charger</option><option value="unload" ${st.action === 'unload' ? 'selected' : ''}>Décharger</option></select>
@@ -889,6 +918,16 @@ export class Game {
         <span class="chips"><small class="muted">Achète :</small> ${p.buys.map(r => resChip(r)).join(' ')}</span>
         <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
     }).join('')}<p class="muted">Relie un poste-frontière par la route, puis livre-lui des marchandises avec une ligne, ou achète-lui des ressources depuis sa fiche.</p>`;
+    // partenaires d'outre-mer : ouverts avec le négoce maritime
+    const seaOpen = s.techs.includes('negoce_maritime');
+    h += `<h3>Routes maritimes ${seaOpen ? '' : '<small class="muted">— 🔒 Négoce maritime</small>'}</h3>`;
+    h += seaOpen ? s.buildings.filter(b => b.type === 'comptoir').map(b => {
+      const p = SEA_PARTNERS.find(x => x.id === b.sp)!, st = buildingStatus(this.sim, b);
+      return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#14406e"><span class="lc-head"><b>${esc(p.name)}</b><small class="muted">${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique'}</small><span class="pill ${st.level}">${st.label}</span></span>
+        <span class="chips"><small class="muted">Achète :</small> ${p.buys.map(r => resChip(r)).join(' ')}</span>
+        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
+    }).join('') + '<p class="muted">Construis un port de commerce sur la côte, puis envoie des navires marchands vers ces comptoirs.</p>'
+      : `<p class="muted">Recherche le négoce maritime pour ouvrir des routes vers ${SEA_PARTNERS.map(p => p.name.split(' (')[0]).join(', ')}.</p>`;
 
     // bilan des ressources
     const stock: Stock = {}, prod: Stock = {}, real: Stock = {}, use: Stock = {}, cityStock: Stock = {};
@@ -938,7 +977,8 @@ export class Game {
     h += `<h3>Stocks</h3>${stores.map(b => row(b, `${fmt(b.stock[r]!)} t`, BUILD[b.type].name)).join('') || '<p class="muted">Aucun entrepôt n\'en contient.</p>'}
       ${(cityStock[r] ?? 0) >= 0.5 ? `<p class="muted">Réserves dans les villes : ${fmt(cityStock[r]!)} t.</p>` : ''}`;
     const buyers = s.buildings.filter(b => b.partner && PARTNERS.find(p => p.id === b.partner)!.buys.includes(r));
-    h += `<h3>Où la vendre</h3>${buyers.map(b => row(b, `${priceAt(s, b, r).toFixed(1)} /t`, 'Partenaire étranger (poste-frontière)')).join('')}
+    const seaBuyers = s.buildings.filter(b => b.type === 'comptoir' && SEA_PARTNERS.find(p => p.id === b.sp)!.buys.includes(r));
+    h += `<h3>Où la vendre</h3>${buyers.map(b => row(b, `${priceAt(s, b, r).toFixed(1)} /t`, 'Partenaire étranger (poste-frontière)')).join('')}${seaBuyers.map(b => { const p = SEA_PARTNERS.find(x => x.id === b.sp)!; return row(b, `${seaPrice(s, b, p, r).toFixed(1)} /t`, 'Outre-mer (comptoir, par navire)'); }).join('')}
       ${cityUsers.length ? '' : ''}<p class="muted">Vente sur place depuis un entrepôt : ${localPrice(s, r).toFixed(1)} sesterces la tonne.</p>`;
     return h;
   }
@@ -1077,7 +1117,7 @@ export class Game {
   private menuPanel(): string {
     const s = this.s;
     return `<h2 class="ph">${IC.menu}Menu</h2>
-      <p class="muted">Partie en cours : ${dateLabel(s)} · ${fmt(s.money)} sesterces · ${s.buildings.filter(b => !b.partner).length} bâtiment(s)</p>
+      <p class="muted">Partie en cours : ${dateLabel(s)} · ${fmt(s.money)} sesterces · ${s.buildings.filter(b => !b.partner && b.type !== 'comptoir').length} bâtiment(s)</p>
       <div class="actions col">
       <button class="primary" data-act="new">Recommencer la partie</button>
       <button data-act="save">Sauvegarder maintenant</button>
@@ -1105,8 +1145,20 @@ export class Game {
         if (e && s.money >= cost) { e.type = 'voie'; s.money -= cost; s.stats.expenses += cost; this.rerouteAll(); } else this.toast('Pas assez d\'argent.', 'bad');
         break;
       }
+      case 'sealine': {
+        // ligne de navire : charge au port de commerce, vend au comptoir
+        const port = getB(s, id)!, c = getB(s, Number(t.dataset.c))!, p = SEA_PARTNERS.find(x => x.id === c.sp)!;
+        const have = (Object.keys(port.stock) as ResId[]).filter(r => p.buys.includes(r) && (port.stock[r] ?? 0) >= 1);
+        const l: Line = { id: s.nextId++, name: '', vtype: 'navire', color: LINE_COLORS[s.lines.length % LINE_COLORS.length],
+          stops: [{ bid: port.id, action: 'load', res: have.length ? have.slice(0, 2) : p.buys.slice(0, 1) }, { bid: c.id, action: 'unload', res: [] }] };
+        s.lines.push(l); this.view.selectedLine = l.id;
+        this.openPanel(() => this.linesPanel(), 'lines');
+        this.toast('Ligne maritime créée : choisis la cargaison, puis achète un navire marchand.', 'good');
+        break;
+      }
       case 'newline': {
-        const l: Line = { id: s.nextId++, name: '', vtype: 'charrette', stops: [], color: LINE_COLORS[s.lines.length % LINE_COLORS.length] };
+        const from = t.dataset.id ? getB(s, id) : undefined;
+        const l: Line = { id: s.nextId++, name: '', vtype: from?.type === 'comptoir' ? 'navire' : 'charrette', stops: [], color: LINE_COLORS[s.lines.length % LINE_COLORS.length] };
         if (t.dataset.id) { const b = getB(s, id)!; l.stops.push({ bid: b.id, action: 'load', res: this.suggestRes(b).slice(0, 1) }); }
         s.lines.push(l); this.view.selectedLine = l.id;
         this.openPanel(() => this.linesPanel(), 'lines');

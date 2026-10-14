@@ -143,7 +143,7 @@ export const DEPOSITS: Deposit[] = DEP_ROWS.map(([res, name, lon, lat, rx, ry, r
 // ---- Bâtiments ----
 export type BType =
   | 'entrepot' | 'village' | 'bucheron' | 'carriere' | 'ferme' | 'argiliere' | 'briqueterie'
-  | 'mine_fer' | 'bas_fourneau' | 'forge' | 'mine_plomb' | 'saline' | 'aqueduc' | 'pont_du_gard' | 'poste' | 'port' | 'port_mer';
+  | 'mine_fer' | 'bas_fourneau' | 'forge' | 'mine_plomb' | 'saline' | 'aqueduc' | 'pont_du_gard' | 'poste' | 'port' | 'port_mer' | 'comptoir';
 
 export interface Recipe { in: Partial<Record<ResId, number>>; out: Partial<Record<ResId, number>>; }
 
@@ -185,7 +185,8 @@ export const BUILD: Record<BType, BDef> = {
   saline: { name: 'Saline', desc: 'Récolte le sel (marais salants ou sources salées).', era: 1, tech: 'salines', cost: { bois: 15, pierre: 5 }, money: 100, days: 15, workers: 5, deposit: 'sel', recipe: { in: {}, out: { sel: 4 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 10, bois: 8 } },
   aqueduc: { name: 'Château d\'eau d\'aqueduc', desc: 'Apporte l\'eau dans un rayon de 25 km : on peut y bâtir villes et ateliers loin des rivières.', era: 1, tech: 'aqueduc', cost: { pierre: 60, briques: 20 }, money: 400, days: 40, workers: 3, waterRange: 25, storage: 0, maxLevel: 1 },
   port: { name: 'Port fluvial', desc: 'Quai au bord d\'un fleuve navigable : les barges y chargent et déchargent. Stocke toutes les ressources, comme un entrepôt.', era: 1, tech: 'navigation', cost: { bois: 30, pierre: 15 }, money: 220, days: 25, workers: 4, river: true, storage: 200, maxLevel: 3, upgrade: { pierre: 25, bois: 10 } },
-  port_mer: { name: 'Port de commerce', desc: 'Port maritime : les marchandises qu\'on y décharge sont vendues outre-mer (Bretagne insulaire, Hispanie, Sardaigne, Italie selon la mer). On peut aussi y acheter des ressources importées. Stocke tout, comme un entrepôt.', era: 1, tech: 'negoce_maritime', cost: { bois: 40, pierre: 30 }, money: 450, days: 40, workers: 6, coast: true, storage: 250, maxLevel: 3, upgrade: { pierre: 25, bois: 15 } },
+  port_mer: { name: 'Port de commerce', desc: 'Port maritime d\'où partent les navires marchands vers les comptoirs d\'outre-mer (Bretagne insulaire, Hispanie, Afrique, Grèce…). Stocke tout, comme un entrepôt.', era: 1, tech: 'negoce_maritime', cost: { bois: 40, pierre: 30 }, money: 450, days: 40, workers: 6, coast: true, storage: 250, maxLevel: 3, upgrade: { pierre: 25, bois: 15 } },
+  comptoir: { name: 'Comptoir maritime', desc: 'Port étranger au bout d\'une route maritime : les navires marchands y vendent tes marchandises et y chargent ce que tu as acheté.', era: 1, tech: 'negoce_maritime', cost: {}, money: 0, days: 0, workers: 0, storage: 200, maxLevel: 1, hidden: true },
   poste: { name: 'Poste-frontière', desc: 'Les marchands étrangers y achètent certaines ressources.', era: 1, cost: {}, money: 0, days: 0, workers: 0, storage: 120, maxLevel: 1, hidden: true },
   pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille facultative du chapitre I : elle n\'est pas nécessaire pour passer au chapitre suivant.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 20, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947] },
 };
@@ -253,10 +254,16 @@ export const LOCAL_SALE = 0.6;
 export type Sea = 'atlantique' | 'mediterranee';
 export interface SeaPartner { id: string; name: string; seas: Sea[]; buys: ResId[]; sells: ResId[]; mult: number; volume: number; to: Partial<Record<Sea, [number, number]>>; }
 export const SEA_PARTNERS: SeaPartner[] = [
-  { id: 'britannia', name: 'Bretagne insulaire (Angleterre)', seas: ['atlantique'], buys: ['sel', 'outils', 'briques', 'fer'], sells: ['plomb', 'cereales', 'bois'], mult: 1.5, volume: 40, to: { atlantique: [-1.5, 51.4] } },
-  { id: 'hispania_mer', name: 'Hispanie (Gadès, Tarraco)', seas: ['atlantique', 'mediterranee'], buys: ['outils', 'fer', 'briques', 'sel'], sells: ['plomb', 'minerai_fer', 'sel'], mult: 1.45, volume: 40, to: { atlantique: [-5.8, 43.6], mediterranee: [2.6, 41.2] } },
-  { id: 'sardaigne', name: 'Sardaigne', seas: ['mediterranee'], buys: ['cereales', 'outils', 'briques'], sells: ['plomb', 'sel'], mult: 1.5, volume: 30, to: { mediterranee: [8.9, 41.0] } },
-  { id: 'italie_mer', name: 'Italie (Ostie, port de Rome)', seas: ['mediterranee'], buys: ['fer', 'outils', 'plomb', 'briques', 'cereales'], sells: ['outils', 'fer', 'briques'], mult: 1.55, volume: 50, to: { mediterranee: [10.3, 42.9] } },
+  // Atlantique, Manche et mer du Nord
+  { id: 'britannia', name: 'Bretagne insulaire (Dubris)', seas: ['atlantique'], buys: ['sel', 'outils', 'briques', 'fer'], sells: ['plomb', 'cereales', 'bois'], mult: 1.5, volume: 40, to: { atlantique: [1.2, 50.95] } },
+  { id: 'hibernia', name: 'Hibernie (Irlande)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer'], sells: ['bois', 'plomb'], mult: 1.45, volume: 20, to: { atlantique: [-6.6, 49.9] } },
+  { id: 'frisia', name: 'Frise (Germanie, mer du Nord)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer', 'cereales'], sells: ['bois', 'minerai_fer'], mult: 1.4, volume: 25, to: { atlantique: [3.2, 51.55] } },
+  { id: 'hispania_mer', name: 'Hispanie (Brigantium, Tarraco)', seas: ['atlantique', 'mediterranee'], buys: ['outils', 'fer', 'briques', 'sel'], sells: ['plomb', 'minerai_fer', 'sel'], mult: 1.45, volume: 40, to: { atlantique: [-5.8, 43.75], mediterranee: [2.6, 41.4] } },
+  // Méditerranée
+  { id: 'sardaigne', name: 'Sardaigne (Turris Libisonis)', seas: ['mediterranee'], buys: ['cereales', 'outils', 'briques'], sells: ['plomb', 'sel'], mult: 1.5, volume: 30, to: { mediterranee: [8.4, 41.15] } },
+  { id: 'italie_mer', name: 'Italie (Ostie, port de Rome)', seas: ['mediterranee'], buys: ['fer', 'outils', 'plomb', 'briques', 'cereales'], sells: ['outils', 'fer', 'briques'], mult: 1.55, volume: 50, to: { mediterranee: [10.2, 42.85] } },
+  { id: 'afrique', name: 'Afrique (Carthage)', seas: ['mediterranee'], buys: ['outils', 'fer', 'briques', 'plomb'], sells: ['cereales', 'sel'], mult: 1.5, volume: 40, to: { mediterranee: [6.0, 41.3] } },
+  { id: 'grece', name: 'Grèce et Orient (Athènes, Alexandrie)', seas: ['mediterranee'], buys: ['plomb', 'outils', 'fer', 'sel'], sells: ['outils', 'fer', 'briques'], mult: 1.6, volume: 35, to: { mediterranee: [10.4, 41.5] } },
 ];
 export const PARTNERS: Partner[] = [
   { id: 'italie', name: 'Italie (Rome)', lon: 6.62, lat: 44.92, buys: ['fer', 'outils', 'plomb', 'sel', 'briques'], sells: ['outils', 'fer', 'briques'], mult: 1.4, volume: 25 },
@@ -267,12 +274,13 @@ export const PARTNERS: Partner[] = [
 ];
 
 // ---- Véhicules ----
-export type VType = 'charrette' | 'chariot' | 'barge' | 'convoi' | 'chaland';
-export interface VDef { name: string; cap: number; speed: number; price: number; upkeep: number; tech?: string; water?: boolean; }
+export type VType = 'charrette' | 'chariot' | 'barge' | 'navire' | 'convoi' | 'chaland';
+export interface VDef { name: string; cap: number; speed: number; price: number; upkeep: number; tech?: string; water?: boolean; sea?: boolean; }
 export const VEH: Record<VType, VDef> = {
   charrette: { name: 'Charrette à bœufs', cap: 4, speed: 18, price: 120, upkeep: 2 },
   chariot: { name: 'Chariot à chevaux', cap: 3, speed: 32, price: 220, upkeep: 4, tech: 'attelage' },
   barge: { name: 'Barge fluviale', cap: 12, speed: 26, price: 300, upkeep: 3, tech: 'navigation', water: true },
+  navire: { name: 'Navire marchand (corbita)', cap: 20, speed: 90, price: 500, upkeep: 6, tech: 'negoce_maritime', sea: true },
   chaland: { name: 'Chaland de chantier', cap: 10, speed: 22, price: 0, upkeep: 0, water: true },
   convoi: { name: 'Convoi de chantier', cap: 6, speed: 20, price: 0, upkeep: 0 },
 };
@@ -316,7 +324,7 @@ export const TECHS: Tech[] = [
   { id: 'urbanisme', name: 'Urbanisme romain', desc: 'Débloque le niveau 3 des bâtiments et accélère la croissance des villes.', era: 1, cost: 56, req: ['outillage', 'aqueduc'], branch: 'cite' },
   // Commerce
   { id: 'negoce', name: 'Négoce méditerranéen', desc: 'Les partenaires étrangers paient 20 % plus cher et vendent 10 % moins cher.', era: 1, cost: 28, req: [], branch: 'commerce' },
-  { id: 'negoce_maritime', name: 'Négoce maritime', desc: 'Ports de commerce sur la côte : échanges par la mer avec la Bretagne insulaire, l\'Hispanie, la Sardaigne et l\'Italie.', era: 1, cost: 48, req: ['navigation'], branch: 'commerce' },
+  { id: 'negoce_maritime', name: 'Négoce maritime', desc: 'Ouvre les routes maritimes : ports de commerce, navires marchands et comptoirs en Bretagne insulaire, Hibernie, Frise, Hispanie, Sardaigne, Italie, Afrique et Grèce.', era: 1, cost: 48, req: ['navigation'], branch: 'commerce' },
   { id: 'monnaie', name: 'Atelier monétaire', desc: 'Volume de commerce avec l\'étranger doublé ; la vente locale depuis les entrepôts rapporte davantage.', era: 1, cost: 42, req: ['negoce'], branch: 'commerce' },
 ];
 

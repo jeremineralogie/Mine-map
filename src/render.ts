@@ -1,5 +1,5 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
-import { BUILD, RES, ROADS, SEA_PARTNERS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
+import { BUILD, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
 import type { Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
@@ -182,19 +182,15 @@ export class Renderer {
   }
   /** Port de commerce sélectionné : routes maritimes vers ses partenaires */
   private drawSeaRoutes(s: GameState, v: View) {
-    if (v.selected?.kind !== 'building') return;
-    const b = s.buildings.find(x => x.id === v.selected!.id);
-    if (!b || b.type !== 'port_mer' || !b.sea) return;
+    // port de commerce sélectionné : routes maritimes réelles vers les comptoirs de sa mer
+    const sel = v.selected?.kind === 'building' ? s.buildings.find(x => x.id === v.selected!.id) : undefined;
+    if (!sel || sel.type !== 'port_mer' || !sel.sea || !sel.built) return;
     const ctx = this.ctx;
-    for (const p of SEA_PARTNERS) {
-      const to = p.to[b.sea]; if (!to) continue;
-      const [tx, ty] = this.geo.proj(to[0], to[1]);
-      const mx = (b.x + tx) / 2, my = (b.y + ty) / 2, dx = tx - b.x, dy = ty - b.y, L = Math.hypot(dx, dy) || 1;
-      const cx = mx - dy / L * L * 0.18, cy = my + dx / L * L * 0.18;   // légère courbe vers le large
-      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.quadraticCurveTo(cx, cy, tx, ty);
-      ctx.setLineDash([this.px(8), this.px(6)]); ctx.strokeStyle = 'rgba(25,80,140,.85)'; ctx.lineWidth = this.px(2.5); ctx.stroke(); ctx.setLineDash([]);
-      this.screen(); const [sx, sy] = this.cam.toScreen(tx, ty);
-      ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center'; halo(ctx, '⛵ ' + p.name, sx, sy, '#14406e'); this.world();
+    for (const c of s.buildings) {
+      if (c.type !== 'comptoir' || c.sea !== sel.sea) continue;
+      const p = this.geo.seaPath(sel.x, sel.y, c.x, c.y); if (!p) continue;
+      ctx.beginPath(); p.pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y));
+      ctx.setLineDash([this.px(8), this.px(6)]); ctx.strokeStyle = 'rgba(25,80,140,.8)'; ctx.lineWidth = this.px(2.5); ctx.stroke(); ctx.setLineDash([]);
     }
   }
   private drawGardSite(s: GameState) {
@@ -247,7 +243,7 @@ export class Renderer {
         const a = s.buildings.find(b => b.id === l.stops[i].bid), b = s.buildings.find(b => b.id === l.stops[(i + 1) % n].bid);
         if (!a || !b) { legs.push([]); continue; }
         // barge : itinéraire par le fleuve ; sinon par la route
-        const p = VEH[l.vtype].water ? this.geo.riverPath(a.x, a.y, b.x, b.y) : a.node !== null && b.node !== null ? findPath(s, a.node, b.node) : null;
+        const p = VEH[l.vtype].sea ? this.geo.seaPath(a.x, a.y, b.x, b.y) : VEH[l.vtype].water ? this.geo.riverPath(a.x, a.y, b.x, b.y) : a.node !== null && b.node !== null ? findPath(s, a.node, b.node) : null;
         legs.push(p ? p.pts : []);
       }
       if (this.legCache.size > 200) this.legCache.clear();
@@ -363,7 +359,7 @@ export class Renderer {
         ctx.fillStyle = '#fff'; const bw = r * 0.28, bh = r * 0.95;
         ctx.fillRect(px - bw * 1.6, py - bh / 2, bw, bh); ctx.fillRect(px + bw * 0.6, py - bh / 2, bw, bh);
       }
-      if (b.node === null && b.type !== 'poste' && b.type !== 'pont_du_gard') {
+      if (b.node === null && b.type !== 'poste' && b.type !== 'comptoir' && b.type !== 'pont_du_gard') {
         // non relié par la route
         const px = x - size * 0.42, py = y - size * 0.42;
         ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.fillStyle = '#868e96'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
@@ -379,8 +375,9 @@ export class Renderer {
         ctx.fillStyle = 'rgba(255,255,255,.92)'; roundRect(ctx, gx - 1.5, gy - 1.5, gw + 3, 8, 4); ctx.fill();
         ctx.fillStyle = fill >= 0.95 ? '#d92d20' : col; roundRect(ctx, gx, gy, Math.max(3, gw * Math.min(1, fill)), 5, 2.5); ctx.fill();
       }
-      const label = b.city ? `${b.name} · ${Math.round(b.city.pop)} hab.` : b.partner ? b.name : this.cam.scale > 2.5 ? b.name : '';
-      if (label) { ctx.font = b.city || b.partner ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; halo(ctx, label, x, y + size / 2 + (b.built && this.cam.scale > 2 && (BUILD[b.type].recipe || b.type === 'entrepot') ? 18 : 12), b.partner ? '#7a1f2b' : '#1f1a14'); }
+      const foreign = !!b.partner || b.type === 'comptoir';
+      const label = b.city ? `${b.name} · ${Math.round(b.city.pop)} hab.` : foreign ? b.name : this.cam.scale > 2.5 ? b.name : '';
+      if (label) { ctx.font = b.city || foreign ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; halo(ctx, label, x, y + size / 2 + (b.built && this.cam.scale > 2 && (BUILD[b.type].recipe || b.type === 'entrepot') ? 18 : 12), b.type === 'comptoir' ? '#14406e' : b.partner ? '#7a1f2b' : '#1f1a14'); }
     }
     this.world();
   }

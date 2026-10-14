@@ -44,6 +44,7 @@ export interface Building {
   flow?: { in: Stock; out: Stock; pin: Stock; pout: Stock };
   paused?: boolean;       // production mise en pause par le joueur
   sea?: 'atlantique' | 'mediterranee';  // port de commerce : mer bordant le port
+  sp?: string;           // comptoir maritime : partenaire d'outre-mer
 }
 
 /** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */

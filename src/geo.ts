@@ -151,6 +151,74 @@ export class Geo {
     const p = this.data.proj, lat = p.lat0 - y / p.ky;
     return [p.lon0 + x / (p.kx * Math.cos(lat * Math.PI / 180)), lat];
   }
+  // ---------- Navigation maritime ----------
+  /** Grille grossière (cases de 6 km) des cases de mer, construite à la demande */
+  private seaG: { w: number; h: number; c: number; ok: Uint8Array } | null = null;
+  private seaCache = new Map<string, { pts: { x: number; y: number }[]; len: number } | null>();
+  private seaGrid() {
+    if (this.seaG) return this.seaG;
+    const c = 6, e = this.data.extent, w = Math.ceil((e.x1 - e.x0) / c), h = Math.ceil((e.y1 - e.y0) / c), ok = new Uint8Array(w * h);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      // une case est navigable si la mer en occupe la majorité (les détroits étroits restent ouverts)
+      let n = 0;
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) if (this.maskAt(e.x0 + (i + (a + 0.5) / 3) * c, e.y0 + (j + (b + 0.5) / 3) * c) === 0) n++;
+      ok[j * w + i] = n >= 4 ? 1 : 0;
+    }
+    return (this.seaG = { w, h, c, ok });
+  }
+  private seaCellOf(x: number, y: number, maxKm = 30) {
+    const g = this.seaGrid(), e = this.data.extent;
+    const ci = Math.floor((x - e.x0) / g.c), cj = Math.floor((y - e.y0) / g.c), R = Math.ceil(maxKm / g.c);
+    let best = -1, bd = Infinity;
+    for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) {
+      const i = ci + di, j = cj + dj; if (i < 0 || j < 0 || i >= g.w || j >= g.h || !g.ok[j * g.w + i]) continue;
+      const d = di * di + dj * dj; if (d < bd) { bd = d; best = j * g.w + i; }
+    }
+    return best;
+  }
+  /** Centre de la case de mer la plus proche (pour placer un comptoir au large) */
+  nearestSea(x: number, y: number): [number, number] {
+    const g = this.seaGrid(), e = this.data.extent, k = this.seaCellOf(x, y, 60);
+    if (k < 0) return [x, y];
+    return [e.x0 + ((k % g.w) + 0.5) * g.c, e.y0 + (Math.floor(k / g.w) + 0.5) * g.c];
+  }
+  /** Itinéraire d'un navire par la mer (contourne les côtes) */
+  seaPath(ax: number, ay: number, bx: number, by: number): { pts: { x: number; y: number }[]; len: number } | null {
+    const g = this.seaGrid(), e = this.data.extent;
+    const a = this.seaCellOf(ax, ay), b = this.seaCellOf(bx, by);
+    if (a < 0 || b < 0) return null;
+    const key = a + ':' + b;
+    if (!this.seaCache.has(key)) {
+      const dist = new Float64Array(g.w * g.h).fill(Infinity), prev = new Int32Array(g.w * g.h).fill(-1), heap: [number, number][] = [[0, a]];
+      dist[a] = 0;
+      const bxC = b % g.w, byC = Math.floor(b / g.w);
+      while (heap.length) {
+        const [, n] = heapPop(heap);
+        if (n === b) break;
+        const ni = n % g.w, nj = Math.floor(n / g.w);
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          if (!di && !dj) continue;
+          const i = ni + di, j = nj + dj; if (i < 0 || j < 0 || i >= g.w || j >= g.h) continue;
+          const m = j * g.w + i; if (!g.ok[m]) continue;
+          const nd = dist[n] + (di && dj ? Math.SQRT2 : 1);
+          if (nd < dist[m]) { dist[m] = nd; prev[m] = n; heapPush(heap, [nd + Math.hypot(i - bxC, j - byC), m]); }
+        }
+      }
+      if (!isFinite(dist[b])) this.seaCache.set(key, null);
+      else {
+        const cells = [b]; while (cells[0] !== a) cells.unshift(prev[cells[0]]);
+        // allège le tracé : un point toutes les trois cases
+        const pts = cells.filter((_, k) => k % 3 === 0 || k === cells.length - 1).map(k => ({ x: e.x0 + ((k % g.w) + 0.5) * g.c, y: e.y0 + (Math.floor(k / g.w) + 0.5) * g.c }));
+        this.seaCache.set(key, { pts, len: dist[b] * g.c });
+      }
+    }
+    const p = this.seaCache.get(key);
+    if (!p) return null;
+    const pts = [{ x: ax, y: ay }, ...p.pts, { x: bx, y: by }];
+    let len = 0; for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y);
+    return { pts, len };
+  }
+
   /** Le point est-il à moins de `km` de la mer ? */
   nearSea(x: number, y: number, km = 3) {
     for (let r = 1; r <= km; r += 1) for (let a = 0; a < 16; a++) {

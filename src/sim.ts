@@ -174,7 +174,7 @@ export const workRange = (c: Building, s?: GameState) => (WORK_RANGES[c.city?.ti
 export function maxLevelAllowed(s: GameState) { return s.techs.includes('urbanisme') ? 3 : s.techs.includes('outillage') ? 2 : 1; }
 
 export function demolish(s: GameState, b: Building) {
-  if (b.type === 'poste') return;
+  if (b.type === 'poste' || b.type === 'comptoir') return;
   s.buildings = s.buildings.filter(x => x.id !== b.id);
   // le nœud routier reste comme simple carrefour s'il est relié, sinon il disparaît
   if (b.node !== null) {
@@ -256,17 +256,16 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
     if (!p.buys.includes(res) || partnerMods(s, p.id).closed) return 0;
     return Math.max(0, partnerVolume(s, p.id) - (s.stats.soldMonth[p.id] ?? 0));
   }
+  if (b.type === 'comptoir') {
+    const p = SEA_PARTNERS.find(x => x.id === b.sp);
+    if (!p || !p.buys.includes(res)) return 0;
+    return Math.max(0, seaVolume(s, p) - (s.stats.soldMonth['mer:' + p.id] ?? 0));
+  }
   // chantier : accepte les matériaux qui lui manquent encore (livrés par une ligne)
   if (!b.built || b.upgrading) {
     const left = (b.need[res] ?? 0) - (b.incoming[res] ?? 0);
     if (left > 0) return left;
     if (!b.built) return 0;
-  }
-  if (b.type === 'port_mer') {
-    // ce qui se vend outre-mer part aussitôt ; le reste est stocké
-    const total = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
-    const sell = seaPartnersOf(s, b).filter(p => p.buys.includes(res)).reduce((a, p) => a + Math.max(0, seaVolume(s, p) - (s.stats.soldMonth['mer:' + p.id] ?? 0)), 0);
-    return sell + Math.max(0, d.storage * b.level - total);
   }
   if (isStore(b)) {
     const total = Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
@@ -285,20 +284,14 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
     s.market[key] = Math.max(0.4, (s.market[key] ?? 1) * (1 - (b.partner ? 0.012 : 0.004) * qty));
     if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; const got = b.city.got ??= {}; got[res] = (got[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
     else { s.stats.sold[b.partner!] = (s.stats.sold[b.partner!] ?? 0) + qty; s.stats.soldMonth[b.partner!] = (s.stats.soldMonth[b.partner!] ?? 0) + qty; }
-  } else if (b.type === 'port_mer' && b.built) {
-    // vend au partenaire d'outre-mer qui paie le mieux, dans la limite de son volume mensuel
-    let left = qty;
-    for (const p of seaPartnersOf(s, b).filter(p => p.buys.includes(res)).sort((x, y) => seaPrice(s, b, y, res) - seaPrice(s, b, x, res))) {
-      const room = Math.max(0, seaVolume(s, p) - (s.stats.soldMonth['mer:' + p.id] ?? 0)), q = Math.min(left, room);
-      if (q <= 0) continue;
-      const gain = seaPrice(s, b, p, res) * q;
-      s.money += gain; s.stats.income += gain; if (v) v.income += gain;
-      const k = 'mer:' + p.id;
-      s.stats.soldMonth[k] = (s.stats.soldMonth[k] ?? 0) + q; s.stats.sold[k] = (s.stats.sold[k] ?? 0) + q;
-      s.market[k + ':' + res] = Math.max(0.4, (s.market[k + ':' + res] ?? 1) * (1 - 0.01 * q));
-      left -= q;
-    }
-    if (left > 0) { b.stock[res] = (b.stock[res] ?? 0) + left; addFlow(b, 'in', res, left); }
+  } else if (b.type === 'comptoir') {
+    // vente outre-mer, dans la limite du volume mensuel du partenaire
+    const p = SEA_PARTNERS.find(x => x.id === b.sp)!;
+    const gain = seaPrice(s, b, p, res) * qty;
+    s.money += gain; s.stats.income += gain; if (v) v.income += gain;
+    const k = 'mer:' + p.id;
+    s.stats.soldMonth[k] = (s.stats.soldMonth[k] ?? 0) + qty; s.stats.sold[k] = (s.stats.sold[k] ?? 0) + qty;
+    s.market[k + ':' + res] = Math.max(0.4, (s.market[k + ':' + res] ?? 1) * (1 - 0.01 * qty));
   } else if ((!b.built || b.upgrading) && (b.need[res] ?? 0) > 0) {
     // matériaux livrés directement sur le chantier
     const used = Math.min(qty, b.need[res]!);
@@ -355,6 +348,20 @@ export function sellLocal(s: GameState, b: Building, res: ResId, qty: number) {
 }
 
 // ---------- Commerce maritime ----------
+/** Comptoir maritime d'un partenaire sur une mer donnée */
+export const comptoirOf = (s: GameState, pid: string, sea: string) => s.buildings.find(b => b.type === 'comptoir' && b.sp === pid && b.sea === sea);
+/** Avec le négoce maritime, chaque partenaire d'outre-mer a son comptoir au large, sur chaque mer qu'il borde */
+export function ensureComptoirs(s: GameState, geo: Geo) {
+  if (!s.techs.includes('negoce_maritime')) return 0;
+  let n = 0;
+  for (const p of SEA_PARTNERS) for (const sea of p.seas) {
+    if (comptoirOf(s, p.id, sea)) continue;
+    const [lon, lat] = p.to[sea]!, [x, y] = geo.nearestSea(...geo.proj(lon, lat));
+    const b = makeBuilding(s, 'comptoir', x, y, p.name);
+    b.built = true; b.need = {}; b.sp = p.id; b.sea = sea; n++;
+  }
+  return n;
+}
 export function seaPartnersOf(s: GameState, b: Building): SeaPartner[] {
   const sea = b.sea ?? 'atlantique';
   void s; return SEA_PARTNERS.filter(p => p.seas.includes(sea));
@@ -370,9 +377,9 @@ export function seaImportPrice(s: GameState, b: Building, p: SeaPartner, res: Re
 }
 export function buySea(s: GameState, b: Building, pid: string, res: ResId, qty: number): string | null {
   const p = SEA_PARTNERS.find(x => x.id === pid)!;
-  const room = BUILD.port_mer.storage * b.level - Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
+  const room = BUILD[b.type].storage * b.level - Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
   qty = Math.min(qty, Math.floor(room));
-  if (qty <= 0) return 'Le port est plein.';
+  if (qty <= 0) return b.type === 'comptoir' ? 'Le comptoir est plein : envoie un navire chercher les marchandises.' : 'Le port est plein.';
   const cost = seaImportPrice(s, b, p, res) * qty;
   if (s.money < cost) return `Pas assez d'argent (${fmt(cost)} sesterces).`;
   s.money -= cost; s.stats.expenses += cost;
@@ -385,7 +392,7 @@ export function buySea(s: GameState, b: Building, pid: string, res: ResId, qty: 
 export class Sim {
   s: GameState;
   private dispatchTimer = 0;
-  constructor(state: GameState, public geo: Geo, public notify: Notifier) { this.s = state; }
+  constructor(state: GameState, public geo: Geo, public notify: Notifier) { this.s = state; ensureComptoirs(state, geo); }
 
   step(dtDays: number) {
     const s = this.s;
@@ -585,6 +592,13 @@ export class Sim {
   private route(v: Vehicle) {
     const s = this.s;
     const dest = this.destination(v);
+    if (dest && VEH[v.type].sea) {
+      // navire : de port de commerce en comptoir, par la mer
+      const p = this.geo.seaPath(v.x, v.y, dest.x, dest.y);
+      if (!p) return false;
+      setPath(v, { pts: p.pts, speed: p.pts.slice(1).map(() => 1) }); v.state = 'go'; v.at = null;
+      return true;
+    }
     if (dest && VEH[v.type].water) {
       // barge : de port en port, par le fleuve
       const p = this.geo.riverPath(v.x, v.y, dest.x, dest.y);
@@ -794,6 +808,7 @@ export class Sim {
     if (s.techs.includes(id) || s.rp < t.cost || !t.req.every(r => s.techs.includes(r))) return false;
     s.rp -= t.cost; s.techs.push(id);
     this.notify.toast(`Technologie découverte : ${t.name}`, 'good');
+    if (ensureComptoirs(s, this.geo)) this.notify.event('Les routes maritimes s\'ouvrent', 'Des comptoirs apparaissent au large : Bretagne insulaire, Hibernie, Frise, Hispanie, Sardaigne, Italie, Afrique et Grèce. Construis un port de commerce sur la côte, puis crée une ligne de navire marchand vers un comptoir pour y vendre tes marchandises ou rapporter ce que tu y achètes.');
     this.checkChapter();
     return true;
   }
@@ -873,6 +888,10 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     if (closed) return { label: 'Frontière fermée', level: 'bad' };
     if (b.node === null) return { label: 'Non relié', level: 'info', hint: 'Trace une route jusqu\'à ce poste pour y commercer.' };
     return { label: 'Commerce ouvert', level: 'good' };
+  }
+  if (b.type === 'comptoir') {
+    const p = SEA_PARTNERS.find(x => x.id === b.sp)!, sold = s.stats.soldMonth['mer:' + p.id] ?? 0;
+    return sold >= seaVolume(s, p) ? { label: 'Volume du mois atteint', level: 'info' } : { label: 'Route maritime ouverte', level: 'good' };
   }
   if ((!b.built || b.upgrading) && b.paused) return { label: 'Chantier en pause', level: 'info', hint: 'Les livraisons et les travaux sont suspendus.' };
   if (!b.built || b.upgrading) {

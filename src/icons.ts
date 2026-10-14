@@ -14,7 +14,7 @@ export const CATEGORY: Record<string, { name: string; color: string }> = {
   ouvrage: { name: 'Grands ouvrages', color: '#0c7c8c' },
 };
 export const BCAT: Record<BType, string> = {
-  entrepot: 'logistique', port: 'logistique', port_mer: 'commerce', poste: 'commerce',
+  entrepot: 'logistique', port: 'logistique', port_mer: 'commerce', poste: 'commerce', comptoir: 'commerce',
   carriere: 'extraction', argiliere: 'extraction', mine_fer: 'extraction', mine_plomb: 'extraction', saline: 'extraction',
   ferme: 'nature', bucheron: 'nature', briqueterie: 'artisanat', bas_fourneau: 'artisanat', forge: 'artisanat',
   village: 'ville', aqueduc: 'ouvrage', pont_du_gard: 'ouvrage',
@@ -42,6 +42,7 @@ const G: Record<BType, string> = {
   pont_du_gard: `<path d="M12 15 H52 V19 H12 Z M12 19 V27 H52 V19 Z" stroke-width="0"/><path d="M14 27 V31 Q16 28 18 31 V27 M22 27 V31 Q24 28 26 31 M30 27 V31 Q32 28 34 31 M38 27 V31 Q40 28 42 31 M46 27 V31 Q48 28 50 31" stroke="{c}" stroke-width="1.5" fill="none"/><path d="M12 31 H52 V46 H46 V38 Q41 32 36 38 V46 H28 V38 Q23 32 18 38 V46 H12 Z" stroke-width="0"/>`,
   poste: `<path d="M22 46 V14" stroke-width="3" fill="none"/><path d="M23 15 H45 L40 22 L45 29 H23 Z" stroke-width="0"/><path d="M15 46 H32" stroke-width="3" fill="none"/>`,
   port: `<path d="M32 15 V42" stroke-width="2.8" fill="none"/><circle cx="32" cy="16" r="3" fill="none" stroke-width="2.4"/><path d="M24 23 H40" stroke-width="2.6" fill="none"/><path d="M17 34 Q18 45 32 45 Q46 45 47 34" stroke-width="2.8" fill="none"/><path d="M14 37 L17 33 L21 37 M43 37 L47 33 L50 37" stroke-width="2.4" fill="none"/>`,
+  comptoir: `<path d="M27 11 H37 V15 Q43 19 43 29 Q43 39 34 45 H30 Q21 39 21 29 Q21 19 27 15 Z" stroke-width="0"/><path d="M27 15 Q20 15 19 21 M37 15 Q44 15 45 21" stroke-width="2.4" fill="none"/><path d="M23 27 H41 M24 33 H40" stroke="{c}" stroke-width="1.8"/><path d="M12 50 q5 -2.5 10 0 t10 0 t10 0 t10 0" stroke-width="1.8" fill="none"/>`,
   port_mer: `<path d="M31 12 V36" stroke-width="2.4" fill="none"/><path d="M33 13 L46 33 H33 Z" stroke-width="0"/><path d="M29 17 L19 33 H29 Z" stroke-width="0"/><path d="M14 37 H50 L45 44 H19 Z" stroke-width="0"/><path d="M12 48 q5 -2.5 10 0 t10 0 t10 0 t10 0" stroke-width="1.8" fill="none"/>`,
 };
 const SVG = Object.fromEntries((Object.keys(G) as BType[]).map(t => [t, badge(t, G[t])])) as Record<BType, string>;
@@ -72,6 +73,8 @@ const VSVG: Record<VType, string> = {
     <path d="M7 12 v24 M14 12 v24 M21 12 v24 M28 12 v24" stroke="#d3c39d" stroke-width="2.2"/><rect x="1" y="22.5" width="32" height="3" fill="#e2d5b4"/>
     <path d="M33 24 h8 M40 17 v14" stroke="#4a3320" stroke-width="2"/>${horse(50, 18, '#5a3a22')}${horse(50, 30, '#e8e0d0')}</g>`,
   barge: hull('#6e4422', `${blk(19, 17, 8, 6)}${blk(29, 17, 8, 6)}${blk(19, 25, 8, 6)}${blk(29, 25, 8, 6)}<rect x="40" y="18" width="9" height="12" rx="1" fill="#c9a774" stroke="#6e4a26"/><path d="M40 24h9" stroke="#6e4a26" stroke-width=".7"/>`),
+  navire: hull('#5a3518', `<rect x="14" y="17" width="12" height="14" fill="url(#pl2)"/>${blk(15, 18, 5, 5)}${blk(20, 25, 5, 5)}<rect x="44" y="17" width="8" height="14" fill="url(#pl2)"/>
+    <path d="M36 4 Q31 24 36 44" fill="#f4ecd8" stroke="#8a7a5a" stroke-width="1.2"/><path d="M36 4 V44" stroke="#3b2a1e" stroke-width="2.4"/><path d="M34 14 Q30 24 34 34" fill="none" stroke="#b03a2e" stroke-width="2"/><circle cx="36" cy="24" r="2.2" fill="#3b2a1e"/>`),
   chaland: hull('#8a5a2b', `<rect x="18" y="17" width="31" height="14" fill="url(#pl2)"/>${blk(20, 18, 7, 5)}${blk(29, 18, 7, 5)}${blk(24, 25, 7, 5)}${blk(38, 21, 8, 6)}`),
 };
 
