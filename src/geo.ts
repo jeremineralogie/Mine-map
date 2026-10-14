@@ -56,7 +56,8 @@ export class Geo {
   }
 
   // ---------- Navigation fluviale ----------
-  static readonly NAV_RANK = 10;   // rang Natural Earth maximal d'un fleuve navigable
+  static readonly NAV_RANK = 10;
+  static readonly NAV_REACH = 8;  // distance maximale entre un arrêt de barge et le fleuve (km)   // rang Natural Earth maximal d'un fleuve navigable
   private buildNavigation() {
     const pts = this.navPts, adj = this.navAdj, key = (x: number, y: number) => `${Math.floor(x / 5)},${Math.floor(y / 5)}`;
     const ends: { id: number; line: number }[] = [];
@@ -74,13 +75,26 @@ export class Geo {
     });
     // raccorde chaque extrémité au sommet le plus proche d'un autre tronçon (confluences, tronçons découpés)
     for (const e of ends) {
-      const p = pts[e.id]; let best = -1, bd = 3;
+      const p = pts[e.id]; let best = -1, bd = 5;
       for (const q of this.navNear(p.x, p.y)) {
         if ((pts[q] as { line?: number }).line === e.line) continue;
         const d = Math.hypot(pts[q].x - p.x, pts[q].y - p.y);
         if (d < bd) { bd = d; best = q; }
       }
       if (best >= 0) { adj[e.id].push({ to: best, len: bd }); adj[best].push({ to: e.id, len: bd }); }
+    }
+    // estuaires que le tracé simplifié ne relie pas : la Dordogne rejoint la Garonne au bec d'Ambès (Gironde)
+    for (const [ra, rb] of [['Dordogne', 'Garonne']]) {
+      const found: { best: [number, number, number] | null } = { best: null };
+      pts.forEach((p, i) => {
+        if (this.data.rivers[(p as { line?: number }).line!].n !== ra) return;
+        pts.forEach((q, j) => {
+          if (this.data.rivers[(q as { line?: number }).line!].n !== rb) return;
+          const d = Math.hypot(q.x - p.x, q.y - p.y);
+          if (d < 15 && (!found.best || d < found.best[0])) found.best = [d, i, j];
+        });
+      });
+      if (found.best) { const [d, i, j] = found.best; adj[i].push({ to: j, len: d }); adj[j].push({ to: i, len: d }); }
     }
   }
   private navNear(x: number, y: number) {
@@ -99,7 +113,8 @@ export class Geo {
   }
   /** Itinéraire par le fleuve entre deux points situés au bord de l'eau */
   riverPath(ax: number, ay: number, bx: number, by: number): { pts: { x: number; y: number }[]; len: number } | null {
-    const a = this.nearestNav(ax, ay), b = this.nearestNav(bx, by);
+    // un arrêt peut être un peu à l'écart du fleuve (quai, entrepôt riverain) : jusqu'à NAV_REACH km
+    const a = this.nearestNav(ax, ay, Geo.NAV_REACH), b = this.nearestNav(bx, by, Geo.NAV_REACH);
     if (!a || !b) return null;
     const dist = new Map<number, number>([[a.id, 0]]), prev = new Map<number, number>(), heap: [number, number][] = [[0, a.id]];
     while (heap.length) {

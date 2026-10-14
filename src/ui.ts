@@ -148,7 +148,13 @@ export class Game {
         // ne pas écraser un champ en cours de saisie
         const active = document.activeElement;
         // ne pas redessiner pendant qu'un champ ou une liste déroulante est utilisé (sinon la liste se referme)
-        if (!this.panelHold && !((active instanceof HTMLInputElement || active instanceof HTMLSelectElement) && $('panelBody').contains(active))) { $('panelBody').innerHTML = html; this.panelKey = html; }
+        // ni pendant un défilement (molette, doigt, inertie) : la liste ne doit pas bouger toute seule
+        const body = $('panelBody'), scrolling = performance.now() - this.panelScrollAt < 1200;
+        if (!this.panelHold && !scrolling && !((active instanceof HTMLInputElement || active instanceof HTMLSelectElement) && body.contains(active))) {
+          const top = body.scrollTop;
+          body.innerHTML = html; this.panelKey = html;
+          body.scrollTop = top;
+        }
       }
     }
   }
@@ -169,6 +175,7 @@ export class Game {
     window.addEventListener('pointercancel', () => { this.panelHold = false; });
     $('panelBack').onclick = () => this.back();
     $('menuBtn').onclick = () => this.openPanel(() => this.menuPanel());
+    for (const ev of ['scroll', 'wheel', 'touchmove']) $('panelBody').addEventListener(ev, () => { this.panelScrollAt = performance.now(); }, { passive: true });
     $('panelBody').addEventListener('pointerdown', e => this.stopDragStart(e));
     $('panelBody').addEventListener('click', e => this.panelClick(e));
     $('panelBody').addEventListener('mouseover', e => { const c = (e.target as HTMLElement).closest<HTMLElement>('.linebox, .linecard[data-act=line]'); this.view.hoverLine = c ? Number(c.dataset.line ?? c.dataset.id) : null; });
@@ -462,6 +469,7 @@ export class Game {
   }
   private panelKind = '';
   private panelHold = false;
+  private panelScrollAt = 0;
   /** Glisser-déposer des arrêts d'une ligne (souris et tactile) */
   private stopDragStart(e: PointerEvent) {
     const h = (e.target as HTMLElement).closest<HTMLElement>('.stop .handle');
@@ -499,7 +507,9 @@ export class Game {
     }
     this.panel = fn; this.panelKind = kind; this.panelKey = '';
     $('panelBack').hidden = !this.history.length;
-    $('panel').hidden = false; this.refresh();
+    $('panel').hidden = false;
+    const html = fn(); $('panelBody').innerHTML = html; this.panelKey = html; this.panelScrollAt = 0;
+    this.refresh();
     $('panelBody').scrollTop = 0;
   }
   closePanel() {
@@ -514,7 +524,7 @@ export class Game {
     this.view.selected = h.sel; this.view.selectedLine = h.line;
     this.panel = h.fn; this.panelKind = h.kind; this.panelKey = '';
     $('panelBack').hidden = !this.history.length; $('panel').hidden = false;
-    this.refresh(); $('panelBody').scrollTop = 0;
+    this.panelScrollAt = 0; this.panelHold = false; this.refresh(); $('panelBody').scrollTop = 0;
   }
 
   private detailPanel(): string {
@@ -562,8 +572,21 @@ export class Game {
       <input class="name" data-field="name" data-id="${b.id}" value="${esc(b.name)}"><small class="muted">${sub}</small>
       <span class="pill ${st.level}">${st.label}</span></div></div>
       ${st.hint ? `<p class="hint ${st.level}">${esc(st.hint)}</p>` : ''}<p class="muted desc">${esc(d.desc)}</p>`;
-    if (b.partner ? b.node !== null : b.built && b.type !== 'village')
-      h += `<div class="actions top"><button class="primary" data-act="newline" data-id="${b.id}">+ Nouvelle ligne depuis ${b.partner ? 'ce poste' : 'ici'}</button></div>`;
+    {
+      // actions principales en haut de la fiche : nouvelle ligne, amélioration
+      let top = '';
+      if (b.partner ? b.node !== null : b.built && b.type !== 'village')
+        top += `<button class="primary" data-act="newline" data-id="${b.id}">+ Nouvelle ligne depuis ${b.partner ? 'ce poste' : 'ici'}</button>`;
+      const hh = h; h = '';
+    if (b.built && !b.upgrading && b.level < d.maxLevel) {
+      const allowed = b.level < maxLevelAllowed(s);
+      const km = costMult(s), cost = Math.round(d.money * LEVEL_COST[b.level + 1] * km);
+      h += `<button class="up" data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1}${km < 1 ? ` (remise −${Math.round((1 - km) * 100)} %)` : ''} (${fmt(cost)} + ${costList(scaleStock(upgradeCost(b), km))})${allowed ? '' : ' — technologie requise'}</button>`;
+    }
+      top += h; h = hh;
+      if (b.upgrading) top += `<span class="pill info">Amélioration vers le niveau ${b.level + 1} en cours</span>`;
+      if (top) h += `<div class="actions top">${top}</div>`;
+    }
 
     if (b.partner) {
       const p = PARTNERS.find(x => x.id === b.partner)!;
@@ -688,11 +711,6 @@ export class Game {
     h += '<div class="actions">';
     if (b.built && !b.upgrading && d.recipe) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre la production' : '⏸ Mettre en pause'}</button>`;
     if (!b.built || b.upgrading) h += `<button data-act="pauseb" data-id="${b.id}" class="${b.paused ? 'primary' : ''}">${b.paused ? '▶ Reprendre le chantier' : '⏸ Mettre le chantier en pause'}</button>`;
-    if (b.built && !b.upgrading && b.level < d.maxLevel) {
-      const allowed = b.level < maxLevelAllowed(s);
-      const km = costMult(s), cost = Math.round(d.money * LEVEL_COST[b.level + 1] * km);
-      h += `<button data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1}${km < 1 ? ` (remise −${Math.round((1 - km) * 100)} %)` : ''} (${fmt(cost)} + ${costList(scaleStock(upgradeCost(b), km))})${allowed ? '' : ' — technologie requise'}</button>`;
-    }
     h += `<button class="danger" data-act="demolish" data-id="${b.id}">Démolir</button></div>`;
     return h;
   }
@@ -788,7 +806,7 @@ export class Game {
       const role = i === 0 ? '<span class="stopTag start">Départ</span>' : i === l.stops.length - 1 ? '<span class="stopTag end">Arrivée</span>' : '<span class="stopTag">Étape</span>';
       let warn = '';
       const water = VEH[l.vtype].water;
-      if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 4)) warn = '<small class="warn">pas au bord d\'un fleuve navigable</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
+      if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 8)) warn = '<small class="warn">trop loin d\'un fleuve navigable (plus de 8 km) : les barges ne peuvent pas y accoster</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
       else if (b && b.node === null) warn = '<small class="warn">non relié par la route</small>';
       else if (b && i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && p.node !== null && b.node !== null && !findPath(s, p.node, b.node)) warn = '<small class="warn">aucun itinéraire depuis l\'arrêt précédent</small>'; }
       if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && !isStore(b)) {
@@ -1074,6 +1092,7 @@ export class Game {
 
   // ---------- Actions des panneaux ----------
   private panelClick(e: Event) {
+    this.panelScrollAt = 0;   // une action : le panneau se met à jour tout de suite
     const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act]'); if (!t) return;
     const s = this.s, id = Number(t.dataset.id);
     switch (t.dataset.act) {
@@ -1149,13 +1168,26 @@ export class Game {
     this.panelKey = ''; this.refresh();
   }
   private panelChange(e: Event) {
+    this.panelScrollAt = 0;   // une action : le panneau se met à jour tout de suite
     const t = e.target as HTMLInputElement | HTMLSelectElement, s = this.s;
     const l = s.lines.find(x => x.id === this.view.selectedLine);
     if (t.dataset.layer) { (this.view.layers as Record<string, boolean>)[t.dataset.layer] = (t as HTMLInputElement).checked; }
     switch (t.dataset.field) {
       case 'name': { const b = getB(s, Number(t.dataset.id)); if (b && t.value.trim()) b.name = t.value.trim(); break; }
       case 'lname': if (l) l.name = t.value.trim(); break;
-      case 'vtype': if (l) l.vtype = t.value as VType; break;
+      case 'vtype': if (l) {
+        // les véhicules déjà achetés changent aussi de type (on paie ou récupère la différence de prix)
+        const nt = t.value as VType, vs = s.vehicles.filter(v => v.line === l.id && v.type !== nt);
+        const diff = vs.reduce((a, v) => a + VEH[nt].price - VEH[v.type].price, 0);
+        if (diff > s.money) { this.toast('Pas assez d\'argent pour remplacer les véhicules de la ligne.', 'bad'); t.value = l.vtype; break; }
+        l.vtype = nt;
+        for (const v of vs) {
+          v.type = nt; v.cargo = {}; v.state = 'lost'; v.timer = 0;
+          const b = getB(s, l.stops[v.stop % l.stops.length]?.bid ?? -1) ?? getB(s, l.stops[0]?.bid ?? -1);
+          if (b) { v.x = b.x; v.y = b.y; v.at = b.id; v.path = []; v.seg = 0; v.segPos = 0; }
+        }
+        if (vs.length) { s.money -= diff; s.stats.expenses += Math.max(0, diff); this.toast(`${vs.length} véhicule${vs.length > 1 ? 's' : ''} remplacé${vs.length > 1 ? 's' : ''} par : ${VEH[nt].name} (${diff >= 0 ? '−' : '+'}${fmt(Math.abs(diff))} sesterces).`); }
+      } break;
       case 'action': if (l) {
         const st = l.stops[Number(t.dataset.i)], b = getB(s, st.bid);
         st.action = t.value as 'load' | 'unload';
