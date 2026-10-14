@@ -8,7 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
-import { wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
+import { tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
@@ -30,6 +30,8 @@ const resIcon = (r: ResId, cls = 'ri') => { const im = resImg(r); return im ? `<
 const resChip = (r: ResId, q?: number) => `<span class="res">${resIcon(r)}${RES[r].name}${q !== undefined ? ` <b>${fmt(q)}</b>` : ''}</span>`;
 const cargoList = (c: Stock) => (Object.entries(c) as [ResId, number][]).filter(([, q]) => q >= 0.5).map(([r, q]) => resChip(r, q)).join(' ');
 const costList = (c: Partial<Record<ResId, number>>) => (Object.entries(c) as [ResId, number][]).map(([r, q]) => resChip(r, q)).join(' ');
+
+const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 
 export class Game {
   s!: GameState;
@@ -67,9 +69,10 @@ export class Game {
   // ---------- Partie ----------
   private notifier() {
     return {
-      toast: (t: string, k?: 'info' | 'good' | 'bad') => this.toast(t, k),
-      event: (title: string, text: string) => this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Continuer', primary: true }]),
-      chapter: () => this.modal(`<h2>Chapitre I terminé !</h2><p>Tu as bâti la Gaule romaine : tout l'arbre de recherche de l'Antiquité est débloqué.</p><p>Le chapitre II (<b>${ERAS[2]}</b>) arrive dans une prochaine version. Tu peux continuer à développer ton économie en attendant.</p>`, [{ label: 'Continuer', primary: true }]),
+      toast: (t: string, k?: 'info' | 'good' | 'bad') => { if (!this.ffwd) this.toast(t, k); },
+      // pendant l'avance rapide, les événements sont résumés à la fin au lieu d'interrompre le jeu
+      event: (title: string, text: string) => this.ffwd ? void this.ffwd.push(title) : this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Continuer', primary: true }]),
+      chapter: () => { if (this.ffwd) this.endFfwd(() => this.chapterModal()); else this.chapterModal(); },
       gameOver: () => this.modal(`<h2>Faillite</h2><p>Ta trésorerie est restée négative pendant 6 mois. Tes créanciers saisissent tes biens.</p>`, [{ label: 'Nouvelle partie', primary: true, fn: () => this.fresh() }]),
     };
   }
@@ -94,9 +97,54 @@ export class Game {
   load(s: GameState) {
     this.s = s = migrate(s);
     this.sim = new Sim(s, this.geo, this.notifier());
+    if (s.chapterDone && s.era === 1) setTimeout(() => this.chapterModal(), 300);
     const camp = s.buildings.find(b => b.type === 'entrepot');
     if (camp) this.centerOn(camp.x, camp.y, 6); else this.centerOn(0, -20, Math.min(this.cam.w, this.cam.h) / 1150);
     this.setMode(camp ? { kind: 'select' } : { kind: 'start' });
+  }
+  /** Fin d'un chapitre : passage au suivant (ou attente du chapitre III) */
+  chapterModal() {
+    const s = this.s;
+    if (s.era === 1) {
+      this.modal(`<h2>Chapitre I terminé !</h2><p>Tu as posé les bases de l'économie de la province : tout l'arbre de recherche de l'Antiquité romaine est débloqué.</p>
+        <p>Place au <b>chapitre II — ${ERAS[2]}</b> (jusqu'à la chute de Rome en 476) : l'âge d'or des villes romaines, puis la crise du IIIe siècle et les invasions.</p>`,
+        [{ label: 'Commencer le chapitre II', primary: true, fn: () => { startEra(s, 2); this.save(); setTimeout(() => this.introEra2(), 50); } }]);
+    } else {
+      this.modal(`<h2>Chapitre ${ROMAN[s.era]} terminé !</h2><p>Ta Gaule romaine a traversé l'âge d'or, la crise du IIIe siècle et les invasions. L'Empire d'Occident vit ses dernières années : Rome tombera en 476.</p>
+        <p>Le <b>chapitre III — ${ERAS[3]}</b> arrive dans une prochaine version. Tu peux continuer à développer ton économie en attendant.</p>`, [{ label: 'Continuer', primary: true }]);
+    }
+  }
+  /** Ouverture du chapitre II : résumé de ce qui se débloque */
+  private introEra2() {
+    const item = (t: string, d: string) => `<li><b>${t}</b> — ${d}</li>`;
+    this.modal(`<h2>Chapitre II — ${ERAS[2]}</h2>
+      <p>De l'an 1 à la chute de Rome en 476. Les villes romaines s'embellissent et le commerce s'étend à tout l'Empire… avant la crise du IIIe siècle et les invasions germaniques.</p>
+      <h3>Nouvelles productions</h3><ul class="intro">
+        ${item('Vin et huile d\'olive', 'vignobles sur les terroirs viticoles (Bourgogne, Rhône, Narbonnaise, Bordelais, Moselle), oliveraies en Provence et Languedoc seulement')}
+        ${item('Poterie sigillée, verre, chaux', 'ateliers de potier (argile + bois), verreries sur le sable, fours à chaux sur le calcaire')}
+        ${item('Marbre, cuivre, étain, bronze', 'carrières de marbre des Pyrénées, mines et fonderies de bronze')}
+        ${item('Poisson, garum, laine, tissus', 'pêcheries sur la côte, saloirs, bergeries sur les pâturages, ateliers de tissage')}</ul>
+      <h3>Villes</h3><ul class="intro">
+        ${item('Nouveaux besoins', 'poterie, vin, huile, tissus puis verre ; les villes qui les reçoivent consomment 20 % de moins des anciens produits')}
+        ${item('Thermes, amphithéâtres, basiliques', 'croissance plus rapide et points de recherche ; nouveau palier : Capitale (15 000 habitants)')}
+        ${item('Remparts', 'protègent des invasions les bâtiments à moins de 20 km')}</ul>
+      <h3>Transport</h3><ul class="intro">
+        ${item('Relais routiers', 'véhicules 25 % plus rapides autour d\'eux')}
+        ${item('Carpentum, grande barge, oneraria', 'chariot couvert de 6 t (voies romaines), barge de 25 t, navire de 40 t')}</ul>
+      <h3>Pour finir le chapitre</h3><ul class="intro">
+        ${item('Arbre de recherche', '20 technologies, dont une nouvelle branche Culture et religion')}
+        ${item('Arènes de Nîmes', 'la merveille du chapitre, à construire sur son site')}
+        ${item('Date', 'atteindre 426 au moins (476, à 50 ans près) ; un bouton permet d\'avancer rapidement si tu es en avance')}</ul>
+      <p class="muted">Les nouveaux gisements apparaissent sur la carte (calque Gisements). Attention : à partir de 235, la crise monétaire et les raids barbares frappent le nord-est.</p>`,
+      [{ label: 'C\'est parti !', primary: true, fn: () => { this.view.layers.deposits = true; } }]);
+  }
+  /** Avance rapide jusqu'à la date de fin d'époque */
+  ffwd: string[] | null = null;
+  startFfwd() { if (!this.ffwd) { this.ffwd = []; this.closePanel(); this.toast('Avance rapide…'); } }
+  endFfwd(after?: () => void) {
+    if (!this.ffwd) return;
+    const log = this.ffwd; this.ffwd = null;
+    this.modal(`<h2>Avance rapide terminée</h2><p>Nous sommes en <b>${dateLabel(this.s)}</b>.</p>${log.length ? `<h3>Ce qui s'est passé</h3><ul class="intro">${log.map(t => `<li>${esc(t)}</li>`).join('')}</ul><p class="muted">Le détail est dans le journal (onglet Objectifs).</p>` : ''}`, [{ label: 'Continuer', primary: true, fn: after ? () => setTimeout(after, 50) : undefined }]);
   }
   centerOn(x: number, y: number, scale?: number) { this.cam.cx = x; this.cam.cy = y; if (scale) this.cam.scale = scale; }
 
@@ -108,7 +156,12 @@ export class Game {
   // ---------- Boucle ----------
   private frame(t: number) {
     const dt = Math.min(0.25, (t - this.last) / 1000); this.last = t;
-    if (this.mode.kind !== 'start' && this.speed > 0 && !this.s.over && $('modal').hidden) {
+    if (this.ffwd) {
+      // avance rapide : autant de jours que possible en ~14 ms par image (une dizaine d'années par seconde)
+      const end = chapterConditions(this.s).end, t0 = performance.now();
+      for (let i = 0; i < 2000 && this.ffwd && performance.now() - t0 < 14; i++) this.sim.step(1);
+      if (this.ffwd && (!end || chapterConditions(this.s).date || this.s.over)) this.endFfwd();
+    } else if (this.mode.kind !== 'start' && this.speed > 0 && !this.s.over && $('modal').hidden) {
       let days = dt * DAYS_PER_SEC * this.speed;
       while (days > 0) { const d = Math.min(0.5, days); this.sim.step(d); days -= d; }
     }
@@ -594,13 +647,17 @@ export class Game {
       if (b.partner ? b.node !== null : b.built && d.storage > 0)
         top += `<button class="primary" data-act="newline" data-id="${b.id}">+ Nouvelle ligne depuis ${b.partner ? 'ce poste' : 'ici'}</button>`;
       const hh = h; h = '';
-    if (b.built && !b.upgrading && b.level < d.maxLevel) {
+      if (b.damaged && !b.repair) {
+        const rc = repairCost(b);
+        top += `<button class="primary" data-act="repair" data-id="${b.id}">🔨 Réparer (${fmt(rc.money)} + ${costList(rc.need)})</button>`;
+      }
+    if (b.built && !b.upgrading && !b.damaged && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
       const km = costMult(s), cost = Math.round(d.money * LEVEL_COST[b.level + 1] * km);
       h += `<button class="up" data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1}${km < 1 ? ` (remise −${Math.round((1 - km) * 100)} %)` : ''} (${fmt(cost)} + ${costList(scaleStock(upgradeCost(b), km))})${allowed ? '' : ' — technologie requise'}</button>`;
     }
       top += h; h = hh;
-      if (b.upgrading) top += `<span class="pill info">Amélioration vers le niveau ${b.level + 1} en cours</span>`;
+      if (b.upgrading) top += `<span class="pill info">${b.repair ? 'Réparation en cours' : `Amélioration vers le niveau ${b.level + 1} en cours`}</span>`;
       if (top) h += `<div class="actions top">${top}</div>`;
     }
 
@@ -610,7 +667,7 @@ export class Game {
       h += this.kpis([[`${fmt(sold)} / ${vol} t`, 'vendu ce mois'], [`${fmt(s.stats.sold['mer:' + p.id] ?? 0)} t`, 'vendu au total'], [`${ports.length}`, `port${ports.length > 1 ? 's' : ''} de commerce sur cette mer`]]);
       h += `<div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>`;
       if (!ports.length) h += `<p class="hint warn">Construis un port de commerce sur la côte ${b.sea === 'mediterranee' ? 'méditerranéenne' : 'atlantique ou de la Manche'} pour y envoyer des navires.</p>`;
-      h += `<h3>Ils achètent <small class="muted">— livre-leur avec un navire marchand (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${seaPrice(s, b, p, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
+      h += `<h3>Ils achètent <small class="muted">— livre-leur avec un navire marchand (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.filter(r => RES[r].era <= s.era).map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${seaPrice(s, b, p, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
       h += `<h3>Ils vendent <small class="muted">— les achats attendent ici qu'un navire vienne les charger</small></h3><div class="stocks">${p.sells.map(r => {
         const pr = seaImportPrice(s, b, p, r);
         return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${pr.toFixed(1)} <small class="muted">sest./t</small></b></div>
@@ -626,7 +683,7 @@ export class Game {
       const sold = s.stats.soldMonth[p.id] ?? 0, vol = partnerVolume(s, p.id), closed = partnerClosed(s, p.id);
       h += this.kpis([[`${fmt(sold)} / ${vol} t`, 'vendu ce mois'], [`${fmt(s.stats.sold[p.id] ?? 0)} t`, 'vendu au total']]);
       h += `<div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>`;
-      h += `<h3>Ils achètent <small class="muted">— livre-leur avec une ligne (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${priceAt(s, b, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
+      h += `<h3>Ils achètent <small class="muted">— livre-leur avec une ligne (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.filter(r => RES[r].era <= s.era).map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${priceAt(s, b, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
       h += `<h3>Ils vendent <small class="muted">— les achats arrivent dans ce poste</small></h3><div class="stocks">${p.sells.map(r => {
         const pr = importPrice(s, b, r);
         return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${pr.toFixed(1)} <small class="muted">sest./t</small></b></div>
@@ -655,14 +712,26 @@ export class Game {
     }
 
     if (d.wonder) {
-      const w = d.wonder;
+      const w = d.wonder, on = b.built;
       const cities = s.buildings.filter(x => x.city && x.built && Math.hypot(x.x - b.x, x.y - b.y) <= w.range);
       const shops = s.buildings.filter(x => w.prodTypes.includes(x.type) && x.built && Math.hypot(x.x - b.x, x.y - b.y) <= w.prodRange);
-      const on = b.built;
-      h += `<h3>Effets de la merveille ${on ? '' : '<small class="muted">— une fois construite</small>'}</h3><div class="stocks">
-        <div class="srow"><span class="wfx">💧</span><div class="sinfo"><div class="sline"><span>Eau courante</span><b>${w.range} km</b></div><small class="muted">On peut bâtir villes et ateliers loin des rivières dans ce rayon.</small></div></div>
-        <div class="srow"><span class="wfx">🏛</span><div class="sinfo"><div class="sline"><span>Consommation des villes</span><b>−${Math.round((1 - w.needMult) * 100)} %</b></div><small class="muted">Villes à moins de ${w.range} km : ${cities.length ? cities.map(x => esc(x.name)).join(', ') : 'aucune pour l\'instant'}.</small></div></div>
-        <div class="srow"><span class="wfx">⚒</span><div class="sinfo"><div class="sline"><span>Production des ${w.prodTypes.map(t => BUILD[t].name.toLowerCase().replace('camp de bûcherons', 'camps de bûcherons').replace('carrière de pierre', 'carrières')).join(' et ')}</span><b>+${Math.round((w.prodMult - 1) * 100)} %</b></div><small class="muted">À moins de ${w.prodRange} km : ${shops.length} bâtiment${shops.length > 1 ? 's' : ''}.</small></div></div></div>`;
+      const row = (ic: string, t: string, v: string, sub: string) => `<div class="srow"><span class="wfx">${ic}</span><div class="sinfo"><div class="sline"><span>${t}</span><b>${v}</b></div><small class="muted">${sub}</small></div></div>`;
+      const cityList = `Villes à moins de ${w.range} km : ${cities.length ? cities.map(x => esc(x.name)).join(', ') : 'aucune pour l\'instant'}.`;
+      let fx = '';
+      if (d.waterRange) fx += row('💧', 'Eau courante', `${d.waterRange} km`, 'On peut bâtir villes et ateliers loin des rivières dans ce rayon.');
+      if (w.needMult < 1) fx += row('🏛', 'Consommation des villes', `−${Math.round((1 - w.needMult) * 100)} %`, cityList);
+      if (w.growth) fx += row('🏟', 'Croissance des villes', `+${Math.round((w.growth - 1) * 100)} %`, cityList);
+      if (w.prodMult > 1) fx += row('⚒', `Production des ${w.prodTypes.map(t => BUILD[t].name.toLowerCase().replace('camp de bûcherons', 'camps de bûcherons').replace('carrière de pierre', 'carrières')).join(' et ')}`, `+${Math.round((w.prodMult - 1) * 100)} %`, `À moins de ${w.prodRange} km : ${shops.length} bâtiment${shops.length > 1 ? 's' : ''}.`);
+      if (w.rp) fx += row('📜', 'Prestige', `+${w.rp} pt/mois`, 'Points de recherche chaque mois.');
+      if (w.games) { const pop = cities.reduce((a2, x) => a2 + x.city!.pop, 0); fx += row('🪙', 'Revenus des jeux', `${fmt(pop * w.games)} /mois`, 'Grandit avec la population des villes voisines.'); }
+      h += `<h3>Effets de la merveille ${on ? '' : '<small class="muted">— une fois construite</small>'}</h3><div class="stocks">${fx}</div>`;
+    }
+    if (d.effect && !d.wonder) {
+      const e = d.effect;
+      const fx = [e.growth ? `croissance +${Math.round((e.growth - 1) * 100)} % des villes à moins de ${e.range ?? 8} km` : '',
+        e.protect ? `protège des invasions les bâtiments à moins de ${e.protect} km` : '', e.rp ? `+${String(e.rp).replace('.', ',')} point de recherche par mois` : '',
+        e.speed ? `véhicules +${Math.round((e.speed - 1) * 100)} % de vitesse à moins de ${e.range ?? 30} km` : '', e.seaVolume ? `volume du commerce maritime +${Math.round(e.seaVolume * 100)} %` : ''].filter(Boolean);
+      h += `<p class="hint ${b.built && !b.damaged ? 'good' : 'info'}">${b.built && !b.damaged ? 'Effet actif' : 'Effet une fois construit'} : ${fx.join(' ; ')}.</p>`;
     }
     if (b.city) {
       const c = b.city, needs = cityNeeds(b), next = TIERS[c.tier + 1];
@@ -689,8 +758,8 @@ export class Game {
           <small class="flux muted">${q.toFixed(1)} t/mois · réserve ${fmt(have)} t · achète ${priceAt(s, b, r).toFixed(1)} sest./t</small></div></div>`;
       }).join('')}</div>`;
       if (next) {
-        const newGoods = (Object.keys(next.needs) as ResId[]).filter(r => !TIERS[c.tier].needs[r]);
-        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()}, la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}</p>`;
+        const cur = tierGoods(c.tier, s.era), newGoods = tierGoods(c.tier + 1, s.era).filter(r => !cur.includes(r));
+        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()}, la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}${c.tier + 1 === 4 && !s.techs.includes('capitales') ? ' — et il faut la technologie Capitales provinciales' : ''}</p>`;
       }
     }
 
@@ -724,7 +793,7 @@ export class Game {
         const p = SEA_PARTNERS.find(x => x.id === c.sp)!, route = this.geo.seaPath(b.x, b.y, c.x, c.y);
         const sold = s.stats.soldMonth['mer:' + p.id] ?? 0, vol = seaVolume(s, p);
         return `<div class="seap"><div class="seap-h"><b>${esc(p.name)}</b><small class="muted">${route ? `${fmt(route.len)} km · ${Math.max(1, Math.round(route.len / sp))} j de mer` : 'inaccessible'}</small></div>
-          <div class="seap-row"><small class="muted">Achète :</small>${p.buys.map(r => `<span class="res">${resIcon(r)}${RES[r].name} <b>${seaPrice(s, c, p, r).toFixed(1)}</b></span>`).join('')}</div>
+          <div class="seap-row"><small class="muted">Achète :</small>${p.buys.filter(r => RES[r].era <= s.era).map(r => `<span class="res">${resIcon(r)}${RES[r].name} <b>${seaPrice(s, c, p, r).toFixed(1)}</b></span>`).join('')}</div>
           <div class="seap-row"><small class="muted">Vend :</small>${p.sells.map(r => `<span class="res">${resIcon(r)}${RES[r].name}</span>`).join('')}</div>
           <div class="seap-row"><small class="muted">${fmt(sold)} / ${vol} t vendues ce mois</small><span class="grow"></span>${route ? `<button class="primary" data-act="sealine" data-id="${b.id}" data-c="${c.id}">+ Ligne de navire</button>` : ''}<button data-act="goto" data-id="${c.id}">Voir</button></div></div>`;
       }).join('') || '<p class="muted">Aucun comptoir sur cette mer.</p>';
@@ -857,7 +926,7 @@ export class Game {
         else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.seaPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">pas de route maritime depuis l\'arrêt précédent (autre mer)</small>'; }
       } else if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 8)) warn = '<small class="warn">trop loin d\'un fleuve navigable (plus de 8 km) : les barges ne peuvent pas y accoster</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
       else if (b && b.node === null) warn = '<small class="warn">non relié par la route</small>';
-      else if (b && i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && p.node !== null && b.node !== null && !findPath(s, p.node, b.node)) warn = '<small class="warn">aucun itinéraire depuis l\'arrêt précédent</small>'; }
+      else if (b && i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && p.node !== null && b.node !== null && !findPath(s, p.node, b.node, VEH[l.vtype].voie)) warn = `<small class="warn">aucun itinéraire${VEH[l.vtype].voie ? ' par voie romaine' : ''} depuis l'arrêt précédent</small>`; }
       if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && !isStore(b)) {
         const ok = b.type === 'comptoir' ? loaded.filter(r => SEA_PARTNERS.find(p => p.id === b.sp)!.buys.includes(r)) : loaded.filter(r => BUILD[b.type].recipe?.in[r]);
         if (!ok.length) warn += ' <small class="warn">ce bâtiment n\'accepte aucun de ces matériaux</small>';
@@ -940,7 +1009,7 @@ export class Game {
     h += `<h3>Commerce extérieur</h3>${s.buildings.filter(b => b.partner).map(b => {
       const p = PARTNERS.find(x => x.id === b.partner)!, st = buildingStatus(this.sim, b);
       return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#7a1f2b"><span class="lc-head"><b>${esc(p.name)}</b><span class="pill ${st.level}">${st.label}</span></span>
-        <span class="chips"><small class="muted">Achète :</small> ${p.buys.map(r => resChip(r)).join(' ')}</span>
+        <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
         <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
     }).join('')}<p class="muted">Relie un poste-frontière par la route, puis livre-lui des marchandises avec une ligne, ou achète-lui des ressources depuis sa fiche.</p>`;
     // partenaires d'outre-mer : ouverts avec le négoce maritime
@@ -949,7 +1018,7 @@ export class Game {
     h += seaOpen ? s.buildings.filter(b => b.type === 'comptoir').map(b => {
       const p = SEA_PARTNERS.find(x => x.id === b.sp)!, st = buildingStatus(this.sim, b);
       return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#14406e"><span class="lc-head"><b>${esc(p.name)}</b><small class="muted">${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique'}</small><span class="pill ${st.level}">${st.label}</span></span>
-        <span class="chips"><small class="muted">Achète :</small> ${p.buys.map(r => resChip(r)).join(' ')}</span>
+        <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
         <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
     }).join('') + '<p class="muted">Construis un port de commerce sur la côte, puis envoie des navires marchands vers ces comptoirs.</p>'
       : `<p class="muted">Recherche le négoce maritime pour ouvrir des routes vers ${SEA_PARTNERS.map(p => p.name.split(' (')[0]).join(', ')}.</p>`;
@@ -1023,7 +1092,7 @@ export class Game {
     if (a === 'close') this.closeTree();
     else if (a === 'node') this.treeSel = t.dataset.id!;
     else if (a === 'research') this.sim.research(t.dataset.id!);
-    else if (a === 'next') { this.closeTree(); this.notifier().chapter(); }
+    else if (a === 'next') { this.closeTree(); this.chapterModal(); }
     this.treeKey = ''; this.renderTree(); this.refresh();
   }
   private renderTree() {
@@ -1085,13 +1154,13 @@ export class Game {
       <header class="tv-head"><div class="tv-title">${IC.research}<div><h2>Arbre de recherche</h2><small>${ERAS[s.era]}</small></div></div>
         <div class="tv-stats"><span class="tv-rp">${IC.scroll}<b>${fmt(Math.floor(s.rp))}</b> pts</span>
         <span class="tv-prog"><span class="gauge"><i style="width:${done / techs.length * 100}%"></i></span><small>${done} / ${techs.length} découvertes</small></span>
-        ${done === techs.length ? `<button class="primary" data-tv="next">Époque suivante →</button>` : ''}</div>
+        ${s.chapterDone ? `<button class="primary" data-tv="next">Époque suivante →</button>` : done === techs.length && !s.chapterDone ? `<small class="muted">Arbre complet : voir les autres conditions dans Objectifs</small>` : ''}</div>
         <button class="tv-close" data-tv="close" title="Fermer">${IC.close}</button></header>
       <div class="tv-body"><div class="tv-scroll"><div class="tv-canvas" style="width:${W}px;height:${H}px">${laneHtml}
         <svg class="tv-edges" width="${W}" height="${H}">${edges}</svg>${nodes}</div></div>
         <aside class="tv-detail">${detail}</aside></div>
       <footer class="tv-legend"><span class="lg done"></span>Découverte <span class="lg ready"></span>Disponible <span class="lg avail"></span>Points insuffisants <span class="lg locked"></span>Verrouillée
-        <small class="muted">Choisis ton ordre de recherche ; l'époque suivante s'ouvre quand tout l'arbre est découvert.</small></footer></div>`;
+        <small class="muted">Choisis ton ordre de recherche ; l'époque suivante s'ouvre quand tout l'arbre est découvert${s.era >= 2 ? ', la merveille construite et la date atteinte' : ''}.</small></footer></div>`;
   }
 
   /** Effets des événements historiques encore actifs */
@@ -1102,7 +1171,8 @@ export class Game {
     const pct = (m: number) => `${m >= 1 ? '+' : '−'}${Math.round(Math.abs(m - 1) * 100)} %`;
     const label = (m: typeof mods[number]) => m.kind === 'discount' ? `Constructions et améliorations ${pct(m.mult)}`
       : m.kind === 'demand' ? `Les villes paient ${(m.res ?? []).map(r => RES[r].name.toLowerCase()).join(', ')} ${pct(m.mult)}`
-      : m.kind === 'prod' ? `Production des ateliers ${pct(m.mult)}`
+      : m.kind === 'prod' ? `Production ${m.res ? 'de ' + m.res.map(r => RES[r].name.toLowerCase()).join(', ') : 'des ateliers'} ${pct(m.mult)}`
+      : m.kind === 'prices' ? `Monnaie dévaluée : prix de vente ${pct(m.mult)}`
       : m.kind === 'growth' ? `Croissance des villes ${pct(m.mult)}`
       : m.kind === 'closed' ? `Frontière fermée : ${pn(m.partner)}`
       : `${pn(m.partner)} paie ${pct(m.mult)}`;
@@ -1116,10 +1186,17 @@ export class Game {
     const doneN = objs.filter(o => s.objectives.includes(o.id)).length, techN = TECHS.filter(t => t.era === s.era && s.techs.includes(t.id)).length, techT = TECHS.filter(t => t.era === s.era).length;
     const rows = objs.map(o => `<div class="obj ${s.objectives.includes(o.id) ? 'done' : ''}"><b>${s.objectives.includes(o.id) ? '✓ ' : ''}${o.name}</b><p>${esc(o.desc)} <small class="muted">+${fmt(o.money)} sesterces, +${o.rp} pts</small></p></div>`).join('');
     const log = s.log.slice(0, 12).map(e => `<li><small class="muted">${yearOf(e.day)}</small> ${esc(e.text)}</li>`).join('');
-    return `<h2 class="ph">${IC.objectives}Chapitre I · ${ERAS[s.era]}</h2>
-      <p>Arbre de recherche : <b>${techN} / ${techT}</b> · Objectifs : <b>${doneN} / ${objs.length}</b></p>
+    const cc = chapterConditions(s), end = cc.end;
+    const cond = (ok: boolean, t: string) => `<li class="${ok ? 'ok' : ''}">${ok ? IC.check : IC.lock}<span>${t}</span></li>`;
+    const ffwdBtn = end && cc.techs && cc.wonder && !cc.date ? `<div class="actions top"><button class="primary" data-act="ffwd">⏩ Avancer jusqu'en ${end.year - 50}</button></div><p class="muted">Le temps défile très vite ; les événements sont résumés à la fin.</p>` : '';
+    return `<h2 class="ph">${IC.objectives}Chapitre ${ROMAN[s.era]} · ${ERAS[s.era]}</h2>
+      <h3>Pour terminer le chapitre</h3><ul class="conds">
+        ${cond(cc.techs, `Arbre de recherche complet (${techN} / ${techT})`)}
+        ${end ? cond(cc.wonder, `Construire ${BUILD[end.wonder].name}`) : ''}
+        ${end ? cond(cc.date, `Atteindre l'an ${end.year - 50} (fin de l'époque : ${end.year}, à 50 ans près)`) : ''}</ul>
       <div class="bar"><i style="width:${Math.round(techN / techT * 100)}%"></i></div>
-      <p class="muted">L'époque s'achève quand tout son arbre de recherche est débloqué. Les objectifs historiques sont facultatifs : ils rapportent argent et points de recherche.</p>
+      ${s.chapterDone ? `<div class="actions top"><button class="primary" data-act="nextera">Chapitre suivant →</button></div>` : ffwdBtn}
+      <p class="muted">Objectifs historiques : <b>${doneN} / ${objs.length}</b>. Ils sont facultatifs${end ? ` (sauf ${BUILD[end.wonder].name})` : ''} et rapportent argent et points de recherche.</p>
       ${this.modsHtml()}
       ${rows}<h3>Journal</h3><ul class="log">${log || '<li class="muted">Rien à signaler.</li>'}</ul>`;
   }
@@ -1209,7 +1286,9 @@ export class Game {
         break;
       }
       case 'research': this.sim.research(t.dataset.id!); break;
-      case 'nextera': this.notifier().chapter(); break;
+      case 'nextera': this.chapterModal(); break;
+      case 'repair': { const b = getB(s, id)!; const err = startRepair(s, b); this.toast(err ?? 'Réparation lancée : les matériaux arrivent par convoi.', err ? 'bad' : 'good'); break; }
+      case 'ffwd': this.startFfwd(); break;
       case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; const n = b.staff, site = !b.built || b.upgrading; this.sim.staffing();
         this.toast(site ? (b.paused ? `${b.name} : chantier en pause.` : `${b.name} : chantier relancé.`) : b.paused ? `${b.name} : production en pause, ${n} ouvrier${n > 1 ? 's' : ''} libéré${n > 1 ? 's' : ''} pour les autres ateliers.` : `${b.name} : production relancée.`); } break; }
       case 'pausel': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) { l.paused = !l.paused; this.toast(l.paused ? 'Ligne en pause : les véhicules chargés terminent leur livraison, puis s\'arrêtent.' : 'Ligne relancée.'); } break; }

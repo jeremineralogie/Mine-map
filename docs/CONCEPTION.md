@@ -18,10 +18,18 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 | # | Époque | Début | Matières clés | Transports |
 |---|--------|-------|---------------|------------|
 | I | Antiquité romaine | 50 av. J.-C. | bois, pierre, argile, fer, plomb, sel, nourriture | charrette à bœufs, chariot à chevaux, voie romaine |
-| II | Moyen Âge | 500 | moulins, forges, cathédrales, ardoise | chevaux de trait, barges, ports à voile |
-| III | Révolution industrielle | 1780 | charbon, acier, vapeur, verre | chemin de fer, canaux |
-| IV | Électricité et pétrole | 1890 | pétrole, électricité, ciment, béton | camions, pétroliers, pipelines |
-| V | Époque moderne | 1960 | nucléaire, aluminium, électronique, terres rares | autoroutes, porte-conteneurs |
+| II | Gaule romaine | an 1 (→ 476) | vin, huile, poterie sigillée, verre, chaux, marbre, garum, laine, tissus, bronze | carpentum, grande barge, oneraria, relais routiers |
+| III | Moyen Âge | 500 | moulins, forges, cathédrales, ardoise | chevaux de trait, barges, ports à voile |
+| IV | Révolution industrielle | 1780 | charbon, acier, vapeur, verre | chemin de fer, canaux |
+| V | Électricité et pétrole | 1890 | pétrole, électricité, ciment, béton | camions, pétroliers, pipelines |
+| VI | Époque moderne | 1960 | nucléaire, aluminium, électronique, terres rares | autoroutes, porte-conteneurs |
+
+**Chapitre II — Gaule romaine** : fin quand l'arbre (20 technologies, 5 branches dont Culture et religion)
+est complet, les Arènes de Nîmes construites et la date ≥ 426 (476 à 50 ans près ; bouton d'avance rapide).
+Nouveaux besoins des villes par palier (poterie, vin, huile, tissus, verre, puis bronze, garum, marbre pour
+la Capitale à 15 000 habitants) ; les anciens produits sont consommés 20 % de moins. Crise du IIIe siècle :
+monnaie dévaluée (−20 % sur les ventes 235–284), raids et invasions (256, 275, 352, 406, 451) qui endommagent
+les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent + matériaux).
 
 ## 3. Carte
 - France métropolitaine + Corse, projection en kilomètres réels.

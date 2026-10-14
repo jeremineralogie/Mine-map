@@ -12,6 +12,8 @@ export interface City {
   want?: Stock; ate?: Stock;
   /** effet des merveilles proches sur la consommation (1 = aucun) */
   needMult?: number;
+  /** époque en cours (besoins de la Gaule romaine à partir du chapitre II) ; la ville reçoit-elle déjà les nouveaux produits */
+  era?: number; modern?: boolean;
   /** livraisons reçues ce mois-ci */
   got?: Stock;
   /** céréales reçues le mois dernier ; la ville a-t-elle grandi ce mois-ci */
@@ -47,6 +49,9 @@ export interface Building {
   paused?: boolean;       // production mise en pause par le joueur
   sea?: 'atlantique' | 'mediterranee';  // port de commerce : mer bordant le port
   sp?: string;           // comptoir maritime : partenaire d'outre-mer
+  damaged?: boolean;     // endommagé par une invasion : à l'arrêt jusqu'à sa réparation
+  repair?: boolean;      // chantier de réparation en cours (utilise need/work comme une amélioration)
+  haltWhy?: string;      // raison d'un arrêt temporaire (éboulement, révolte…)
 }
 
 /** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */
@@ -102,7 +107,7 @@ export interface GameState {
   stats: { produced: Stock; food: number; sold: Record<string, number>; soldMonth: Record<string, number>; income: number; expenses: number; };
   objectives: string[];
   events: number[];
-  mods: { kind: 'growth' | 'closed' | 'boost' | 'discount' | 'demand' | 'prod'; partner?: string; res?: ResId[]; mult: number; until: number }[];
+  mods: { kind: 'growth' | 'closed' | 'boost' | 'discount' | 'demand' | 'prod' | 'prices'; partner?: string; res?: ResId[]; mult: number; until: number }[];
   market: Record<string, number>;
   negMonths: number;
   over: boolean;

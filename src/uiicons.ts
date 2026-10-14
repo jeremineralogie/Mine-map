@@ -22,6 +22,7 @@ export const IC: Record<string, string> = {
   production: svg('<path d="M3 21V11l5 3V11l5 3V7l8 4v10z"/><path d="M7 21v-3M12 21v-3M17 21v-3"/>'),
   cite: svg('<path d="M3 21h18"/><path d="M4 10h16"/><path d="M12 3l8 4H4z"/><path d="M6 10v8M10 10v8M14 10v8M18 10v8"/>'),
   commerce: svg('<path d="M12 4v16"/><path d="M7 20h10"/><path d="M4 8h16"/><path d="M6 8l-3 6a3 3 0 0 0 6 0z"/><path d="M18 8l-3 6a3 3 0 0 0 6 0z"/>'),
+  culture: svg('<path d="M4 20h16"/><path d="M6 20v-6a6 6 0 0 1 12 0v6"/><path d="M12 3v5M9.5 5.5h5"/><path d="M10 20v-4h4v4"/>'),
   map: svg('<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>'),
 };
 

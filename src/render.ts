@@ -42,7 +42,6 @@ export class Renderer {
   private lakes = new Path2D();
   private rivers: { p: Path2D; w: number }[] = [];
   private waterLayer: HTMLCanvasElement;
-  private gardSite: [number, number];
 
   constructor(public canvas: HTMLCanvasElement, public geo: Geo, public cam: Camera) {
     this.ctx = canvas.getContext('2d')!;
@@ -67,7 +66,6 @@ export class Renderer {
       id.data[k * 4] = 40; id.data[k * 4 + 1] = 120; id.data[k * 4 + 2] = 220; id.data[k * 4 + 3] = 90;
     }
     wc.putImageData(id, 0, 0);
-    this.gardSite = geo.proj(BUILD.pont_du_gard.site![0], BUILD.pont_du_gard.site![1]);
   }
 
   resize() {
@@ -184,18 +182,29 @@ export class Renderer {
   /** Port de commerce sélectionné : routes maritimes vers ses partenaires */
   /** Merveille sélectionnée (ou en projet) : rayons d'effet */
   private drawWonder(s: GameState, v: View) {
+    // merveille ou bâtiment à effet sélectionné : rayons d'effet
     const sel = v.selected?.kind === 'building' ? s.buildings.find(x => x.id === v.selected!.id) : undefined;
-    const w = sel && BUILD[sel.type].wonder; if (!sel || !w) return;
+    if (!sel) return;
+    const d = BUILD[sel.type], w = d.wonder, e = d.effect;
+    const rings: [number, string, string, string][] = [];
+    if (w) {
+      const fx = [d.waterRange ? 'eau' : '', w.needMult < 1 ? `consommation −${Math.round((1 - w.needMult) * 100)} %` : '', w.growth ? `croissance +${Math.round((w.growth - 1) * 100)} %` : ''].filter(Boolean).join(', ');
+      rings.push([w.range, 'rgba(12,124,140,.07)', 'rgba(12,124,140,.8)', `${fx} (${w.range} km)`]);
+      if (w.prodRange && w.prodMult > 1) rings.push([w.prodRange, 'rgba(217,72,15,.10)', 'rgba(217,72,15,.85)', `Carrières et bûcherons +${Math.round((w.prodMult - 1) * 100)} % (${w.prodRange} km)`]);
+    } else if (e) {
+      if (e.protect) rings.push([e.protect, 'rgba(90,90,110,.10)', 'rgba(60,60,80,.85)', `Protégé des invasions (${e.protect} km)`]);
+      if (e.growth) rings.push([e.range ?? 8, 'rgba(12,124,140,.07)', 'rgba(12,124,140,.8)', `Croissance +${Math.round((e.growth - 1) * 100)} % (${e.range ?? 8} km)`]);
+      if (e.speed) rings.push([e.range ?? 30, 'rgba(217,72,15,.08)', 'rgba(217,72,15,.8)', `Véhicules +${Math.round((e.speed - 1) * 100)} % (${e.range ?? 30} km)`]);
+    }
+    if (!rings.length) return;
     const ctx = this.ctx;
-    for (const [r, fill, stroke] of [[w.range, 'rgba(12,124,140,.07)', 'rgba(12,124,140,.8)'], [w.prodRange, 'rgba(217,72,15,.10)', 'rgba(217,72,15,.85)']] as [number, string, string][]) {
+    for (const [r, fill, stroke] of rings) {
       ctx.beginPath(); ctx.arc(sel.x, sel.y, r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill();
       ctx.setLineDash([this.px(7), this.px(5)]); ctx.strokeStyle = stroke; ctx.lineWidth = this.px(2); ctx.stroke(); ctx.setLineDash([]);
     }
     this.screen();
-    const [sx, sy] = this.cam.toScreen(sel.x, sel.y - w.range), [px, py] = this.cam.toScreen(sel.x, sel.y - w.prodRange);
     ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center';
-    halo(ctx, `Eau et consommation −${Math.round((1 - w.needMult) * 100)} % (${w.range} km)`, sx, sy - 6, '#0b5560');
-    halo(ctx, `Carrières et bûcherons +${Math.round((w.prodMult - 1) * 100)} % (${w.prodRange} km)`, px, py - 6, '#a33a0c');
+    for (const [r, , stroke, label] of rings) { const [sx, sy] = this.cam.toScreen(sel.x, sel.y - r); halo(ctx, label.charAt(0).toUpperCase() + label.slice(1), sx, sy - 6, stroke.replace(/,\.\d+\)/, ',1)')); }
     this.world();
   }
   private drawSeaRoutes(s: GameState, v: View) {
@@ -210,15 +219,20 @@ export class Renderer {
       ctx.setLineDash([this.px(8), this.px(6)]); ctx.strokeStyle = 'rgba(25,80,140,.8)'; ctx.lineWidth = this.px(2.5); ctx.stroke(); ctx.setLineDash([]);
     }
   }
+  /** Sites historiques des monuments de l'époque (Pont du Gard, Arènes de Nîmes…) */
   private drawGardSite(s: GameState) {
-    if (s.buildings.some(b => b.type === 'pont_du_gard')) return;
-    const ctx = this.ctx, [x, y] = this.gardSite;
-    ctx.beginPath(); ctx.arc(x, y, Math.max(3, this.px(14)), 0, Math.PI * 2);
-    ctx.setLineDash([this.px(3), this.px(3)]); ctx.strokeStyle = '#8a5a00'; ctx.lineWidth = this.px(2); ctx.stroke(); ctx.setLineDash([]);
-    if (this.cam.scale > 0.9) {
-      this.screen(); const [sx, sy] = this.cam.toScreen(x, y);
-      ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
-      halo(ctx, 'Site du Pont du Gard', sx, sy - 18, '#6b4500'); this.world();
+    const ctx = this.ctx;
+    for (const t of Object.keys(BUILD) as BType[]) {
+      const d = BUILD[t];
+      if (!d.site || d.era > s.era || s.buildings.some(b => b.type === t)) continue;
+      const [x, y] = this.geo.proj(d.site[0], d.site[1]);
+      ctx.beginPath(); ctx.arc(x, y, Math.max(3, this.px(14)), 0, Math.PI * 2);
+      ctx.setLineDash([this.px(3), this.px(3)]); ctx.strokeStyle = '#8a5a00'; ctx.lineWidth = this.px(2); ctx.stroke(); ctx.setLineDash([]);
+      if (this.cam.scale > 0.9) {
+        this.screen(); const [sx, sy] = this.cam.toScreen(x, y);
+        ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+        halo(ctx, `Site : ${d.name}`, sx, sy - 18, '#6b4500'); this.world();
+      }
     }
   }
   private drawRoads(s: GameState, v: View) {

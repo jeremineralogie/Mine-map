@@ -1,7 +1,7 @@
 // Simulation : production, chantiers, main-d'œuvre, villes, véhicules, marché, objectifs, événements.
 import {
   ANCIENT, BUILD, EVENTS, SPARE_NAMES, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
-  START_YEAR, TECHS, TIERS, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
+  START_YEAR, TECHS, TIERS, TIER_NEEDS_2, OLD_NEEDS_MULT, RHINE, CITY_BUILD_RANGE, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
   RP_TIER,
 } from './defs';
 import type { Geo } from './geo';
@@ -54,7 +54,7 @@ const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet'
 export function dateLabel(s: GameState, short = false) {
   const y = year(s), m = Math.floor((s.day % YEAR) / (YEAR / 12));
   const mo = short && MONTHS[m].length > 5 ? MONTHS[m].slice(0, MONTHS[m] === 'juillet' ? 5 : 4) + '.' : MONTHS[m];
-  return `${mo} ${y < 0 ? -y + (short ? ' av. J.C.' : ' av. J.-C.') : y}`;
+  return `${mo} ${y < 0 ? -y + (short ? ' av. J.C.' : ' av. J.-C.') : y + (short ? '' : ' apr. J.-C.')}`;
 }
 export const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
 
@@ -89,8 +89,10 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
     else if (!dep) return { ok: false, reason: `Il faut un gisement de ${RES[d.deposit].name.toLowerCase()} (calque Gisements).` };
     else { r.rich = value; r.depName = dep.name; }
   }
+  if (d.city && !cities(s).some(c => Math.hypot(c.x - x, c.y - y) <= CITY_BUILD_RANGE))
+    return { ok: false, reason: `${d.name} : à construire à moins de ${CITY_BUILD_RANGE} km d'une ville.` };
   if (d.coast) {
-    if (!geo.nearSea(x, y, 3)) return { ok: false, reason: 'Un port de commerce doit être construit sur la côte (à moins de 3 km de la mer).' };
+    if (!geo.nearSea(x, y, 3)) return { ok: false, reason: `${d.name} : à construire sur la côte (à moins de 3 km de la mer).` };
     r.depName = geo.seaOf(x, y) === 'mediterranee' ? 'Méditerranée' : 'Atlantique et Manche';
   }
   if (d.river) {
@@ -213,7 +215,7 @@ function partnerMods(s: GameState, pid: string) {
   return { closed, mult };
 }
 export function priceAt(s: GameState, b: Building, res: ResId) {
-  const base = RES[res].price * (s.market[b.id + ':' + res] ?? 1);
+  const base = RES[res].price * (s.market[b.id + ':' + res] ?? 1) * priceMult(s);
   if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1); }
   return base * (1 + 0.1 * (b.city?.tier ?? 0)) * demandMult(s, res);
 }
@@ -233,26 +235,39 @@ export function foodReserve(b: Building) {
 }
 /** Biens du palier suivant qui manquent encore à la ville (sa croissance est bloquée juste avant le palier) */
 export function missingNextGoods(b: Building): ResId[] {
-  const c = b.city!, next = TIERS[c.tier + 1];
+  const c = b.city!, next = TIERS[c.tier + 1], era = c.era ?? 1;
   if (!next || c.pop < next.minPop * 0.94) return [];
-  return (Object.keys(next.needs) as ResId[]).filter(r => !TIERS[c.tier].needs[r] && (c.stock[r] ?? 0) <= 0);
+  const cur = tierGoods(c.tier, era);
+  return tierGoods(c.tier + 1, era).filter(r => !cur.includes(r) && (c.stock[r] ?? 0) <= 0);
 }
 /** Une ville ne grandit que si elle est nourrie, garde au moins un mois de céréales d'avance
  *  et reçoit au moins ce qu'elle mange (elle ne grandit pas en vidant sa réserve) */
 export const RESERVE_TO_GROW = 1;
 export function cityNeeds(b: Building): Stock {
-  const c = b.city!; const t = TIERS[c.tier], out: Stock = {};
-  for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * c.pop / 100 * (c.needMult ?? 1);
+  const c = b.city!; const t = TIERS[c.tier], out: Stock = {}, k = c.pop / 100 * (c.needMult ?? 1);
+  // dès qu'elle reçoit les produits de la Gaule romaine, la ville consomme moins des anciens
+  const old = c.modern ? OLD_NEEDS_MULT : 1;
+  for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * k * old;
+  if ((c.era ?? 1) >= 2) for (const [r, q] of Object.entries(TIER_NEEDS_2[c.tier] ?? {})) out[r as ResId] = (out[r as ResId] ?? 0) + q! * k;
   return out;
 }
+/** Biens demandés par un palier de ville à une époque donnée */
+export function tierGoods(tier: number, era: number): ResId[] {
+  const g = Object.keys(TIERS[tier]?.needs ?? {}) as ResId[];
+  if (era >= 2) g.push(...(Object.keys(TIER_NEEDS_2[tier] ?? {}) as ResId[]));
+  return [...new Set(g)];
+}
+/** Le palier suivant est-il accessible ? (la capitale demande une technologie) */
+export const tierAllowed = (s: GameState, tier: number) => tier < 4 || s.techs.includes('capitales');
 /** Quantité qu'un bâtiment accepte de recevoir */
 export function accepts(s: GameState, b: Building, res: ResId): number {
   const d = BUILD[b.type];
   if (b.city) {
     const need = cityNeeds(b)[res] ?? 0;
     // la ville achète aussi un peu des biens du palier suivant pour pouvoir y accéder
-    const nextT = TIERS[b.city.tier + 1];
-    const future = nextT && nextT.needs[res] && !TIERS[b.city.tier].needs[res] ? nextT.needs[res]! * b.city.pop / 100 : 0;
+    const era = b.city.era ?? 1, nextT = TIERS[b.city.tier + 1];
+    const nextQ = nextT ? (nextT.needs[res] ?? 0) + (era >= 2 ? TIER_NEEDS_2[b.city.tier + 1]?.[res] ?? 0 : 0) : 0;
+    const future = nextQ && !tierGoods(b.city.tier, era).includes(res) ? nextQ * b.city.pop / 100 : 0;
     if (need + future <= 0) return 0;
     // réserve d'un an au plus, mais toujours de quoi recevoir au moins deux chargements complets
     const cap = Math.max((need + future) * 12, CITY_MIN_STOCK);
@@ -311,7 +326,9 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
 export const activeMods = (s: GameState) => s.mods.filter(m => m.until > s.day);
 /** Multiplicateur de coût des constructions et améliorations (remise en cours) */
 export const costMult = (s: GameState) => activeMods(s).filter(m => m.kind === 'discount').reduce((a, m) => a * m.mult, 1);
-export const prodMult = (s: GameState) => activeMods(s).filter(m => m.kind === 'prod').reduce((a, m) => a * m.mult, 1);
+export const prodMult = (s: GameState, res?: ResId) => activeMods(s).filter(m => m.kind === 'prod' && (!m.res || (res && m.res.includes(res)))).reduce((a, m) => a * m.mult, 1);
+/** Crise monétaire : tous les prix de vente multipliés */
+export const priceMult = (s: GameState) => activeMods(s).filter(m => m.kind === 'prices').reduce((a, m) => a * m.mult, 1);
 export const demandMult = (s: GameState, res: ResId) => activeMods(s).filter(m => m.kind === 'demand' && m.res?.includes(res)).reduce((a, m) => a * m.mult, 1);
 /** Coût en argent d'une construction, remise comprise */
 export const buildMoney = (s: GameState, type: BType) => Math.round(BUILD[type].money * costMult(s));
@@ -342,7 +359,7 @@ export function buyImport(s: GameState, b: Building, res: ResId, qty: number): s
 }
 /** Prix de vente à un marchand local depuis un entrepôt */
 export function localPrice(s: GameState, res: ResId) {
-  return RES[res].price * LOCAL_SALE * (s.techs.includes('monnaie') ? 1.25 : 1) * (s.market['local:' + res] ?? 1);
+  return RES[res].price * LOCAL_SALE * (s.techs.includes('monnaie') ? 1.25 : 1) * (s.market['local:' + res] ?? 1) * priceMult(s);
 }
 export function sellLocal(s: GameState, b: Building, res: ResId, qty: number) {
   qty = Math.min(qty, Math.floor(b.stock[res] ?? 0));
@@ -373,9 +390,12 @@ export function seaPartnersOf(s: GameState, b: Building): SeaPartner[] {
   const sea = b.sea ?? 'atlantique';
   void s; return SEA_PARTNERS.filter(p => p.seas.includes(sea));
 }
-export function seaVolume(s: GameState, p: SeaPartner) { return p.volume * (s.techs.includes('monnaie') ? 2 : 1); }
+export function seaVolume(s: GameState, p: SeaPartner) {
+  const phares = Math.min(2, s.buildings.filter(b => b.type === 'phare' && b.built).length);
+  return Math.round(p.volume * (s.techs.includes('monnaie') ? 2 : 1) * (1 + 0.25 * phares));
+}
 export function seaPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
-  void b; return RES[res].price * p.mult * (s.market['mer:' + p.id + ':' + res] ?? 1) * (s.techs.includes('negoce') ? 1.2 : 1);
+  void b; return RES[res].price * p.mult * (s.market['mer:' + p.id + ':' + res] ?? 1) * (s.techs.includes('negoce') ? 1.2 : 1) * priceMult(s);
 }
 /** Prix d'une importation par la mer (toujours plus cher que ce que le partenaire rachète) */
 export function seaImportPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
@@ -420,8 +440,13 @@ export class Sim {
   staffing() {
     const s = this.s, cs = cities(s);
     const avail = new Map<number, number>();
-    for (const c of cs) { avail.set(c.id, Math.floor(c.city!.pop * 0.4)); c.city!.needMult = wonderNeedMult(s, c); }
-    const jobs = s.buildings.filter(b => b.built && !b.paused && BUILD[b.type].workers);
+    for (const c of cs) {
+      avail.set(c.id, Math.floor(c.city!.pop * 0.4));
+      const city = c.city!;
+      city.needMult = wonderNeedMult(s, c); city.era = s.era;
+      city.modern = s.era >= 2 && Object.keys(TIER_NEEDS_2[city.tier] ?? {}).some(r => (city.stock[r as ResId] ?? 0) >= 0.5);
+    }
+    const jobs = s.buildings.filter(b => b.built && !b.paused && !b.damaged && BUILD[b.type].workers);
     const near = new Map(jobs.map(b => [b.id, cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= workRange(o.c, s)).sort((a, z) => a.d - z.d)]));
     const take = (b: Building, want: number) => {
       for (const { c } of near.get(b.id)!) {
@@ -452,9 +477,10 @@ export class Sim {
       if (left > 0.001) continue;
       b.work += dt;
       const d = BUILD[b.type];
-      const total = b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
+      const total = b.repair ? d.days * 0.5 : b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
       if (b.work >= total) {
-        if (b.upgrading) { b.upgrading = false; b.level++; this.notify.toast(`${b.name} passe au niveau ${b.level}.`, 'good'); }
+        if (b.repair) { b.repair = false; b.upgrading = false; b.damaged = false; this.notify.toast(`${b.name} est réparé.`, 'good'); }
+        else if (b.upgrading) { b.upgrading = false; b.level++; this.notify.toast(`${b.name} passe au niveau ${b.level}.`, 'good'); }
         else { b.built = true; this.notify.toast(`Construction terminée : ${b.name}.`, 'good'); }
         b.work = 0;
       }
@@ -462,7 +488,7 @@ export class Sim {
   }
   constructionProgress(b: Building) {
     const d = BUILD[b.type];
-    const total = b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
+    const total = b.repair ? d.days * 0.5 : b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
     return Math.min(1, b.work / Math.max(1, total));
   }
 
@@ -521,7 +547,7 @@ export class Sim {
     // équipe complète = 100 % ; chaque ouvrier en renfort ajoute la moitié de sa part (jusqu'à +25 %)
     const staffRatio = need ? Math.min(b.staff, need) / need + 0.5 * Math.max(0, b.staff - need) / need : 1;
     const out = Object.values(d.recipe.out)[0]!;
-    const event = prodMult(this.s);
+    const event = prodMult(this.s, Object.keys(d.recipe.out)[0] as ResId);
     const skilled = event * (this.s.techs.includes('ouvrier_qualifie') && (d.deposit === 'bois' || d.deposit === 'pierre' || d.deposit === 'cereales') ? 1.2 : 1);
     return out * LEVEL_MULT[b.level] * staffRatio * skilled * wonderProdMult(this.s, b) * (d.deposit ? this.depositFactor(b) : 1);
   }
@@ -530,7 +556,7 @@ export class Sim {
     for (const b of s.buildings) {
       const d = BUILD[b.type];
       if (!d.recipe || !b.built) continue;
-      if ((b.halted && b.halted > s.day) || b.paused) continue;
+      if ((b.halted && b.halted > s.day) || b.paused || b.damaged) continue;
       const outs = Object.entries(d.recipe.out) as [ResId, number][];
       const primary = outs[0][1];
       b.acc += this.rate(b) * dt / MONTH;
@@ -582,7 +608,7 @@ export class Sim {
       v.timer -= dt; if (v.timer > 0) return;
       if (!this.route(v)) { v.timer = 2; return; }
     }
-    let travel = VEH[v.type].speed * dt;
+    let travel = VEH[v.type].speed * dt * (VEH[v.type].water || VEH[v.type].sea ? 1 : relaisMult(this.s, v.x, v.y));
     while (travel > 0 && v.seg < v.path.length - 1) {
       const a = v.path[v.seg], b = v.path[v.seg + 1];
       const L = Math.hypot(b.x - a.x, b.y - a.y), sp = v.speeds[v.seg] ?? 1;
@@ -622,7 +648,7 @@ export class Sim {
       for (const n of s.nodes) { const d = Math.hypot(n.x - v.x, n.y - v.y); if (d < bd) { bd = d; from = n.id; } }
     }
     if (from === null) return false;
-    const p = findPath(s, from, dest.node);
+    const p = findPath(s, from, dest.node, VEH[v.type].voie);
     if (!p) return false;
     setPath(v, p); v.state = 'go'; v.at = null;
     return true;
@@ -739,12 +765,12 @@ export class Sim {
       city.sat = n ? satSum / n : 1;
       city.growing = city.foodSat >= 0.98 && supplied && foodReserve(c) >= RESERVE_TO_GROW;
       if (city.growing) {
-        let rate = (0.012 + 0.03 * city.sat) * growthMult;
+        let rate = (0.012 + 0.03 * city.sat) * growthMult * localGrowth(s, c);
         const next = TIERS[city.tier + 1];
         // pour passer au palier suivant, la ville doit déjà recevoir ses nouveaux biens
         if (next && city.pop * (1 + rate) >= next.minPop) {
-          const newGoods = (Object.keys(next.needs) as ResId[]).filter(r => !TIERS[city.tier].needs[r]);
-          if (newGoods.some(r => (city.stock[r] ?? 0) <= 0)) { rate = 0; city.pop = Math.min(city.pop, next.minPop - 1); }
+          const cur = tierGoods(city.tier, s.era), newGoods = tierGoods(city.tier + 1, s.era).filter(r => !cur.includes(r));
+          if (!tierAllowed(s, city.tier + 1) || newGoods.some(r => (city.stock[r] ?? 0) <= 0)) { rate = 0; city.pop = Math.min(city.pop, next.minPop - 1); }
         }
         city.pop *= 1 + rate;
       } else if (city.foodSat < 0.98) {
@@ -755,6 +781,17 @@ export class Sim {
       if (t > city.tier) this.notify.toast(`${c.name} devient un${t === 3 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
       city.tier = t;
       s.rp += RP_TIER[city.tier];   // recherche volontairement lente : chaque technologie se mérite
+    }
+    // bâtiments de culture et merveilles : points de recherche, revenus des jeux
+    for (const b of s.buildings) {
+      if (!b.built || b.damaged) continue;
+      const d = BUILD[b.type];
+      if (d.effect?.rp) s.rp += d.effect.rp;
+      if (d.wonder?.rp) s.rp += d.wonder.rp;
+      if (d.wonder?.games) {
+        const pop = cities(s).filter(c => Math.hypot(c.x - b.x, c.y - b.y) <= d.wonder!.range).reduce((a, c) => a + c.city!.pop, 0);
+        const g = pop * d.wonder.games; s.money += g; s.stats.income += g;
+      }
     }
     for (const k of Object.keys(s.market)) {
       const m = s.market[k] + (1 - s.market[k]) * 0.08 + (Math.random() - 0.5) * 0.04;
@@ -790,6 +827,12 @@ export class Sim {
       case 'rome': return (s.stats.sold.italie ?? 0) >= 30;
       case 'ville2': return maxPop >= 1500;
       case 'gard': return s.buildings.some(b => b.type === 'pont_du_gard' && b.built);
+      case 'vin2': return (s.stats.produced.vin ?? 0) >= 150;
+      case 'sigillee2': return (s.stats.produced.sigillee ?? 0) >= 150;
+      case 'thermes2': return s.buildings.some(b => b.type === 'thermes' && b.built);
+      case 'remparts2': return s.buildings.some(b => b.type === 'remparts' && b.built);
+      case 'capitale2': return cities(s).some(c => c.city!.pop >= 15000);
+      case 'arenes': return s.buildings.some(b => b.type === 'arenes' && b.built);
       case 'via': {
         const comp = components(s);
         for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) {
@@ -816,7 +859,7 @@ export class Sim {
     const s = this.s;
     if (s.chapterDone) return;
     // l'époque s'achève quand tout son arbre de recherche est débloqué (les objectifs sont des bonus)
-    if (TECHS.filter(t => t.era === s.era).every(t => s.techs.includes(t.id))) { s.chapterDone = true; this.notify.chapter(); }
+    if (chapterReady(s)) { s.chapterDone = true; this.notify.chapter(); }
   }
   research(id: string) {
     const s = this.s, t = TECHS.find(x => x.id === id)!;
@@ -841,7 +884,13 @@ export class Sim {
         else if (f.kind === 'partnerBoost') s.mods.push({ kind: 'boost', partner: f.partner, mult: f.mult, until: s.day + f.months * MONTH });
         else if (f.kind === 'discount') s.mods.push({ kind: 'discount', mult: f.mult, until: s.day + f.months * MONTH });
         else if (f.kind === 'demand') s.mods.push({ kind: 'demand', res: f.res, mult: f.mult, until: s.day + f.months * MONTH });
-        else if (f.kind === 'prod') s.mods.push({ kind: 'prod', mult: f.mult, until: s.day + f.months * MONTH });
+        else if (f.kind === 'prod') s.mods.push({ kind: 'prod', mult: f.mult, res: f.res, until: s.day + f.months * MONTH });
+        else if (f.kind === 'prices') s.mods.push({ kind: 'prices', mult: f.mult, until: s.day + f.months * MONTH });
+        else if (f.kind === 'raid') this.raid(f.share, f.range, f.rhin ? undefined : this.geo.proj(f.lon!, f.lat!));
+        else if (f.kind === 'revolt') {
+          const ws = s.buildings.filter(b => b.built && !b.damaged && BUILD[b.type].recipe).sort(() => Math.random() - 0.5).slice(0, f.count);
+          for (const b of ws) { b.halted = s.day + f.months * MONTH; b.haltWhy = 'révolte'; }
+        }
       }
       s.log.unshift({ day: s.day, text: `${e.title} — ${e.text}` });
       this.notify.event(`${y < 0 ? -y + ' av. J.-C.' : y} — ${e.title}`, e.text);
@@ -854,7 +903,7 @@ export class Sim {
       const mines = s.buildings.filter(b => b.built && b.dep !== null && b.produced > 150 && BUILD[b.type].deposit !== 'cereales' && BUILD[b.type].deposit !== 'bois');
       if (mines.length) {
         const b = mines[Math.floor(Math.random() * mines.length)];
-        b.halted = s.day + 2 * MONTH;
+        b.halted = s.day + 2 * MONTH; b.haltWhy = 'éboulement';
         const t = `Éboulement à ${b.name} : production arrêtée pendant 2 mois.`;
         s.log.unshift({ day: s.day, text: t }); this.notify.toast(t, 'bad');
       }
@@ -868,8 +917,91 @@ export class Sim {
         s.log.unshift({ day: s.day, text: t }); this.notify.toast(t, 'bad');
       }
     }
+    // crise du IIIe siècle : raids barbares imprévisibles sur le Rhin
+    const y = year(s);
+    if (s.era >= 2 && y >= 235 && y <= 284 && Math.random() < 0.03) {
+      const n = this.raid(0.2, 80);
+      if (n) this.notify.event(`${y} — Raid barbare`, `Une bande de Francs ou d'Alamans franchit le Rhin : ${n} bâtiment${n > 1 ? 's' : ''} sans remparts endommagé${n > 1 ? 's' : ''}. Répare-les depuis leur fiche.`);
+    }
     if (s.log.length > 60) s.log.length = 60;
   }
+  /** Distance au Rhin (km) */
+  rhineDist(x: number, y: number) {
+    const pts = RHINE.map(([lo, la]) => this.geo.proj(lo, la));
+    let best = Infinity;
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i], dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L2));
+      best = Math.min(best, Math.hypot(ax + dx * t - x, ay + dy * t - y));
+    }
+    return best;
+  }
+  /** Invasion : une part des bâtiments non protégés de la zone est endommagée ; renvoie leur nombre */
+  raid(share: number, range: number, center?: [number, number]) {
+    const s = this.s;
+    const walls = s.buildings.filter(b => b.built && BUILD[b.type].effect?.protect);
+    const hit = s.buildings.filter(b => {
+      const d = BUILD[b.type];
+      if (!b.built || b.damaged || b.city || b.partner || b.type === 'comptoir' || d.wonder || d.effect?.protect) return false;
+      const dist = center ? Math.hypot(b.x - center[0], b.y - center[1]) : this.rhineDist(b.x, b.y);
+      if (dist > range) return false;
+      if (walls.some(w => Math.hypot(w.x - b.x, w.y - b.y) <= BUILD[w.type].effect!.protect!)) return false;
+      return Math.random() < share;
+    });
+    for (const b of hit) { b.damaged = true; b.paused = false; }
+    if (hit.length) s.log.unshift({ day: s.day, text: `Invasion : ${hit.length} bâtiment(s) endommagé(s) (${hit.slice(0, 4).map(b => b.name).join(', ')}${hit.length > 4 ? '…' : ''}).` });
+    return hit.length;
+  }
+}
+
+/** Conditions de fin d'époque : arbre complet ; au chapitre II, aussi la merveille et la date (476, à 50 ans près) */
+export const ERA_END: Record<number, { year: number; wonder: BType } | undefined> = { 2: { year: 476, wonder: 'arenes' } };
+export function chapterConditions(s: GameState) {
+  const techs = TECHS.filter(t => t.era === s.era), end = ERA_END[s.era];
+  return {
+    techs: techs.every(t => s.techs.includes(t.id)),
+    wonder: !end || s.buildings.some(b => b.type === end.wonder && b.built),
+    date: !end || year(s) >= end.year - 50,
+    end,
+  };
+}
+export const chapterReady = (s: GameState) => { const c = chapterConditions(s); return c.techs && c.wonder && c.date; };
+/** Passage à l'époque suivante */
+export function startEra(s: GameState, era: number) {
+  s.era = era; s.chapterDone = false;
+  s.log.unshift({ day: s.day, text: `Début du chapitre ${['', 'I', 'II', 'III', 'IV', 'V', 'VI'][era]}.` });
+}
+
+/** Coût d'une réparation : 30 % du prix du bâtiment (argent et matériaux) */
+export function repairCost(b: Building) {
+  const d = BUILD[b.type], k = 0.3 * LEVEL_COST[b.level];
+  const need: Stock = {};
+  for (const [r, q] of Object.entries(d.cost) as [ResId, number][]) need[r] = Math.max(1, Math.ceil(q * k));
+  return { money: Math.round(d.money * k), need };
+}
+export function startRepair(s: GameState, b: Building): string | null {
+  if (!b.damaged || b.repair) return null;
+  const c = repairCost(b);
+  if (s.money < c.money) return `Pas assez d'argent (${fmt(c.money)} sesterces).`;
+  s.money -= c.money; s.stats.expenses += c.money;
+  b.repair = true; b.upgrading = true; b.need = c.need; b.incoming = {}; b.work = 0;
+  return null;
+}
+/** Croissance propre à une ville : thermes, amphithéâtres et merveilles proches */
+export function localGrowth(s: GameState, c: Building) {
+  let m = 1;
+  for (const b of s.buildings) {
+    if (!b.built || b.damaged) continue;
+    const d = BUILD[b.type], dist = Math.hypot(b.x - c.x, b.y - c.y);
+    if (d.effect?.growth && dist <= (d.effect.range ?? 8)) m *= d.effect.growth;
+    if (d.wonder?.growth && dist <= d.wonder.range) m *= d.wonder.growth;
+  }
+  return m;
+}
+/** Relais routiers : bonus de vitesse autour d'eux */
+export function relaisMult(s: GameState, x: number, y: number) {
+  for (const b of s.buildings) if (b.built && BUILD[b.type].effect?.speed && Math.hypot(b.x - x, b.y - y) <= (BUILD[b.type].effect!.range ?? 30)) return BUILD[b.type].effect!.speed!;
+  return 1;
 }
 
 function lineMoved(l: { moved?: { cur: Record<number, Stock>; prev: Record<number, Stock>; total?: Record<number, Stock> } }, i: number, r: ResId, q: number) {
@@ -915,7 +1047,12 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
     return { label: left > 0 ? (b.upgrading ? 'Amélioration : livraison' : 'Chantier : livraison') : (b.upgrading ? 'Amélioration en cours' : 'Travaux en cours'), level: 'info' };
   }
-  if (b.halted && b.halted > s.day) return { label: 'Arrêt (éboulement)', level: 'bad' };
+  if (b.repair) {
+    const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
+    return { label: left > 0 ? 'Réparation : livraison' : 'Réparation en cours', level: 'info', hint: 'Les matériaux de réparation arrivent par convoi depuis un entrepôt.' };
+  }
+  if (b.damaged) return { label: 'Endommagé', level: 'bad', hint: 'Pillé lors d\'une invasion : il ne produit plus. Répare-le (bouton en haut de la fiche) ; des remparts proches le protégeront à l\'avenir.' };
+  if (b.halted && b.halted > s.day) return { label: b.haltWhy === 'révolte' ? 'Arrêt (révolte des Bagaudes)' : 'Arrêt (éboulement)', level: 'bad' };
   if (b.paused) return { label: 'En pause', level: 'info', hint: 'Production arrêtée : les ouvriers sont libérés et ne sont pas payés.' };
   if (b.city) {
     const c = b.city;

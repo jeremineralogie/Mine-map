@@ -496,3 +496,12 @@ table.eco tr.click:hover td { background: #faf3e6; }
 .loadres .x { border: 0; background: none; color: var(--muted); padding: 2px 4px; }
 .hint.good { background: #e8f5ea; color: #1f6b2d; }
 .wfx { width: 34px; text-align: center; font-size: 20px; flex: none; }
+
+/* Chapitres : conditions de fin et fenêtre d'introduction */
+ul.conds { list-style: none; padding: 0; margin: 6px 0 10px; display: flex; flex-direction: column; gap: 5px; }
+ul.conds li { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 9px; background: #f4f0e8; color: #6b5f4b; font-size: 13px; }
+ul.conds li.ok { background: #e8f5ea; color: #1f6b2d; font-weight: 600; }
+ul.conds li svg { width: 16px; height: 16px; flex: none; }
+ul.intro { margin: 4px 0 8px; padding-left: 18px; font-size: 13.5px; line-height: 1.45; }
+ul.intro li { margin: 3px 0; }
+#modal h3 { margin: 12px 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #8a5a2b; }

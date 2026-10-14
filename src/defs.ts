@@ -4,7 +4,7 @@ export type ResId =
   | 'bois' | 'pierre' | 'argile' | 'sable' | 'calcaire' | 'granite' | 'ardoise' | 'minerai_fer' | 'charbon'
   | 'cuivre' | 'plomb' | 'etain' | 'zinc' | 'sel' | 'bauxite' | 'fluorine' | 'potasse' | 'uranium' | 'petrole'
   | 'gaz' | 'kaolin' | 'or' | 'terres_rares' | 'eau'
-  | 'cereales' | 'poisson' | 'viande' | 'vin'
+  | 'cereales' | 'poisson' | 'viande' | 'vin' | 'huile' | 'garum' | 'laine' | 'tissus' | 'sigillee' | 'marbre'
   | 'planches' | 'briques' | 'chaux' | 'ciment' | 'beton' | 'verre' | 'fer' | 'acier' | 'bronze' | 'aluminium'
   | 'carburant' | 'plastique' | 'porcelaine' | 'engrais'
   | 'outils' | 'machines' | 'rails' | 'vehicules' | 'electronique';
@@ -15,50 +15,57 @@ export const RES: Record<ResId, ResDef> = {
   bois: { name: 'Bois', color: '#2f7d3a', era: 1, price: 4 },
   pierre: { name: 'Pierre de taille', color: '#9a9488', era: 1, price: 5 },
   argile: { name: 'Argile', color: '#b5653a', era: 1, price: 3 },
-  sable: { name: 'Sable', color: '#e0c77a', era: 3, price: 2 },
+  sable: { name: 'Sable', color: '#e0c77a', era: 2, price: 2 },
   calcaire: { name: 'Calcaire', color: '#d8d2bf', era: 2, price: 3 },
-  granite: { name: 'Granite', color: '#7d7f86', era: 2, price: 6 },
-  ardoise: { name: 'Ardoise', color: '#4a5568', era: 2, price: 7 },
+  granite: { name: 'Granite', color: '#7d7f86', era: 3, price: 6 },
+  ardoise: { name: 'Ardoise', color: '#4a5568', era: 3, price: 7 },
   minerai_fer: { name: 'Minerai de fer', color: '#a0442c', era: 1, price: 8 },
-  charbon: { name: 'Charbon', color: '#2b2b2b', era: 3, price: 9 },
+  charbon: { name: 'Charbon', color: '#2b2b2b', era: 4, price: 9 },
   cuivre: { name: 'Cuivre', color: '#c27a3e', era: 2, price: 20 },
   plomb: { name: 'Plomb argentifère', color: '#6b7280', era: 1, price: 25 },
   etain: { name: 'Étain', color: '#b8c0c8', era: 2, price: 30 },
-  zinc: { name: 'Zinc', color: '#8fa3b0', era: 3, price: 18 },
+  zinc: { name: 'Zinc', color: '#8fa3b0', era: 4, price: 18 },
   sel: { name: 'Sel', color: '#f1f1f1', era: 1, price: 18 },
-  bauxite: { name: 'Bauxite', color: '#c0392b', era: 4, price: 10 },
-  fluorine: { name: 'Fluorine', color: '#8e44ad', era: 4, price: 22 },
-  potasse: { name: 'Potasse', color: '#e67e22', era: 4, price: 12 },
-  uranium: { name: 'Uranium', color: '#9acd32', era: 5, price: 120 },
-  petrole: { name: 'Pétrole', color: '#111111', era: 4, price: 25 },
-  gaz: { name: 'Gaz naturel', color: '#5dade2', era: 5, price: 20 },
-  kaolin: { name: 'Kaolin', color: '#f5f0e6', era: 3, price: 10 },
-  or: { name: 'Or et argent', color: '#d4af37', era: 2, price: 300 },
-  terres_rares: { name: 'Terres rares', color: '#16a085', era: 5, price: 200 },
+  bauxite: { name: 'Bauxite', color: '#c0392b', era: 5, price: 10 },
+  fluorine: { name: 'Fluorine', color: '#8e44ad', era: 5, price: 22 },
+  potasse: { name: 'Potasse', color: '#e67e22', era: 5, price: 12 },
+  uranium: { name: 'Uranium', color: '#9acd32', era: 6, price: 120 },
+  petrole: { name: 'Pétrole', color: '#111111', era: 5, price: 25 },
+  gaz: { name: 'Gaz naturel', color: '#5dade2', era: 6, price: 20 },
+  kaolin: { name: 'Kaolin', color: '#f5f0e6', era: 4, price: 10 },
+  or: { name: 'Or et argent', color: '#d4af37', era: 3, price: 300 },
+  terres_rares: { name: 'Terres rares', color: '#16a085', era: 6, price: 200 },
   eau: { name: 'Eau', color: '#3b82f6', era: 1, price: 0 },
   cereales: { name: 'Céréales', color: '#e1b12c', era: 1, price: 6 },
   poisson: { name: 'Poisson', color: '#5f9ea0', era: 2, price: 8 },
-  viande: { name: 'Viande', color: '#a93226', era: 2, price: 12 },
+  viande: { name: 'Viande', color: '#a93226', era: 3, price: 12 },
   vin: { name: 'Vin', color: '#7b2346', era: 2, price: 20 },
-  planches: { name: 'Planches', color: '#c19a6b', era: 2, price: 10 },
+  planches: { name: 'Planches', color: '#c19a6b', era: 3, price: 10 },
   briques: { name: 'Briques et tuiles', color: '#c0583a', era: 1, price: 14 },
   chaux: { name: 'Chaux', color: '#eeeeee', era: 2, price: 9 },
-  ciment: { name: 'Ciment', color: '#a6a6a6', era: 4, price: 15 },
-  beton: { name: 'Béton', color: '#8c8c8c', era: 4, price: 18 },
+  ciment: { name: 'Ciment', color: '#a6a6a6', era: 5, price: 15 },
+  beton: { name: 'Béton', color: '#8c8c8c', era: 5, price: 18 },
   verre: { name: 'Verre', color: '#a8dadc', era: 2, price: 25 },
   fer: { name: 'Fer', color: '#5a5a66', era: 1, price: 30 },
-  acier: { name: 'Acier', color: '#4b6584', era: 3, price: 50 },
+  acier: { name: 'Acier', color: '#4b6584', era: 4, price: 50 },
   bronze: { name: 'Bronze', color: '#cd7f32', era: 2, price: 45 },
-  aluminium: { name: 'Aluminium', color: '#d0d6dc', era: 5, price: 80 },
-  carburant: { name: 'Carburant', color: '#f39c12', era: 4, price: 40 },
-  plastique: { name: 'Plastique', color: '#ff6b81', era: 5, price: 35 },
-  porcelaine: { name: 'Porcelaine', color: '#fdfdfd', era: 3, price: 60 },
-  engrais: { name: 'Engrais', color: '#6ab04c', era: 4, price: 20 },
+  aluminium: { name: 'Aluminium', color: '#d0d6dc', era: 6, price: 80 },
+  carburant: { name: 'Carburant', color: '#f39c12', era: 5, price: 40 },
+  plastique: { name: 'Plastique', color: '#ff6b81', era: 6, price: 35 },
+  porcelaine: { name: 'Porcelaine', color: '#fdfdfd', era: 4, price: 60 },
+  engrais: { name: 'Engrais', color: '#6ab04c', era: 5, price: 20 },
   outils: { name: 'Outils', color: '#34495e', era: 1, price: 70 },
-  machines: { name: 'Machines', color: '#2c3e50', era: 3, price: 150 },
-  rails: { name: 'Rails', color: '#57606f', era: 3, price: 80 },
-  vehicules: { name: 'Véhicules', color: '#e74c3c', era: 4, price: 400 },
-  electronique: { name: 'Électronique', color: '#1abc9c', era: 5, price: 500 },
+  machines: { name: 'Machines', color: '#2c3e50', era: 4, price: 150 },
+  rails: { name: 'Rails', color: '#57606f', era: 4, price: 80 },
+  vehicules: { name: 'Véhicules', color: '#e74c3c', era: 5, price: 400 },
+  electronique: { name: 'Électronique', color: '#1abc9c', era: 6, price: 500 },
+  // Gaule romaine (chapitre II)
+  huile: { name: 'Huile d\'olive', color: '#9a9b2f', era: 2, price: 22 },
+  sigillee: { name: 'Poterie sigillée', color: '#b8462e', era: 2, price: 18 },
+  marbre: { name: 'Marbre', color: '#e9e4dc', era: 2, price: 24 },
+  garum: { name: 'Garum', color: '#8c5a2b', era: 2, price: 40 },
+  laine: { name: 'Laine', color: '#efe7d2', era: 2, price: 8 },
+  tissus: { name: 'Tissus', color: '#6f4e9c', era: 2, price: 26 },
 };
 
 // ---- Gisements (positions approximativement réelles) ----
@@ -108,6 +115,29 @@ const DEP_ROWS: DepRow[] = [
   ['cereales', 'Poitou', 0.3, 46.6, 45, 35, 1.0], ['cereales', 'Bresse', 5.1, 46.4, 30, 30, 1.0],
   ['cereales', 'Languedoc', 3.6, 43.5, 50, 20, 0.9], ['cereales', 'Bretagne', -2.5, 48.2, 70, 30, 0.8],
   ['cereales', 'Vallée du Rhône', 4.8, 44.4, 15, 40, 1.0], ['cereales', 'Touraine', 0.7, 47.3, 35, 25, 1.0],
+  // ---- Gaule romaine (chapitre II) ----
+  // Vignobles
+  ['vin', 'Côte de Bourgogne', 4.85, 47.1, 18, 40, 1.3], ['vin', 'Côtes du Rhône', 4.8, 44.3, 15, 35, 1.2],
+  ['vin', 'Narbonnaise', 3.0, 43.25, 45, 20, 1.2], ['vin', 'Bordelais', -0.45, 44.85, 30, 30, 1.3],
+  ['vin', 'Vallée de la Moselle', 6.25, 49.25, 12, 30, 1.0], ['vin', 'Gaillacois', 1.9, 43.9, 15, 12, 1.0],
+  ['vin', 'Côte-Rôtie (Vienne)', 4.8, 45.5, 10, 15, 1.1],
+  // Oliveraies (climat méditerranéen seulement)
+  ['huile', 'Provence', 5.8, 43.5, 55, 22, 1.2], ['huile', 'Bas Languedoc', 3.7, 43.6, 40, 16, 1.0],
+  ['huile', 'Côte niçoise', 7.1, 43.75, 20, 10, 1.1],
+  // Sable et calcaire
+  ['sable', 'Sables de Camargue', 4.5, 43.5, 20, 10, 0.9], ['sable', 'Sables de Loire', 0.0, 47.3, 40, 10, 0.9],
+  ['sable', 'Sables de Normandie', -1.3, 49.3, 15, 25, 0.9],
+  ['calcaire', 'Calcaire du Bassin parisien', 2.4, 48.6, 45, 35, 1.2], ['calcaire', 'Calcaire de Bourgogne', 4.6, 47.4, 40, 30, 1.1],
+  ['calcaire', 'Calcaire de Provence', 5.2, 43.7, 30, 20, 1.0],
+  // Marbre
+  ['marbre', 'Saint-Béat (Pyrénées)', 0.69, 42.91, 12, 10, 1.3], ['marbre', 'Campan (Pyrénées)', 0.18, 43.0, 12, 10, 1.1],
+  ['marbre', 'Caunes-Minervois', 2.53, 43.33, 10, 10, 1.0],
+  // Cuivre (s'ajoute à Chessy, Baïgorry, Saint-Véran)
+  ['cuivre', 'Cévennes', 3.8, 44.2, 20, 15, 0.8],
+  // Pâturages (laine)
+  ['laine', 'Massif central', 2.9, 45.2, 60, 45, 1.2], ['laine', 'Pyrénées', 0.5, 43.0, 140, 20, 1.0],
+  ['laine', 'Alpes', 6.4, 45.0, 35, 70, 1.0], ['laine', 'Normandie', -0.8, 49.2, 45, 25, 1.0],
+  ['laine', 'Causses', 3.2, 44.3, 30, 20, 1.1], ['laine', 'Artois', 2.4, 50.4, 35, 20, 0.9],
   // Époques suivantes (visibles mais pas encore exploitables)
   ['charbon', 'Bassin du Nord-Pas-de-Calais', 2.9, 50.45, 70, 15, 1.4], ['charbon', 'Bassin lorrain', 6.75, 49.15, 25, 15, 1.3],
   ['charbon', 'Bassin de Saint-Étienne', 4.35, 45.45, 20, 12, 1.2], ['charbon', 'Blanzy - Montceau', 4.35, 46.68, 15, 10, 1.0],
@@ -143,7 +173,11 @@ export const DEPOSITS: Deposit[] = DEP_ROWS.map(([res, name, lon, lat, rx, ry, r
 // ---- Bâtiments ----
 export type BType =
   | 'entrepot' | 'village' | 'bucheron' | 'carriere' | 'ferme' | 'argiliere' | 'briqueterie'
-  | 'mine_fer' | 'bas_fourneau' | 'forge' | 'mine_plomb' | 'saline' | 'aqueduc' | 'pont_du_gard' | 'poste' | 'port' | 'port_mer' | 'comptoir';
+  | 'mine_fer' | 'bas_fourneau' | 'forge' | 'mine_plomb' | 'saline' | 'aqueduc' | 'pont_du_gard' | 'poste' | 'port' | 'port_mer' | 'comptoir'
+  // Gaule romaine (chapitre II)
+  | 'vignoble' | 'oliveraie' | 'potier' | 'verrerie' | 'four_chaux' | 'carriere_marbre' | 'pecherie' | 'saloir'
+  | 'bergerie' | 'tissage' | 'mine_cuivre' | 'mine_etain' | 'fonderie'
+  | 'thermes' | 'amphitheatre' | 'remparts' | 'basilique' | 'villa' | 'relais' | 'phare' | 'arenes';
 
 export interface Recipe { in: Partial<Record<ResId, number>>; out: Partial<Record<ResId, number>>; }
 
@@ -169,7 +203,11 @@ export interface BDef {
   coast?: boolean;           // doit être sur la côte (port de commerce maritime)
   upgrade?: Partial<Record<ResId, number>>;  // matériaux d'amélioration au niveau 2 (×1,5 au niveau 3)
   /** merveille : effets permanents autour d'elle une fois construite */
-  wonder?: { range: number; needMult: number; prodRange: number; prodMult: number; prodTypes: BType[] };
+  wonder?: { range: number; needMult: number; prodRange: number; prodMult: number; prodTypes: BType[]; growth?: number; rp?: number; games?: number };
+  /** bâtiment de ville : doit être construit à moins de CITY_BUILD_RANGE km d'une ville */
+  city?: boolean;
+  /** effets d'un bâtiment de service (thermes, remparts, relais…) */
+  effect?: { growth?: number; range?: number; rp?: number; protect?: number; speed?: number; seaVolume?: number };
 }
 
 export const BUILD: Record<BType, BDef> = {
@@ -192,6 +230,29 @@ export const BUILD: Record<BType, BDef> = {
   poste: { name: 'Poste-frontière', desc: 'Les marchands étrangers y achètent certaines ressources.', era: 1, cost: {}, money: 0, days: 0, workers: 0, storage: 120, maxLevel: 1, hidden: true },
   pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille facultative du chapitre I. Une fois construit : eau courante dans un rayon de 50 km, consommation des villes réduite de 10 % dans ce rayon, et +20 % de production pour les carrières et camps de bûcherons à moins de 15 km.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 0, waterRange: 50, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947],
     wonder: { range: 50, needMult: 0.9, prodRange: 15, prodMult: 1.2, prodTypes: ['carriere', 'bucheron'] } },
+  // ---- Gaule romaine (chapitre II) ----
+  vignoble: { name: 'Vignoble', desc: 'Cultive la vigne et presse le raisin. Seulement sur les terroirs viticoles.', era: 2, tech: 'viticulture', cost: { bois: 15, pierre: 5 }, money: 120, days: 20, workers: 6, deposit: 'vin', recipe: { in: {}, out: { vin: 6 } }, storage: 60, maxLevel: 3, upgrade: { bois: 15 } },
+  oliveraie: { name: 'Oliveraie', desc: 'Oliviers et moulin à huile. Seulement sous le climat méditerranéen.', era: 2, tech: 'oleiculture', cost: { bois: 10, pierre: 5 }, money: 110, days: 20, workers: 5, deposit: 'huile', recipe: { in: {}, out: { huile: 5 } }, storage: 60, maxLevel: 3, upgrade: { bois: 12 } },
+  potier: { name: 'Atelier de potier', desc: 'Cuit la célèbre poterie sigillée, rouge et vernissée, exportée dans tout l\'Empire.', era: 2, tech: 'sigillee', cost: { pierre: 15, briques: 10 }, money: 160, days: 20, workers: 5, needsWater: true, recipe: { in: { argile: 3, bois: 2 }, out: { sigillee: 3 } }, storage: 40, maxLevel: 3, upgrade: { pierre: 12, briques: 10 } },
+  verrerie: { name: 'Verrerie', desc: 'Fond le sable au feu de bois pour souffler le verre. Se construit sur un gisement de sable.', era: 2, tech: 'verrerie', cost: { pierre: 15, briques: 15 }, money: 200, days: 25, workers: 5, deposit: 'sable', recipe: { in: { bois: 3 }, out: { verre: 2 } }, storage: 40, maxLevel: 3, upgrade: { pierre: 12, briques: 12 } },
+  four_chaux: { name: 'Four à chaux', desc: 'Cuit le calcaire pour faire la chaux du mortier romain. Se construit sur un gisement de calcaire.', era: 2, tech: 'mortier', cost: { pierre: 20 }, money: 120, days: 15, workers: 4, deposit: 'calcaire', recipe: { in: { bois: 2 }, out: { chaux: 3 } }, storage: 50, maxLevel: 3, upgrade: { pierre: 15 } },
+  carriere_marbre: { name: 'Carrière de marbre', desc: 'Extrait le marbre des Pyrénées pour les monuments.', era: 2, tech: 'marbriers', cost: { bois: 15, outils: 2 }, money: 180, days: 25, workers: 7, deposit: 'marbre', recipe: { in: {}, out: { marbre: 3 } }, storage: 50, maxLevel: 3, upgrade: { pierre: 15, outils: 2 } },
+  pecherie: { name: 'Pêcherie', desc: 'Barques et filets sur la côte.', era: 2, tech: 'peche', cost: { bois: 15 }, money: 80, days: 12, workers: 4, coast: true, recipe: { in: {}, out: { poisson: 8 } }, storage: 50, maxLevel: 3, upgrade: { bois: 12 } },
+  saloir: { name: 'Saloir à garum', desc: 'Fait macérer le poisson dans le sel : le garum, condiment de luxe.', era: 2, tech: 'peche', cost: { pierre: 10, briques: 10 }, money: 150, days: 15, workers: 4, recipe: { in: { poisson: 4, sel: 2 }, out: { garum: 2 } }, storage: 40, maxLevel: 3, upgrade: { pierre: 10, briques: 8 } },
+  bergerie: { name: 'Bergerie', desc: 'Élève des moutons sur les pâturages pour leur laine.', era: 2, tech: 'draperie', cost: { bois: 12 }, money: 70, days: 10, workers: 3, deposit: 'laine', recipe: { in: {}, out: { laine: 6 } }, storage: 60, maxLevel: 3, upgrade: { bois: 12 } },
+  tissage: { name: 'Atelier de tissage', desc: 'Tisse la laine : draps et manteaux gaulois (sagum). A besoin d\'eau.', era: 2, tech: 'draperie', cost: { bois: 15, pierre: 10 }, money: 150, days: 15, workers: 6, needsWater: true, recipe: { in: { laine: 4 }, out: { tissus: 2 } }, storage: 40, maxLevel: 3, upgrade: { bois: 10, pierre: 10 } },
+  mine_cuivre: { name: 'Mine de cuivre', desc: 'Extrait le minerai de cuivre.', era: 2, tech: 'bronze', cost: { bois: 20, pierre: 10 }, money: 180, days: 20, workers: 7, deposit: 'cuivre', recipe: { in: {}, out: { cuivre: 3 } }, storage: 50, maxLevel: 3, upgrade: { fer: 4, pierre: 12 } },
+  mine_etain: { name: 'Mine d\'étain', desc: 'Extrait l\'étain, rare et précieux.', era: 2, tech: 'bronze', cost: { bois: 20, pierre: 10 }, money: 180, days: 20, workers: 7, deposit: 'etain', recipe: { in: {}, out: { etain: 2 } }, storage: 50, maxLevel: 3, upgrade: { fer: 4, pierre: 12 } },
+  fonderie: { name: 'Fonderie de bronze', desc: 'Allie le cuivre et l\'étain : statues, monnaie, objets de luxe.', era: 2, tech: 'bronze', cost: { pierre: 20, briques: 15 }, money: 250, days: 25, workers: 5, recipe: { in: { cuivre: 3, etain: 1, bois: 2 }, out: { bronze: 2 } }, storage: 40, maxLevel: 3, upgrade: { pierre: 15, briques: 12 } },
+  thermes: { name: 'Thermes', desc: 'Bains publics : la ville voisine grandit 25 % plus vite. Se construit près d\'une ville, avec de l\'eau.', era: 2, tech: 'thermes', cost: { pierre: 40, briques: 20, chaux: 10 }, money: 400, days: 40, workers: 4, needsWater: true, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.25, range: 8 } },
+  amphitheatre: { name: 'Amphithéâtre', desc: 'Jeux et spectacles : les villes à moins de 40 km grandissent 20 % plus vite.', era: 2, tech: 'spectacles', cost: { pierre: 80, chaux: 20 }, money: 700, days: 60, workers: 4, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.2, range: 40 } },
+  remparts: { name: 'Remparts', desc: 'Murailles de la cité : protègent des invasions tous les bâtiments à moins de 20 km.', era: 2, tech: 'remparts', cost: { pierre: 60, chaux: 15 }, money: 500, days: 50, workers: 0, storage: 0, maxLevel: 1, city: true, effect: { protect: 20 } },
+  basilique: { name: 'Basilique', desc: 'Lieu de culte et de savoir : +0,3 point de recherche par mois.', era: 2, tech: 'christianisme', cost: { pierre: 40, marbre: 5, chaux: 10 }, money: 400, days: 40, workers: 2, storage: 0, maxLevel: 1, city: true, effect: { rp: 0.3 } },
+  villa: { name: 'Villa (grand domaine)', desc: 'Grand domaine agricole : bien plus productif qu\'une simple ferme.', era: 2, tech: 'villae', cost: { pierre: 20, briques: 15, bois: 10 }, money: 250, days: 25, workers: 8, deposit: 'cereales', recipe: { in: {}, out: { cereales: 18 } }, storage: 120, maxLevel: 3, upgrade: { pierre: 15, briques: 10 } },
+  relais: { name: 'Relais routier (mutatio)', desc: 'Chevaux frais : les véhicules roulent 25 % plus vite à moins de 30 km.', era: 2, tech: 'relais', cost: { pierre: 15, bois: 10 }, money: 120, days: 12, workers: 2, storage: 0, maxLevel: 1, effect: { speed: 1.25, range: 30 } },
+  phare: { name: 'Phare', desc: 'Guide les navires : volume du commerce maritime +25 % (jusqu\'à deux phares).', era: 2, tech: 'phares', cost: { pierre: 40, chaux: 10 }, money: 350, days: 30, workers: 2, coast: true, storage: 0, maxLevel: 1, effect: { seaVolume: 0.25 } },
+  arenes: { name: 'Arènes de Nîmes', desc: 'Le grand amphithéâtre de Nemausus, symbole de l\'âge d\'or de la Gaule romaine. Merveille du chapitre II, nécessaire pour le terminer. Une fois construites : +30 % de croissance pour les villes à moins de 60 km, +1 point de recherche par mois et un revenu des jeux.', era: 2, tech: 'spectacles', cost: { pierre: 300, chaux: 40, marbre: 15 }, money: 2500, days: 120, workers: 0, storage: 0, maxLevel: 1, unique: true, site: [4.359, 43.835],
+    wonder: { range: 60, needMult: 1, prodRange: 0, prodMult: 1, prodTypes: [], growth: 1.3, rp: 1, games: 0.02 } },
 };
 
 export const LEVEL_MULT = [0, 1, 1.6, 2.3];            // production par niveau
@@ -206,12 +267,27 @@ export const TIERS: Tier[] = [
   { name: 'Bourg', minPop: 400, needs: { cereales: 0.833, bois: 0.5, pierre: 0.167, sel: 0.05, briques: 0.1 } },
   { name: 'Ville', minPop: 1500, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.133, outils: 0.02 } },
   { name: 'Cité', minPop: 5000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017 } },
+  { name: 'Capitale', minPop: 15000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017 } },
 ];
 /** Points de recherche par mois et par ville, selon son palier (village, bourg, ville, cité) */
-export const RP_TIER = [0.12, 0.2, 0.35, 0.6];
+export const RP_TIER = [0.12, 0.2, 0.35, 0.6, 1.0];
+/** Besoins supplémentaires des villes à partir du chapitre II (Gaule romaine), par palier, pour 100 habitants */
+export const TIER_NEEDS_2: Partial<Record<ResId, number>>[] = [
+  {},
+  { sigillee: 0.08 },
+  { sigillee: 0.08, vin: 0.12, huile: 0.06, tissus: 0.05 },
+  { sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.03 },
+  { sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.04, bronze: 0.01, garum: 0.02, marbre: 0.02 },
+];
+/** Quand une ville reçoit les produits de la Gaule romaine, elle consomme moins des anciens */
+export const OLD_NEEDS_MULT = 0.8;
+/** Bâtiments de ville (thermes, remparts…) : distance maximale à une ville (km) */
+export const CITY_BUILD_RANGE = 8;
+/** Cours du Rhin, frontière de l'Empire (lon, lat), pour les invasions */
+export const RHINE: [number, number][] = [[7.59, 47.56], [7.55, 48.0], [7.8, 48.58], [8.1, 48.97], [8.45, 49.5], [8.3, 50.0], [7.6, 50.35], [7.0, 50.9], [6.2, 51.8]];
 export const WORK_RANGE = 35;   // km (village) ; le rayon grandit avec la ville
 /** Rayon de main-d'œuvre selon le palier de la ville (village, bourg, ville, cité) */
-export const WORK_RANGES = [30, 40, 55, 70];
+export const WORK_RANGES = [30, 40, 55, 70, 90];
 export const WATER_RANGE = 6;   // km d'un fleuve, lac ou de la côte
 export const WAGE = 0.6;        // sesterces par ouvrier et par mois
 
@@ -258,31 +334,34 @@ export type Sea = 'atlantique' | 'mediterranee';
 export interface SeaPartner { id: string; name: string; seas: Sea[]; buys: ResId[]; sells: ResId[]; mult: number; volume: number; to: Partial<Record<Sea, [number, number]>>; }
 export const SEA_PARTNERS: SeaPartner[] = [
   // Atlantique, Manche et mer du Nord
-  { id: 'britannia', name: 'Bretagne insulaire (Dubris)', seas: ['atlantique'], buys: ['sel', 'outils', 'briques', 'fer'], sells: ['plomb', 'cereales', 'bois'], mult: 1.5, volume: 40, to: { atlantique: [1.2, 50.95] } },
-  { id: 'hibernia', name: 'Hibernie (Irlande)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer'], sells: ['bois', 'plomb'], mult: 1.45, volume: 20, to: { atlantique: [-6.6, 49.9] } },
-  { id: 'frisia', name: 'Frise (Germanie, mer du Nord)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer', 'cereales'], sells: ['bois', 'minerai_fer'], mult: 1.4, volume: 25, to: { atlantique: [3.2, 51.55] } },
-  { id: 'hispania_mer', name: 'Hispanie (Brigantium, Tarraco)', seas: ['atlantique', 'mediterranee'], buys: ['outils', 'fer', 'briques', 'sel'], sells: ['plomb', 'minerai_fer', 'sel'], mult: 1.45, volume: 40, to: { atlantique: [-5.8, 43.75], mediterranee: [2.6, 41.4] } },
+  { id: 'britannia', name: 'Bretagne insulaire (Dubris)', seas: ['atlantique'], buys: ['sel', 'outils', 'briques', 'fer', 'vin', 'sigillee', 'verre', 'huile'], sells: ['plomb', 'cereales', 'bois'], mult: 1.5, volume: 40, to: { atlantique: [1.2, 50.95] } },
+  { id: 'hibernia', name: 'Hibernie (Irlande)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer', 'vin', 'tissus'], sells: ['bois', 'plomb'], mult: 1.45, volume: 20, to: { atlantique: [-6.6, 49.9] } },
+  { id: 'frisia', name: 'Frise (Germanie, mer du Nord)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer', 'cereales', 'vin', 'verre', 'sigillee'], sells: ['bois', 'minerai_fer'], mult: 1.4, volume: 25, to: { atlantique: [3.2, 51.55] } },
+  { id: 'hispania_mer', name: 'Hispanie (Brigantium, Tarraco)', seas: ['atlantique', 'mediterranee'], buys: ['outils', 'fer', 'briques', 'sel', 'tissus', 'sigillee'], sells: ['plomb', 'minerai_fer', 'sel'], mult: 1.45, volume: 40, to: { atlantique: [-5.8, 43.75], mediterranee: [2.6, 41.4] } },
   // Méditerranée
-  { id: 'sardaigne', name: 'Sardaigne (Turris Libisonis)', seas: ['mediterranee'], buys: ['cereales', 'outils', 'briques'], sells: ['plomb', 'sel'], mult: 1.5, volume: 30, to: { mediterranee: [8.4, 41.15] } },
-  { id: 'italie_mer', name: 'Italie (Ostie, port de Rome)', seas: ['mediterranee'], buys: ['fer', 'outils', 'plomb', 'briques', 'cereales'], sells: ['outils', 'fer', 'briques'], mult: 1.55, volume: 50, to: { mediterranee: [10.2, 42.85] } },
-  { id: 'afrique', name: 'Afrique (Carthage)', seas: ['mediterranee'], buys: ['outils', 'fer', 'briques', 'plomb'], sells: ['cereales', 'sel'], mult: 1.5, volume: 40, to: { mediterranee: [6.0, 41.3] } },
-  { id: 'grece', name: 'Grèce et Orient (Athènes, Alexandrie)', seas: ['mediterranee'], buys: ['plomb', 'outils', 'fer', 'sel'], sells: ['outils', 'fer', 'briques'], mult: 1.6, volume: 35, to: { mediterranee: [10.4, 41.5] } },
+  { id: 'sardaigne', name: 'Sardaigne (Turris Libisonis)', seas: ['mediterranee'], buys: ['cereales', 'outils', 'briques', 'vin', 'tissus'], sells: ['plomb', 'sel'], mult: 1.5, volume: 30, to: { mediterranee: [8.4, 41.15] } },
+  { id: 'italie_mer', name: 'Italie (Ostie, port de Rome)', seas: ['mediterranee'], buys: ['fer', 'outils', 'plomb', 'briques', 'cereales', 'vin', 'garum', 'tissus', 'sigillee'], sells: ['outils', 'fer', 'briques'], mult: 1.55, volume: 50, to: { mediterranee: [10.2, 42.85] } },
+  { id: 'afrique', name: 'Afrique (Carthage)', seas: ['mediterranee'], buys: ['outils', 'fer', 'briques', 'plomb', 'verre', 'tissus', 'sigillee'], sells: ['cereales', 'sel'], mult: 1.5, volume: 40, to: { mediterranee: [6.0, 41.3] } },
+  { id: 'grece', name: 'Grèce et Orient (Athènes, Alexandrie)', seas: ['mediterranee'], buys: ['plomb', 'outils', 'fer', 'sel', 'vin', 'garum', 'bronze'], sells: ['outils', 'fer', 'briques'], mult: 1.6, volume: 35, to: { mediterranee: [10.4, 41.5] } },
 ];
 export const PARTNERS: Partner[] = [
-  { id: 'italie', name: 'Italie (Rome)', lon: 6.62, lat: 44.92, buys: ['fer', 'outils', 'plomb', 'sel', 'briques'], sells: ['outils', 'fer', 'briques'], mult: 1.4, volume: 25 },
-  { id: 'hispanie', name: 'Hispanie', lon: 2.86, lat: 42.48, buys: ['outils', 'cereales', 'fer', 'plomb'], sells: ['plomb', 'sel', 'minerai_fer'], mult: 1.3, volume: 25 },
-  { id: 'germanie', name: 'Germanie', lon: 7.76, lat: 48.6, buys: ['outils', 'fer', 'sel', 'briques', 'cereales'], sells: ['bois', 'minerai_fer'], mult: 1.35, volume: 25 },
-  { id: 'helvetie', name: 'Helvétie', lon: 6.05, lat: 46.18, buys: ['sel', 'cereales', 'pierre', 'bois'], sells: ['bois', 'fer'], mult: 1.2, volume: 20 },
-  { id: 'belgique', name: 'Gaule Belgique (Rhénanie)', lon: 6.1, lat: 49.45, buys: ['sel', 'cereales', 'briques', 'fer'], sells: ['cereales', 'argile', 'bois'], mult: 1.25, volume: 20 },
+  { id: 'italie', name: 'Italie (Rome)', lon: 6.62, lat: 44.92, buys: ['fer', 'outils', 'plomb', 'sel', 'briques', 'sigillee', 'tissus', 'marbre'], sells: ['outils', 'fer', 'briques'], mult: 1.4, volume: 25 },
+  { id: 'hispanie', name: 'Hispanie', lon: 2.86, lat: 42.48, buys: ['outils', 'cereales', 'fer', 'plomb', 'sigillee', 'verre'], sells: ['plomb', 'sel', 'minerai_fer'], mult: 1.3, volume: 25 },
+  { id: 'germanie', name: 'Germanie', lon: 7.76, lat: 48.6, buys: ['outils', 'fer', 'sel', 'briques', 'cereales', 'vin', 'sigillee', 'verre', 'bronze'], sells: ['bois', 'minerai_fer'], mult: 1.35, volume: 25 },
+  { id: 'helvetie', name: 'Helvétie', lon: 6.05, lat: 46.18, buys: ['sel', 'cereales', 'pierre', 'bois', 'vin', 'huile'], sells: ['bois', 'fer'], mult: 1.2, volume: 20 },
+  { id: 'belgique', name: 'Gaule Belgique (Rhénanie)', lon: 6.1, lat: 49.45, buys: ['sel', 'cereales', 'briques', 'fer', 'vin', 'tissus', 'verre'], sells: ['cereales', 'argile', 'bois'], mult: 1.25, volume: 20 },
 ];
 
 // ---- Véhicules ----
-export type VType = 'charrette' | 'chariot' | 'barge' | 'navire' | 'convoi' | 'chaland';
-export interface VDef { name: string; cap: number; speed: number; price: number; upkeep: number; tech?: string; water?: boolean; sea?: boolean; }
+export type VType = 'charrette' | 'chariot' | 'carpentum' | 'barge' | 'grande_barge' | 'navire' | 'oneraria' | 'convoi' | 'chaland';
+export interface VDef { name: string; cap: number; speed: number; price: number; upkeep: number; tech?: string; water?: boolean; sea?: boolean; voie?: boolean; }
 export const VEH: Record<VType, VDef> = {
   charrette: { name: 'Charrette à bœufs', cap: 4, speed: 18, price: 120, upkeep: 2 },
   chariot: { name: 'Chariot à chevaux', cap: 3, speed: 32, price: 220, upkeep: 4, tech: 'attelage' },
   barge: { name: 'Barge fluviale', cap: 12, speed: 26, price: 300, upkeep: 3, tech: 'navigation', water: true },
+  carpentum: { name: 'Chariot couvert (carpentum)', cap: 6, speed: 40, price: 300, upkeep: 5, tech: 'charronnerie', voie: true },
+  grande_barge: { name: 'Grande barge', cap: 25, speed: 22, price: 600, upkeep: 6, tech: 'batellerie', water: true },
+  oneraria: { name: 'Grand navire (oneraria)', cap: 40, speed: 70, price: 900, upkeep: 10, tech: 'navires_charge', sea: true },
   navire: { name: 'Navire marchand (corbita)', cap: 20, speed: 90, price: 500, upkeep: 6, tech: 'negoce_maritime', sea: true },
   chaland: { name: 'Chaland de chantier', cap: 10, speed: 22, price: 0, upkeep: 0, water: true },
   convoi: { name: 'Convoi de chantier', cap: 6, speed: 20, price: 0, upkeep: 0 },
@@ -299,12 +378,13 @@ export const BRIDGE_COST = 120;
 export const MAX_GRADIENT = 90; // m/km : au-delà, il faudra des tunnels (époques suivantes)
 
 // ---- Technologies ----
-export type Branch = 'transport' | 'production' | 'cite' | 'commerce';
+export type Branch = 'transport' | 'production' | 'cite' | 'commerce' | 'culture';
 export const BRANCHES: { id: Branch; name: string; icon: string }[] = [
   { id: 'transport', name: 'Transport', icon: '🛤️' },
   { id: 'production', name: 'Production', icon: '⚒️' },
   { id: 'cite', name: 'Cité', icon: '🏛️' },
   { id: 'commerce', name: 'Commerce', icon: '⚖️' },
+  { id: 'culture', name: 'Culture et religion', icon: '🏛️' },
 ];
 export interface Tech { id: string; name: string; desc: string; era: number; cost: number; req: string[]; branch: Branch; }
 export const TECHS: Tech[] = [
@@ -329,6 +409,27 @@ export const TECHS: Tech[] = [
   { id: 'negoce', name: 'Négoce méditerranéen', desc: 'Les partenaires étrangers paient 20 % plus cher et vendent 10 % moins cher.', era: 1, cost: 28, req: [], branch: 'commerce' },
   { id: 'negoce_maritime', name: 'Négoce maritime', desc: 'Ouvre les routes maritimes : ports de commerce, navires marchands et comptoirs en Bretagne insulaire, Hibernie, Frise, Hispanie, Sardaigne, Italie, Afrique et Grèce.', era: 1, cost: 48, req: ['navigation'], branch: 'commerce' },
   { id: 'monnaie', name: 'Atelier monétaire', desc: 'Volume de commerce avec l\'étranger doublé ; la vente locale depuis les entrepôts rapporte davantage.', era: 1, cost: 42, req: ['negoce'], branch: 'commerce' },
+  // ---- Chapitre II : Gaule romaine ----
+  { id: 'relais', name: 'Relais routiers', desc: 'Relais (mutationes) le long des routes : les véhicules roulent 25 % plus vite autour d\'eux.', era: 2, cost: 55, req: [], branch: 'transport' },
+  { id: 'charronnerie', name: 'Charronnerie', desc: 'Chariots couverts (carpentum) : 6 t, rapides, mais seulement sur les voies romaines.', era: 2, cost: 60, req: ['relais'], branch: 'transport' },
+  { id: 'batellerie', name: 'Batellerie lourde', desc: 'Grandes barges de 25 t sur les fleuves (Rhône, Saône, Seine…).', era: 2, cost: 60, req: [], branch: 'transport' },
+  { id: 'navires_charge', name: 'Navires de charge', desc: 'Grands navires marchands (oneraria) de 40 t pour le commerce maritime.', era: 2, cost: 75, req: ['batellerie'], branch: 'transport' },
+  { id: 'viticulture', name: 'Viticulture', desc: 'Vignobles sur les terroirs viticoles : Bourgogne, Rhône, Narbonnaise, Bordelais, Moselle.', era: 2, cost: 45, req: [], branch: 'production' },
+  { id: 'oleiculture', name: 'Oléiculture', desc: 'Oliveraies et moulins à huile, en Provence et en Languedoc.', era: 2, cost: 45, req: [], branch: 'production' },
+  { id: 'sigillee', name: 'Céramique sigillée', desc: 'Ateliers de potier : la poterie rouge de La Graufesenque, exportée dans tout l\'Empire.', era: 2, cost: 50, req: [], branch: 'production' },
+  { id: 'verrerie', name: 'Verrerie', desc: 'Verreries sur les gisements de sable.', era: 2, cost: 65, req: ['sigillee'], branch: 'production' },
+  { id: 'bronze', name: 'Bronze', desc: 'Mines de cuivre et d\'étain, fonderies de bronze.', era: 2, cost: 80, req: ['verrerie'], branch: 'production' },
+  { id: 'villae', name: 'Grands domaines', desc: 'Villas agricoles : 18 t de céréales par mois au lieu de 10.', era: 2, cost: 55, req: [], branch: 'cite' },
+  { id: 'mortier', name: 'Mortier de chaux', desc: 'Fours à chaux sur les gisements de calcaire : la chaux des grands monuments.', era: 2, cost: 50, req: [], branch: 'cite' },
+  { id: 'remparts', name: 'Remparts', desc: 'Murailles qui protègent des invasions les bâtiments à moins de 20 km.', era: 2, cost: 70, req: ['mortier'], branch: 'cite' },
+  { id: 'capitales', name: 'Capitales provinciales', desc: 'Les plus grandes villes peuvent devenir des capitales (15 000 habitants) : rayon de main-d\'œuvre de 90 km.', era: 2, cost: 95, req: ['remparts', 'villae'], branch: 'cite' },
+  { id: 'peche', name: 'Pêche et garum', desc: 'Pêcheries sur la côte et saloirs à garum.', era: 2, cost: 45, req: [], branch: 'commerce' },
+  { id: 'draperie', name: 'Laine et draperie', desc: 'Bergeries sur les pâturages et ateliers de tissage.', era: 2, cost: 55, req: [], branch: 'commerce' },
+  { id: 'phares', name: 'Phares', desc: 'Phares sur la côte : volume du commerce maritime +25 % chacun (deux au plus).', era: 2, cost: 70, req: ['peche'], branch: 'commerce' },
+  { id: 'thermes', name: 'Thermes', desc: 'Bains publics : la ville voisine grandit 25 % plus vite.', era: 2, cost: 60, req: ['mortier'], branch: 'culture' },
+  { id: 'spectacles', name: 'Jeux et spectacles', desc: 'Amphithéâtres et Arènes de Nîmes, la merveille du chapitre.', era: 2, cost: 90, req: ['thermes'], branch: 'culture' },
+  { id: 'marbriers', name: 'Marbriers', desc: 'Carrières de marbre des Pyrénées.', era: 2, cost: 65, req: [], branch: 'culture' },
+  { id: 'christianisme', name: 'Christianisme', desc: 'Basiliques : lieux de culte et de savoir, +0,3 point de recherche par mois chacune.', era: 2, cost: 85, req: ['marbriers'], branch: 'culture' },
 ];
 
 // ---- Objectifs du chapitre I ----
@@ -344,10 +445,17 @@ export const OBJECTIVES: Objective[] = [
   { id: 'via', name: 'Via Agrippa', desc: 'Relie par la route deux villes distantes de plus de 250 km.', era: 1, money: 600, rp: 6 },
   { id: 'ville2', name: 'Une ville romaine', desc: 'Fais grandir une ville jusqu\'à 1 500 habitants.', era: 1, money: 800, rp: 8 },
   { id: 'gard', name: 'Le Pont du Gard', desc: 'Construis le Pont du Gard (facultatif).', era: 1, money: 2000, rp: 12 },
+  // Chapitre II
+  { id: 'vin2', name: 'Le vin des Gaules', desc: 'Produis 150 t de vin.', era: 2, money: 600, rp: 6 },
+  { id: 'sigillee2', name: 'La Graufesenque', desc: 'Produis 150 t de poterie sigillée.', era: 2, money: 600, rp: 6 },
+  { id: 'thermes2', name: 'Aux bains !', desc: 'Construis des thermes.', era: 2, money: 400, rp: 4 },
+  { id: 'remparts2', name: 'Cité fortifiée', desc: 'Construis des remparts.', era: 2, money: 500, rp: 5 },
+  { id: 'capitale2', name: 'Capitale des Gaules', desc: 'Fais grandir une ville jusqu\'à 15 000 habitants.', era: 2, money: 2000, rp: 15 },
+  { id: 'arenes', name: 'Les Arènes de Nîmes', desc: 'Construis les Arènes de Nîmes (nécessaire pour finir le chapitre).', era: 2, money: 3000, rp: 15 },
 ];
 
 export const ERAS = [
-  '', 'Antiquité romaine', 'Moyen Âge', 'Révolution industrielle', 'Électricité et pétrole', 'Époque moderne',
+  '', 'Antiquité romaine', 'Gaule romaine', 'Moyen Âge', 'Révolution industrielle', 'Électricité et pétrole', 'Époque moderne',
 ];
 export const START_YEAR = -50;
 
@@ -363,8 +471,14 @@ export type EventEffect =
   | { kind: 'discount'; mult: number; months: number }
   /** les villes paient davantage certaines ressources */
   | { kind: 'demand'; res: ResId[]; mult: number; months: number }
-  /** production de tous les ateliers multipliée */
-  | { kind: 'prod'; mult: number; months: number };
+  /** production des ateliers multipliée (toutes les ressources, ou seulement `res`) */
+  | { kind: 'prod'; mult: number; months: number; res?: ResId[] }
+  /** monnaie dévaluée : tous les prix de vente multipliés */
+  | { kind: 'prices'; mult: number; months: number }
+  /** invasion : une part des bâtiments non protégés de la zone est endommagée */
+  | { kind: 'raid'; share: number; rhin?: boolean; lon?: number; lat?: number; range: number }
+  /** révolte : des ateliers pris au hasard s'arrêtent */
+  | { kind: 'revolt'; count: number; months: number };
 
 export interface HistEvent { year: number; title: string; text: string; effects: EventEffect[]; }
 export const EVENTS: HistEvent[] = [
@@ -379,7 +493,21 @@ export const EVENTS: HistEvent[] = [
   { year: 69, title: 'L\'année des quatre empereurs', text: 'Guerre civile dans l\'Empire. Le commerce avec l\'Italie est désorganisé pendant 1 an.', effects: [{ kind: 'partnerClosed', partner: 'italie', months: 12 }] },
   { year: 165, title: 'Peste antonine', text: 'Une épidémie venue d\'Orient frappe l\'Empire : les villes perdent 10 % de leurs habitants et les ateliers tournent au ralenti (−15 % de production pendant 3 ans).', effects: [{ kind: 'pop', mult: 0.9 }, { kind: 'prod', mult: 0.85, months: 36 }] },
   { year: 212, title: 'Édit de Caracalla', text: 'Tous les hommes libres de l\'Empire deviennent citoyens romains. Les villes attirent de nouveaux habitants.', effects: [{ kind: 'growth', mult: 1.3, months: 60 }] },
-  { year: 256, title: 'Invasions germaniques', text: 'Francs et Alamans franchissent le Rhin. Le commerce avec la Germanie et la Belgique est coupé pendant 5 ans.', effects: [{ kind: 'partnerClosed', partner: 'germanie', months: 60 }, { kind: 'partnerClosed', partner: 'belgique', months: 60 }] },
+  { year: 256, title: 'Invasions germaniques', text: 'Francs et Alamans franchissent le Rhin et pillent le nord-est : des bâtiments sans remparts à moins de 80 km du Rhin sont endommagés. Le commerce avec la Germanie et la Belgique est coupé pendant 5 ans.', effects: [{ kind: 'raid', share: 0.35, rhin: true, range: 80 }, { kind: 'partnerClosed', partner: 'germanie', months: 60 }, { kind: 'partnerClosed', partner: 'belgique', months: 60 }] },
+  // ---- Chapitre II : Gaule romaine ----
+  { year: 80, title: 'Âge d\'or de la sigillée', text: 'La poterie rouge de La Graufesenque s\'exporte jusqu\'en Inde. Pendant 10 ans, les villes paient la poterie sigillée 50 % plus cher.', effects: [{ kind: 'demand', res: ['sigillee'], mult: 1.5, months: 120 }] },
+  { year: 92, title: 'Édit de Domitien sur les vignes', text: 'Pour protéger le vin italien, l\'empereur ordonne d\'arracher des vignes en Gaule : les vignobles produisent 30 % de moins pendant 10 ans.', effects: [{ kind: 'prod', res: ['vin'], mult: 0.7, months: 120 }] },
+  { year: 177, title: 'Martyrs de Lyon', text: 'Les premiers chrétiens de Lugdunum sont persécutés. Leur foi se répand malgré tout dans les villes.', effects: [{ kind: 'rp', amount: 8 }] },
+  { year: 235, title: 'Crise du IIIe siècle', text: 'Les empereurs se succèdent, la monnaie est dévaluée : pendant près de 50 ans, tout se vend 20 % moins cher. Des raids peuvent frapper le nord-est à tout moment : protège tes villes par des remparts.', effects: [{ kind: 'prices', mult: 0.8, months: 588 }] },
+  { year: 260, title: 'Empire des Gaules', text: 'Postumus fait sécession et fonde l\'Empire des Gaules : Rome est coupée de la Gaule pendant 14 ans, mais les villes gauloises s\'affirment.', effects: [{ kind: 'partnerClosed', partner: 'italie', months: 168 }, { kind: 'growth', mult: 1.2, months: 120 }] },
+  { year: 275, title: 'Grande invasion de 275', text: 'Francs et Alamans ravagent la Gaule jusqu\'à la Loire. Les bâtiments sans remparts près du Rhin sont endommagés ; le commerce avec la Germanie est coupé 3 ans.', effects: [{ kind: 'raid', share: 0.4, rhin: true, range: 80 }, { kind: 'partnerClosed', partner: 'germanie', months: 36 }] },
+  { year: 285, title: 'Révolte des Bagaudes', text: 'Paysans ruinés et esclaves en fuite se soulèvent : plusieurs ateliers s\'arrêtent pendant 6 mois.', effects: [{ kind: 'revolt', count: 4, months: 6 }] },
+  { year: 313, title: 'Édit de Milan', text: 'Constantin accorde la liberté de culte : les chrétiens bâtissent leurs premières églises, foyers de savoir.', effects: [{ kind: 'rp', amount: 10 }] },
+  { year: 352, title: 'Invasion alamane', text: 'Les Alamans franchissent à nouveau le Rhin : bâtiments sans remparts endommagés près de la frontière.', effects: [{ kind: 'raid', share: 0.3, rhin: true, range: 80 }] },
+  { year: 358, title: 'Julien à Lutèce', text: 'Le césar Julien s\'installe à Lutèce, sa « chère Lutèce », bientôt appelée Paris. Les villes reprennent confiance.', effects: [{ kind: 'growth', mult: 1.2, months: 60 }, { kind: 'rp', amount: 5 }] },
+  { year: 406, title: 'Le Rhin gelé est franchi', text: 'La nuit du 31 décembre, Vandales, Suèves et Alains traversent le Rhin gelé : le nord-est est dévasté, jusqu\'à 150 km de la frontière.', effects: [{ kind: 'raid', share: 0.6, rhin: true, range: 150 }, { kind: 'pop', mult: 0.92 }] },
+  { year: 451, title: 'Bataille des champs Catalauniques', text: 'Aetius, les Francs et les Wisigoths arrêtent Attila près de Châlons. La région est ravagée.', effects: [{ kind: 'raid', share: 0.4, lon: 4.36, lat: 48.95, range: 90 }, { kind: 'pop', mult: 0.95 }] },
+  { year: 476, title: 'Chute de Rome', text: 'Le dernier empereur d\'Occident, Romulus Augustule, est déposé. L\'Antiquité s\'achève : place aux royaumes francs.', effects: [{ kind: 'partnerClosed', partner: 'italie', months: 240 }] },
 ];
 
 export const START_MONEY = 2500;

@@ -61,7 +61,7 @@ function adj(s: GameState) {
 }
 
 /** Dijkstra depuis un nœud : distances (en jours-équivalents) et prédécesseurs */
-export function dijkstra(s: GameState, from: number) {
+export function dijkstra(s: GameState, from: number, voieOnly = false) {
   const g = adj(s), dist = new Map<number, number>(), prev = new Map<number, { n: number; e: Edge }>();
   const heap: [number, number][] = [[0, from]]; dist.set(from, 0);
   while (heap.length) {
@@ -71,6 +71,7 @@ export function dijkstra(s: GameState, from: number) {
     const [d, n] = top;
     if (d > (dist.get(n) ?? Infinity)) continue;
     for (const { to, e } of g.get(n) || []) {
+      if (voieOnly && e.type !== 'voie') continue;   // carpentum : voies romaines seulement
       const nd = d + e.len / ROADS[e.type].speed;
       if (nd < (dist.get(to) ?? Infinity)) { dist.set(to, nd); prev.set(to, { n, e }); heap.push([nd, to]); siftUp(heap); }
     }
@@ -93,9 +94,9 @@ function siftDown(h: [number, number][]) {
 
 export interface Path { pts: { x: number; y: number }[]; speed: number[]; len: number; }
 
-export function findPath(s: GameState, from: number, to: number): Path | null {
+export function findPath(s: GameState, from: number, to: number, voieOnly = false): Path | null {
   if (from === to) { const n = nodeById(s, from)!; return { pts: [{ x: n.x, y: n.y }], speed: [], len: 0 }; }
-  const { dist, prev } = dijkstra(s, from);
+  const { dist, prev } = dijkstra(s, from, voieOnly);
   if (!dist.has(to)) return null;
   const nodes: number[] = [to], speeds: number[] = [];
   let len = 0, cur = to;
