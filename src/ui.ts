@@ -572,7 +572,7 @@ export class Game {
       h += `<p class="muted">Recherche : <b>+${String(RP_TIER[c.tier]).replace('.', ',')} point/mois</b> (palier ${TIERS[c.tier].name.toLowerCase()})${next ? ` · ${String(RP_TIER[c.tier + 1]).replace('.', ',')} en devenant ${next.name.toLowerCase()}` : ''}</p>`;
       if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
       h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
-        const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 6 * 100);
+        const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 12 * 100);
         return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${months >= 1 ? `${Math.floor(months)} mois` : have > 0.5 ? '< 1 mois' : '<span class="bad">rupture</span>'}</b></div>
           <div class="gauge ${months < 1 ? 'low' : ''}"><i style="width:${pct}%;background:${RES[r].color}"></i></div>
           <small class="flux muted">${q.toFixed(1)} t/mois · réserve ${fmt(have)} t · achète ${priceAt(s, b, r).toFixed(1)} sest./t</small></div></div>`;

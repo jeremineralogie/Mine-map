@@ -217,6 +217,8 @@ export function priceAt(s: GameState, b: Building, res: ResId) {
   if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1); }
   return base * (1 + 0.1 * (b.city?.tier ?? 0)) * demandMult(s, res);
 }
+/** Stock minimal qu'une ville accepte pour chaque bien dont elle a besoin (en tonnes) */
+export const CITY_MIN_STOCK = 10;
 /** Réserve de céréales d'une ville, en mois de consommation */
 export function foodReserve(b: Building) {
   const q = cityNeeds(b).cereales ?? 0;
@@ -244,7 +246,9 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
     // la ville achète aussi un peu des biens du palier suivant pour pouvoir y accéder
     const nextT = TIERS[b.city.tier + 1];
     const future = nextT && nextT.needs[res] && !TIERS[b.city.tier].needs[res] ? nextT.needs[res]! * b.city.pop / 100 : 0;
-    const cap = (need + future) * 6;
+    if (need + future <= 0) return 0;
+    // réserve d'un an au plus, mais toujours de quoi recevoir au moins deux chargements complets
+    const cap = Math.max((need + future) * 12, CITY_MIN_STOCK);
     return Math.max(0, cap - (b.city.stock[res] ?? 0));
   }
   if (b.partner) {
