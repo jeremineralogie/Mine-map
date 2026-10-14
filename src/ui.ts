@@ -1,5 +1,5 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
-import {
+import { RP_TIER,
   BRANCHES, BUILD, ERAS, LEVEL_COST, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
@@ -8,7 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
-import { foodReserve, RESERVE_TO_GROW,
+import { missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPartnersOf, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
@@ -563,11 +563,13 @@ export class Game {
         const why = c.foodSat < 0.98 ? 'La ville manque de céréales : des habitants s\'en vont.'
           : fr < RESERVE_TO_GROW ? `Il faut au moins ${RESERVE_TO_GROW} mois de réserve pour grandir : livre un peu plus que ce qu'elle mange.`
           : short ? 'La ville vit sur sa réserve : elle ne grandit que si elle reçoit au moins ce qu\'elle mange.'
+          : missingNextGoods(b).length ? 'Nourriture suffisante, mais la ville attend les biens du palier suivant pour grandir.'
           : c.growing === false ? 'La ville ne grandit pas ce mois-ci.' : 'Réserve suffisante et livraisons régulières : la ville grandit.';
         h += `<div class="reserve ${fr >= RESERVE_TO_GROW && !short ? 'good' : fr >= 0.25 ? 'warn' : 'bad'}">${resIcon('cereales', 'ri big')}<div><b>Réserve : ${fr >= 1 ? `${fr.toFixed(1).replace('.', ',')} mois` : fr > 0.02 ? `${Math.round(fr * 30)} jours` : 'vide'}</b>
           <small>${fmt(c.stock.cereales ?? 0)} t de céréales · mange ${fq.toFixed(1)} t/mois, chaque jour${got !== undefined ? ` · reçu le mois dernier : ${fmt(got)} t` : ''}</small>
           <small>${why}</small></div></div>`;
       }
+      h += `<p class="muted">Recherche : <b>+${String(RP_TIER[c.tier]).replace('.', ',')} point/mois</b> (palier ${TIERS[c.tier].name.toLowerCase()})${next ? ` · ${String(RP_TIER[c.tier + 1]).replace('.', ',')} en devenant ${next.name.toLowerCase()}` : ''}</p>`;
       if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
       h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
         const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 6 * 100);

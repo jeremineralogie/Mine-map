@@ -198,11 +198,13 @@ export const LEVEL_DAYS = [0, 1, 2, 3.5];              // durée d'amélioration
 export interface Tier { name: string; minPop: number; needs: Partial<Record<ResId, number>>; }
 // Besoins mensuels pour 100 habitants
 export const TIERS: Tier[] = [
-  { name: 'Village', minPop: 0, needs: { cereales: 2.5, bois: 1.5, pierre: 0.4 } },
-  { name: 'Bourg', minPop: 400, needs: { cereales: 2.5, bois: 1.5, pierre: 0.5, sel: 0.15, briques: 0.3 } },
-  { name: 'Ville', minPop: 1500, needs: { cereales: 2.5, bois: 1.5, pierre: 0.6, sel: 0.15, briques: 0.4, outils: 0.06 } },
-  { name: 'Cité', minPop: 5000, needs: { cereales: 2.5, bois: 1.5, pierre: 0.6, sel: 0.15, briques: 0.5, outils: 0.08, plomb: 0.05 } },
+  { name: 'Village', minPop: 0, needs: { cereales: 0.833, bois: 0.5, pierre: 0.133 } },
+  { name: 'Bourg', minPop: 400, needs: { cereales: 0.833, bois: 0.5, pierre: 0.167, sel: 0.05, briques: 0.1 } },
+  { name: 'Ville', minPop: 1500, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.133, outils: 0.02 } },
+  { name: 'Cité', minPop: 5000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017 } },
 ];
+/** Points de recherche par mois et par ville, selon son palier (village, bourg, ville, cité) */
+export const RP_TIER = [0.12, 0.2, 0.35, 0.6];
 export const WORK_RANGE = 35;   // km (village) ; le rayon grandit avec la ville
 /** Rayon de main-d'œuvre selon le palier de la ville (village, bourg, ville, cité) */
 export const WORK_RANGES = [30, 40, 55, 70];

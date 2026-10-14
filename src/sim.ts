@@ -2,6 +2,7 @@
 import {
   ANCIENT, BUILD, EVENTS, SPARE_NAMES, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
   START_YEAR, TECHS, TIERS, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
+  RP_TIER,
 } from './defs';
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
@@ -220,6 +221,12 @@ export function priceAt(s: GameState, b: Building, res: ResId) {
 export function foodReserve(b: Building) {
   const q = cityNeeds(b).cereales ?? 0;
   return q > 0 ? (b.city!.stock.cereales ?? 0) / q : 99;
+}
+/** Biens du palier suivant qui manquent encore à la ville (sa croissance est bloquée juste avant le palier) */
+export function missingNextGoods(b: Building): ResId[] {
+  const c = b.city!, next = TIERS[c.tier + 1];
+  if (!next || c.pop < next.minPop * 0.94) return [];
+  return (Object.keys(next.needs) as ResId[]).filter(r => !TIERS[c.tier].needs[r] && (c.stock[r] ?? 0) <= 0);
 }
 /** Une ville ne grandit que si elle est nourrie, garde au moins un mois de céréales d'avance
  *  et reçoit au moins ce qu'elle mange (elle ne grandit pas en vidant sa réserve) */
@@ -706,7 +713,7 @@ export class Sim {
       let t = 0; for (let i = 0; i < TIERS.length; i++) if (city.pop >= TIERS[i].minPop) t = i;
       if (t > city.tier) this.notify.toast(`${c.name} devient un${t === 3 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
       city.tier = t;
-      s.rp += 0.12 + city.pop / 5000;   // recherche volontairement lente : chaque technologie se mérite
+      s.rp += RP_TIER[city.tier];   // recherche volontairement lente : chaque technologie se mérite
     }
     for (const k of Object.keys(s.market)) {
       const m = s.market[k] + (1 - s.market[k]) * 0.08 + (Math.random() - 0.5) * 0.04;
@@ -869,6 +876,8 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     if (c.foodSat < 0.5) return { label: 'Famine', level: 'bad', hint: 'Livre des céréales à la ville.' };
     if (c.foodSat < 0.9) return { label: 'Mal nourrie', level: 'warn', hint: 'La ville manque de céréales.' };
     if (c.foodSat < 0.98) return { label: 'Un peu juste', level: 'warn', hint: 'Il manque un peu de céréales : quelques habitants partent.' };
+    const miss = missingNextGoods(b);
+    if (miss.length) return { label: 'Bloquée avant le palier', level: 'warn', hint: `Pour devenir ${TIERS[c.tier + 1].name.toLowerCase()}, la ville doit recevoir : ${miss.map(r => RES[r].name.toLowerCase()).join(', ')}.` };
     if (foodReserve(b) < RESERVE_TO_GROW) return { label: 'Stable', level: 'info', hint: 'La ville est nourrie mais ne grandit pas : il lui faut au moins un mois de céréales en réserve.' };
     if (c.growing === false) return { label: 'Stable', level: 'info', hint: 'La ville vit sur sa réserve : livre-lui au moins ce qu\'elle mange chaque mois pour qu\'elle grandisse.' };
     if (c.sat < 0.5) return { label: 'Nourrie, peu de confort', level: 'warn', hint: 'Livre aussi les autres biens demandés pour accélérer la croissance.' };
