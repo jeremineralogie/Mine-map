@@ -51,6 +51,8 @@ export interface Stop {
   bid: number; action: 'load' | 'unload'; res: ResId[];
   /** déchargement : part du chargement de départ à déposer ici (en %, 100 = tout ce qui reste) */
   share?: number;
+  /** chargement : part du véhicule réservée à chaque ressource (en %) ; absente = « libre » (remplit la place restante) */
+  pct?: Partial<Record<ResId, number>>;
 }
 /** `name` vide : le nom est déduit des arrêts (départ → arrivée) */
 export interface Line {

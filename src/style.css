@@ -487,3 +487,10 @@ table.eco tr.click:hover td { background: #faf3e6; }
 .stop.dragging { opacity: .55; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
 .stop.dropbefore { box-shadow: 0 -3px 0 #e8590c; }
 .stop.dropafter { box-shadow: 0 3px 0 #e8590c; }
+
+/* Ressources d'un arrêt de chargement, avec leur part du véhicule */
+.loadres { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
+.loadres .lr { display: flex; align-items: center; gap: 6px; }
+.loadres .lr .res { flex: 1; min-width: 0; }
+.loadres select.pct { margin: 0; padding: 3px 4px; font-size: 13px; max-width: 120px; }
+.loadres .x { border: 0; background: none; color: var(--muted); padding: 2px 4px; }

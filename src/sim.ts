@@ -645,14 +645,19 @@ export class Sim {
     if (v.state === 'load') {
       // charge les ressources demandées à tour de rôle, tonne par tonne, jusqu'à remplir le véhicule
       // le joueur peut ne remplir le véhicule qu'en partie (au moins 1 t)
-      const target = Math.max(1, Math.floor(cap * Math.min(100, st.share ?? 100) / 100));
+      // chaque ressource peut avoir sa part fixe du véhicule (ex. 75 % céréales + 25 % bois) ; les autres se partagent le reste
+      const quota = (r: ResId) => { const p = st.pct?.[r]; return p ? Math.max(1, Math.round(cap * p / 100)) : null; };
+      const allFixed = st.res.length > 0 && st.res.every(r => quota(r) !== null);
+      const target = allFixed ? Math.min(cap, st.res.reduce((a, r) => a + quota(r)!, 0))
+        : Math.max(1, Math.floor(cap * Math.min(100, st.share ?? 100) / 100));
       if (!b.city) {
         let room = target - cargoTotal(v.cargo), moved = true;
         while (room >= 1 && moved) {
           moved = false;
           for (const r of st.res) {
             const reserved = b.upgrading ? Math.max(0, (b.need[r] ?? 0) - (b.incoming[r] ?? 0)) : 0;
-            if (room < 1 || (b.stock[r] ?? 0) - reserved < 1) continue;
+            const q = quota(r);
+            if (room < 1 || (b.stock[r] ?? 0) - reserved < 1 || (q !== null && (v.cargo[r] ?? 0) >= q)) continue;
             b.stock[r]! -= 1; addFlow(b, 'out', r, 1); v.cargo[r] = (v.cargo[r] ?? 0) + 1; room -= 1; moved = true;
             lineMoved(l, v.stop % l.stops.length, r, 1);
           }

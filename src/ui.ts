@@ -754,7 +754,7 @@ export class Game {
       const tot = (Object.entries(total[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
       const verb = st.action === 'load' ? 'chargé' : b?.city || b?.partner ? 'vendu' : 'déposé';
       const what = st.action === 'load'
-        ? `<span class="lc-act load">Charge</span> ${st.res.map(r => resChip(r)).join(' ') || '<small class="warn">aucune ressource choisie</small>'}${(st.share ?? 100) < 100 ? ` <small>jusqu'à ${st.share} % du véhicule</small>` : ''}`
+        ? `<span class="lc-act load">Charge</span> ${st.res.map(r => resChip(r) + (st.pct?.[r] ? ` <small>${st.pct[r]} %</small>` : '')).join(' ') || '<small class="warn">aucune ressource choisie</small>'}${(st.share ?? 100) < 100 ? ` <small>jusqu'à ${st.share} % du véhicule</small>` : ''}`
         : `<span class="lc-act unload">${b?.city || b?.partner ? 'Vend' : 'Dépose'}</span> ${st.res.map(r => resChip(r)).join(' ')} <small>${(st.share ?? 100) >= 100 ? (st.res.length ? 'tout' : 'tout le reste') : `${st.share} % du chargement`}</small>`;
       return `<li class="${i === 0 ? 'first' : i === n - 1 ? 'last' : ''}"><span class="lc-dot">${i + 1}</span><div class="lc-stop">
         <div class="lc-st-head"><span class="lc-role">${role}</span><b>${esc(b?.name.split(' — ')[0] ?? '?')}</b></div>
@@ -800,11 +800,15 @@ export class Game {
         const sugg = b ? this.suggestRes(b) : [];
         const others = (Object.keys(RES) as ResId[]).filter(r => RES[r].era <= s.era && r !== 'eau' && !st.res.includes(r));
         const opt = (r: ResId) => `<option value="${r}">${RES[r].name}${b && (b.stock[r] ?? 0) >= 1 ? ` (${fmt(b.stock[r]!)} en stock)` : ''}</option>`;
-        what = `<div class="chips sel">${st.res.map(r => `<button class="reschip" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">${resChip(r)} ✕</button>`).join('') || '<small class="warn">choisis au moins une ressource</small>'}</div>
+        const cap = VEH[l.vtype].cap, sum = st.res.reduce((a, r) => a + (st.pct?.[r] ?? 0), 0);
+        const pctSel = (r: ResId) => { const p = st.pct?.[r] ?? 0; return `<select class="pct" data-field="pct" data-i="${i}" data-r="${r}" title="Part du véhicule"><option value="0" ${p ? '' : 'selected'}>libre</option>${[10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100].map(v => `<option value="${v}" ${p === v ? 'selected' : ''}>${v} % (${fmt(Math.max(1, Math.round(cap * v / 100)))} t)</option>`).join('')}</select>`; };
+        what = `<div class="loadres">${st.res.map(r => `<div class="lr">${resChip(r)}${pctSel(r)}<button class="x" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">✕</button></div>`).join('') || '<small class="warn">choisis au moins une ressource</small>'}</div>
+          ${sum > 100 ? '<small class="warn">Le total dépasse 100 % : la place manquera pour tout charger.</small>' : ''}
           <select data-field="addres" data-i="${i}"><option value="">+ Ajouter une ressource…</option>
           ${sugg.filter(r => others.includes(r)).map(opt).join('')}<option disabled>──────</option>${others.filter(r => !sugg.includes(r)).map(opt).join('')}</select>`;
-        const fill = st.share ?? 100, cap = VEH[l.vtype].cap;
-        what += `<label class="share">Remplir le véhicule à <select data-field="share" data-i="${i}">${[100, 75, 50, 25].map(p => `<option value="${p}" ${fill === p ? 'selected' : ''}>${p === 100 ? 'plein' : p + ' %'} (${fmt(Math.max(1, Math.floor(cap * p / 100)))} t)</option>`).join('')}</select></label>
+        const fill = st.share ?? 100, allFixed = st.res.length > 0 && st.res.every(r => st.pct?.[r]);
+        if (allFixed) what += `<small class="muted">Chargement prévu : ${st.res.map(r => `${fmt(Math.max(1, Math.round(cap * st.pct![r]! / 100)))} t de ${RES[r].name.toLowerCase()}`).join(', ')}. Le véhicule repart quand tout est chargé, ou au bout de 6 jours.</small>`;
+        else what += `<small class="muted">« libre » : la ressource se partage la place restante avec les autres ressources libres.</small><label class="share">Remplir le véhicule à <select data-field="share" data-i="${i}">${[100, 75, 50, 25].map(p => `<option value="${p}" ${fill === p ? 'selected' : ''}>${p === 100 ? 'plein' : p + ' %'} (${fmt(Math.max(1, Math.floor(cap * p / 100)))} t)</option>`).join('')}</select></label>
           <small class="muted">Le véhicule repart dès qu'il a chargé ${fill >= 100 ? 'sa pleine capacité' : `${fill} % de sa capacité`}, ou au bout de 6 jours d'attente.</small>`;
       } else {
         const sh = st.share ?? 100;
@@ -1097,7 +1101,7 @@ export class Game {
       }
       case 'lines': this.view.selectedLine = null; this.setMode({ kind: 'select' }); break;
       case 'pickstop': if (this.view.selectedLine !== null) this.setMode({ kind: 'pickStop', line: this.view.selectedLine }); break;
-      case 'delres': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) { const st = l.stops[Number(t.dataset.i)]; st.res = st.res.filter(r => r !== t.dataset.r); } break; }
+      case 'delres': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) { const st = l.stops[Number(t.dataset.i)]; st.res = st.res.filter(r => r !== t.dataset.r); if (st.pct) delete st.pct[t.dataset.r as ResId]; } break; }
       case 'selv': this.select({ kind: 'vehicle', id }); return;
       case 'delstop': { const l = s.lines.find(x => x.id === this.view.selectedLine); if (l) l.stops.splice(Number(t.dataset.i), 1); break; }
       case 'buyv': { const err = buyVehicle(s, this.view.selectedLine!); if (err) this.toast(err, 'bad'); break; }
@@ -1155,10 +1159,11 @@ export class Game {
       case 'action': if (l) {
         const st = l.stops[Number(t.dataset.i)], b = getB(s, st.bid);
         st.action = t.value as 'load' | 'unload';
-        st.res = []; st.share = 100;
+        st.res = []; st.share = 100; delete st.pct;
         if (st.action === 'load' && b) st.res = this.suggestRes(b).slice(0, 1);
       } break;
       case 'share': if (l) l.stops[Number(t.dataset.i)].share = Number(t.value); break;
+      case 'pct': if (l) { const st = l.stops[Number(t.dataset.i)], r = t.dataset.r as ResId, v = Number(t.value); st.pct ??= {}; if (v > 0) st.pct[r] = v; else delete st.pct[r]; } break;
       case 'addres': if (l && t.value) { const st = l.stops[Number(t.dataset.i)]; if (!st.res.includes(t.value as ResId)) st.res.push(t.value as ResId); } break;
       case 'depfilter': this.view.depositFilter = t.value as ResId | 'all'; this.view.layers.deposits = true; break;
     }
