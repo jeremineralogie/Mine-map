@@ -12,7 +12,7 @@ import { missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPartnersOf, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
-import { SAVE_KEY, cargoTotal, migrate, type Building, type GameState, type Line, type RNode, type Stock } from './state';
+import { SAVE_KEY, cargoTotal, migrate, type Building, type Edge, type GameState, type Line, type RNode, type Stock } from './state';
 
 /** Point d'accroche d'une route : bâtiment, carrefour, milieu d'une route existante, ou terrain libre */
 interface Snap { node: RNode | null; x: number; y: number; bid?: number; edge?: number; }
@@ -169,6 +169,7 @@ export class Game {
     window.addEventListener('pointercancel', () => { this.panelHold = false; });
     $('panelBack').onclick = () => this.back();
     $('menuBtn').onclick = () => this.openPanel(() => this.menuPanel());
+    $('panelBody').addEventListener('pointerdown', e => this.stopDragStart(e));
     $('panelBody').addEventListener('click', e => this.panelClick(e));
     $('panelBody').addEventListener('mouseover', e => { const c = (e.target as HTMLElement).closest<HTMLElement>('.linebox, .linecard[data-act=line]'); this.view.hoverLine = c ? Number(c.dataset.line ?? c.dataset.id) : null; });
     $('panelBody').addEventListener('mouseleave', () => { this.view.hoverLine = null; });
@@ -319,9 +320,10 @@ export class Game {
       const c = checkPlace(s, this.geo, m.type, x, y);
       if (!c.ok) { this.toast(c.reason!, 'bad'); return; }
       const b = place(s, this.geo, m.type, x, y, suggestName(s, this.geo, m.type, x, y));
+      const linked = b.type !== 'pont_du_gard' && this.linkToRoad(b);
       this.setMode({ kind: 'select' });
       this.select({ kind: 'building', id: b.id });
-      this.toast('Chantier ouvert. Relie-le par une route à un entrepôt qui contient les matériaux.');
+      this.toast(linked ? 'Chantier ouvert et relié à la route.' : 'Chantier ouvert. Relie-le par une route à un entrepôt qui contient les matériaux.', linked ? 'good' : undefined);
       return;
     }
     if (m.kind === 'road') { this.roadClick(sx, sy); return; }
@@ -432,6 +434,20 @@ export class Game {
     if (p.bid !== undefined) { const b = getB(this.s, p.bid)!; return attachNode(this.s, b); }
     const n = addNode(this.s, p.x, p.y); p.node = n; return n;
   }
+  /** Bâtiment posé sur (ou tout contre) une route existante : on le raccorde directement, sans frais */
+  private linkToRoad(b: Building): boolean {
+    const s = this.s, tol = this.ren.iconSize() * 0.6 / this.cam.scale;
+    let best: { e: Edge; d: number } | null = null;
+    for (const e of s.edges) {
+      const q = projectOnEdge(s, e, b.x, b.y), d = Math.hypot(q.x - b.x, q.y - b.y);
+      if (d < tol && (!best || d < best.d)) best = { e, d };
+    }
+    if (!best) return false;
+    const n = splitEdge(s, this.geo, best.e.id, b.x, b.y), bn = attachNode(s, b);
+    addEdge(s, bn.id, n.id, best.e.type, Math.hypot(n.x - bn.x, n.y - bn.y), this.geo.riverCrossings(bn.x, bn.y, n.x, n.y).n);
+    this.rerouteAll();
+    return true;
+  }
   private endRoad() { this.roadFrom = null; this.view.draft = null; this.updateHint(); }
   /** Après une modification du réseau, les véhicules recalculent leur itinéraire */
   private rerouteAll() {
@@ -446,6 +462,34 @@ export class Game {
   }
   private panelKind = '';
   private panelHold = false;
+  /** Glisser-déposer des arrêts d'une ligne (souris et tactile) */
+  private stopDragStart(e: PointerEvent) {
+    const h = (e.target as HTMLElement).closest<HTMLElement>('.stop .handle');
+    const l = this.s.lines.find(x => x.id === this.view.selectedLine);
+    if (!h || !l) return;
+    e.preventDefault();
+    const from = Number(h.dataset.i), body = $('panelBody');
+    const rows = () => [...body.querySelectorAll<HTMLElement>('.stop[data-i]')];
+    rows()[from]?.classList.add('dragging');
+    let to = from;
+    const move = (ev: PointerEvent) => {
+      const list = rows();
+      to = list.length - 1;
+      for (let k = 0; k < list.length; k++) { const r = list[k].getBoundingClientRect(); if (ev.clientY < r.top + r.height / 2) { to = k; break; } }
+      list.forEach((r, k) => { r.classList.toggle('dropbefore', k === to && to !== from && to < from); r.classList.toggle('dropafter', k === to && to !== from && to > from); });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+      rows().forEach(r => r.classList.remove('dragging', 'dropbefore', 'dropafter'));
+      if (to === from) return;
+      // les véhicules gardent leur prochain arrêt, même s'il change de rang
+      const vs = this.s.vehicles.filter(v => v.line === l.id).map(v => ({ v, st: l.stops[v.stop % l.stops.length] }));
+      const [st] = l.stops.splice(from, 1); l.stops.splice(to, 0, st);
+      for (const { v, st: target } of vs) v.stop = Math.max(0, l.stops.indexOf(target));
+      this.panelKey = ""; this.panelHold = false; this.refresh();
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  }
   private history: { fn: () => string; kind: string; sel: View['selected']; line: number | null }[] = [];
   openPanel(fn: () => string, kind = 'panel') {
     // mémorise le panneau précédent pour le bouton « Retour »
@@ -710,8 +754,8 @@ export class Game {
       const tot = (Object.entries(total[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
       const verb = st.action === 'load' ? 'chargé' : b?.city || b?.partner ? 'vendu' : 'déposé';
       const what = st.action === 'load'
-        ? `<span class="lc-act load">Charge</span> ${st.res.map(r => resChip(r)).join(' ') || '<small class="warn">aucune ressource choisie</small>'}`
-        : `<span class="lc-act unload">${b?.city || b?.partner ? 'Vend' : 'Dépose'}</span> <small>${(st.share ?? 100) >= 100 ? 'tout le reste' : `${st.share} % du chargement`}</small>`;
+        ? `<span class="lc-act load">Charge</span> ${st.res.map(r => resChip(r)).join(' ') || '<small class="warn">aucune ressource choisie</small>'}${(st.share ?? 100) < 100 ? ` <small>jusqu'à ${st.share} % du véhicule</small>` : ''}`
+        : `<span class="lc-act unload">${b?.city || b?.partner ? 'Vend' : 'Dépose'}</span> ${st.res.map(r => resChip(r)).join(' ')} <small>${(st.share ?? 100) >= 100 ? (st.res.length ? 'tout' : 'tout le reste') : `${st.share} % du chargement`}</small>`;
       return `<li class="${i === 0 ? 'first' : i === n - 1 ? 'last' : ''}"><span class="lc-dot">${i + 1}</span><div class="lc-stop">
         <div class="lc-st-head"><span class="lc-role">${role}</span><b>${esc(b?.name.split(' — ')[0] ?? '?')}</b></div>
         <div class="lc-st-what">${what}</div>
@@ -759,12 +803,18 @@ export class Game {
         what = `<div class="chips sel">${st.res.map(r => `<button class="reschip" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">${resChip(r)} ✕</button>`).join('') || '<small class="warn">choisis au moins une ressource</small>'}</div>
           <select data-field="addres" data-i="${i}"><option value="">+ Ajouter une ressource…</option>
           ${sugg.filter(r => others.includes(r)).map(opt).join('')}<option disabled>──────</option>${others.filter(r => !sugg.includes(r)).map(opt).join('')}</select>`;
+        const fill = st.share ?? 100, cap = VEH[l.vtype].cap;
+        what += `<label class="share">Remplir le véhicule à <select data-field="share" data-i="${i}">${[100, 75, 50, 25].map(p => `<option value="${p}" ${fill === p ? 'selected' : ''}>${p === 100 ? 'plein' : p + ' %'} (${fmt(Math.max(1, Math.floor(cap * p / 100)))} t)</option>`).join('')}</select></label>
+          <small class="muted">Le véhicule repart dès qu'il a chargé ${fill >= 100 ? 'sa pleine capacité' : `${fill} % de sa capacité`}, ou au bout de 6 jours d'attente.</small>`;
       } else {
         const sh = st.share ?? 100;
-        what = `<label class="share">Déposer <select data-field="share" data-i="${i}">${[100, 75, 66, 50, 33, 25, 10].map(p => `<option value="${p}" ${sh === p ? 'selected' : ''}>${p === 100 ? 'tout le reste' : p + ' % du chargement'}</option>`).join('')}</select></label>
+        const offer = loaded.filter(r => !st.res.includes(r));
+        what = `<div class="chips sel"><small class="muted">Décharger :</small> ${st.res.map(r => `<button class="reschip" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">${resChip(r)} ✕</button>`).join('') || '<small><b>toutes les ressources</b></small>'}</div>
+          ${offer.length ? `<select data-field="addres" data-i="${i}"><option value="">${st.res.length ? '+ Décharger aussi…' : '+ Ne décharger que…'}</option>${offer.map(r => `<option value="${r}">${RES[r].name}</option>`).join('')}</select>` : ''}`;
+        what += `<label class="share">Déposer <select data-field="share" data-i="${i}">${[100, 75, 66, 50, 33, 25, 10].map(p => `<option value="${p}" ${sh === p ? 'selected' : ''}>${p === 100 ? 'tout le reste' : p + ' % du chargement'}</option>`).join('')}</select></label>
           <small class="muted">${b?.city || b?.partner ? 'Vente' : 'Dépôt'}${sh < 100 ? ` de ${sh} % de ce qui a été chargé au départ ; le reste continue vers l'arrêt suivant` : ' de tout ce que le bâtiment accepte'}.</small>`;
       }
-      return `<div class="stop"><span class="n" style="background:${l.color}">${i + 1}</span><span class="grow">${role} <b>${esc(b?.name ?? '?')}</b> ${warn}<br>
+      return `<div class="stop" data-i="${i}"><span class="handle" data-i="${i}" title="Glisser pour changer l'ordre des arrêts">⠿</span><span class="n" style="background:${l.color}">${i + 1}</span><span class="grow">${role} <b>${esc(b?.name ?? '?')}</b> ${warn}<br>
         <select data-field="action" data-i="${i}"><option value="load" ${st.action === 'load' ? 'selected' : ''}>Charger</option><option value="unload" ${st.action === 'unload' ? 'selected' : ''}>Décharger</option></select>
         ${what}</span>
         <button data-act="delstop" data-i="${i}" title="Retirer l'arrêt">✕</button></div>`;
@@ -773,7 +823,7 @@ export class Game {
       ${l.stops.length >= 2 ? `<p class="route big"><span class="stopTag start">Départ</span>${esc(this.short(l.stops[0].bid))}<span class="arrow">→</span><span class="stopTag end">Arrivée</span>${esc(this.short(l.stops[l.stops.length - 1].bid))}</p>` : ''}
       <p class="muted">Le véhicule fait le tour des arrêts dans l'ordre, puis revient au départ. Il peut transporter plusieurs matériaux à la fois, dans la limite de sa capacité.</p>
       <p>Véhicule : <select data-field="vtype">${vtypes.map(t => `<option value="${t}" ${l.vtype === t ? 'selected' : ''}>${VEH[t].name} (${VEH[t].cap} t, ${VEH[t].speed} km/j)</option>`).join('')}</select></p>
-      <h3>Arrêts</h3>${stops || '<p class="muted">Ajoute au moins deux arrêts.</p>'}
+      <h3>Arrêts <small class="muted">— glisse ⠿ pour changer l'ordre</small></h3>${stops || '<p class="muted">Ajoute au moins deux arrêts.</p>'}
       <div class="actions"><button data-act="pickstop">+ Ajouter un arrêt sur la carte</button></div>
       <h3>Véhicules (${vs.length})</h3>
       ${vs.map(v => `<button class="row" data-act="selv" data-id="${v.id}"><img class="vic" src="${vIconUrl(v.type)}"><span>${{ go: 'En route', load: 'Chargement', unload: 'Déchargement', lost: 'Aucun itinéraire !', parked: 'À l\'arrêt (ligne en pause)' }[v.state]}</span><span class="chips">${cargoList(v.cargo) || '<small class="muted">vide</small>'}</span></button>`).join('')}
@@ -1105,7 +1155,8 @@ export class Game {
       case 'action': if (l) {
         const st = l.stops[Number(t.dataset.i)], b = getB(s, st.bid);
         st.action = t.value as 'load' | 'unload';
-        if (st.action === 'load' && !st.res.length && b) st.res = this.suggestRes(b).slice(0, 1);
+        st.res = []; st.share = 100;
+        if (st.action === 'load' && b) st.res = this.suggestRes(b).slice(0, 1);
       } break;
       case 'share': if (l) l.stops[Number(t.dataset.i)].share = Number(t.value); break;
       case 'addres': if (l && t.value) { const st = l.stops[Number(t.dataset.i)]; if (!st.res.includes(t.value as ResId)) st.res.push(t.value as ResId); } break;

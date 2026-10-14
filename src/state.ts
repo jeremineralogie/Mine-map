@@ -132,6 +132,11 @@ export function migrate(s: GameState): GameState {
     }
     s.version = 2;
   }
+  if (s.version < 3) {
+    // les ressources d'un arrêt de déchargement filtrent désormais ce qui est déposé : on repart de « tout »
+    for (const l of s.lines) for (const st of l.stops) if (st.action === 'unload') st.res = [];
+    s.version = 3;
+  }
   // les villages se fondent désormais sans matériaux : les chantiers en cours n'attendent plus rien
   for (const b of s.buildings) if (b.type === 'village' && !b.built) { b.need = {}; b.incoming = {}; }
   return s;

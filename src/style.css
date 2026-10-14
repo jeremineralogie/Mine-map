@@ -481,3 +481,9 @@ table.eco tr.click:hover td { background: #faf3e6; }
 .reserve.good { background: #e8f5ea; color: #1f6b2d; border-color: #cbe6cf; }
 .reserve.warn { background: #fff4e3; color: #8a4b00; border-color: #f3dcb6; }
 .reserve.bad { background: #ffeceb; color: #a1251a; border-color: #f5c8c3; }
+
+/* Glisser-déposer des arrêts */
+.stop .handle { cursor: grab; touch-action: none; user-select: none; color: var(--muted); font-size: 18px; line-height: 22px; padding: 0 2px; flex: none; }
+.stop.dragging { opacity: .55; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+.stop.dropbefore { box-shadow: 0 -3px 0 #e8590c; }
+.stop.dropafter { box-shadow: 0 3px 0 #e8590c; }

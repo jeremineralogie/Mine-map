@@ -18,7 +18,7 @@ export interface Notifier { toast(text: string, kind?: 'info' | 'good' | 'bad'):
 // ---------- Création ----------
 export function newGame(geo: Geo): GameState {
   const s: GameState = {
-    version: 2, day: 0, money: START_MONEY, rp: 0, era: 1, techs: [], nextId: 1,
+    version: 3, day: 0, money: START_MONEY, rp: 0, era: 1, techs: [], nextId: 1,
     nodes: [], edges: [], buildings: [], lines: [], vehicles: [], extracted: {},
     stats: { produced: {}, food: 0, sold: {}, soldMonth: {}, income: 0, expenses: 0 },
     objectives: [], events: [], mods: [], market: {}, negMonths: 0, over: false, chapterDone: false,
@@ -644,8 +644,10 @@ export class Sim {
     if (v.state === 'load' && l.paused) { if (v.timer >= 0.5) this.next(v); return; } // en pause : ne charge plus rien
     if (v.state === 'load') {
       // charge les ressources demandées à tour de rôle, tonne par tonne, jusqu'à remplir le véhicule
+      // le joueur peut ne remplir le véhicule qu'en partie (au moins 1 t)
+      const target = Math.max(1, Math.floor(cap * Math.min(100, st.share ?? 100) / 100));
       if (!b.city) {
-        let room = cap - cargoTotal(v.cargo), moved = true;
+        let room = target - cargoTotal(v.cargo), moved = true;
         while (room >= 1 && moved) {
           moved = false;
           for (const r of st.res) {
@@ -657,10 +659,11 @@ export class Sim {
         }
       }
       // attend d'être plein, au plus 6 jours
-      if ((cargoTotal(v.cargo) >= cap || v.timer >= 6 || !st.res.length) && v.timer >= 0.5) this.next(v);
+      if ((cargoTotal(v.cargo) >= target || v.timer >= 6 || !st.res.length) && v.timer >= 0.5) this.next(v);
     } else {
       const share = st.share ?? 100, drop = v.drop ??= {};
       for (const [r, q] of Object.entries(v.cargo) as [ResId, number][]) {
+        if (st.res.length && !st.res.includes(r)) continue;   // arrêt limité à certaines ressources
         // part à déposer ici : un pourcentage du chargement de départ (100 % = tout ce qui reste)
         const allow = share >= 100 ? q : Math.max(0, Math.round((v.ref?.[r] ?? q) * share / 100) - (drop[r] ?? 0));
         const n = Math.min(q, allow, Math.floor(accepts(s, b, r)));

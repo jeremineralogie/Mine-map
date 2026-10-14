@@ -187,7 +187,7 @@ export const BUILD: Record<BType, BDef> = {
   port: { name: 'Port fluvial', desc: 'Quai au bord d\'un fleuve navigable : les barges y chargent et déchargent. Stocke toutes les ressources, comme un entrepôt.', era: 1, tech: 'navigation', cost: { bois: 30, pierre: 15 }, money: 220, days: 25, workers: 4, river: true, storage: 200, maxLevel: 3, upgrade: { pierre: 25, bois: 10 } },
   port_mer: { name: 'Port de commerce', desc: 'Port maritime : les marchandises qu\'on y décharge sont vendues outre-mer (Bretagne insulaire, Hispanie, Sardaigne, Italie selon la mer). On peut aussi y acheter des ressources importées. Stocke tout, comme un entrepôt.', era: 1, tech: 'negoce_maritime', cost: { bois: 40, pierre: 30 }, money: 450, days: 40, workers: 6, coast: true, storage: 250, maxLevel: 3, upgrade: { pierre: 25, bois: 15 } },
   poste: { name: 'Poste-frontière', desc: 'Les marchands étrangers y achètent certaines ressources.', era: 1, cost: {}, money: 0, days: 0, workers: 0, storage: 120, maxLevel: 1, hidden: true },
-  pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille du chapitre I.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 20, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947] },
+  pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille facultative du chapitre I : elle n\'est pas nécessaire pour passer au chapitre suivant.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 20, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947] },
 };
 
 export const LEVEL_MULT = [0, 1, 1.6, 2.3];            // production par niveau
@@ -332,7 +332,7 @@ export const OBJECTIVES: Objective[] = [
   { id: 'rome', name: 'Commerce avec Rome', desc: 'Vends 30 t de marchandises à l\'Italie.', era: 1, money: 500, rp: 5 },
   { id: 'via', name: 'Via Agrippa', desc: 'Relie par la route deux villes distantes de plus de 250 km.', era: 1, money: 600, rp: 6 },
   { id: 'ville2', name: 'Une ville romaine', desc: 'Fais grandir une ville jusqu\'à 1 500 habitants.', era: 1, money: 800, rp: 8 },
-  { id: 'gard', name: 'Le Pont du Gard', desc: 'Construis le Pont du Gard.', era: 1, money: 2000, rp: 12 },
+  { id: 'gard', name: 'Le Pont du Gard', desc: 'Construis le Pont du Gard (facultatif).', era: 1, money: 2000, rp: 12 },
 ];
 
 export const ERAS = [

@@ -1,8 +1,9 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
-import { BUILD, RES, ROADS, SEA_PARTNERS, VEH, WATER_RANGE, WORK_RANGE, type BType, type ResId } from './defs';
+import { BUILD, RES, ROADS, SEA_PARTNERS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
 import type { Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
+import { workRange } from './sim';
 import type { Building, GameState, Line } from './state';
 
 export class Camera {
@@ -148,7 +149,7 @@ export class Renderer {
   private drawWorkers(s: GameState) {
     const ctx = this.ctx;
     for (const b of s.buildings) if (b.city && b.built) {
-      ctx.beginPath(); ctx.arc(b.x, b.y, WORK_RANGE, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(b.x, b.y, workRange(b, s), 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(214,120,40,.12)'; ctx.fill();
       ctx.setLineDash([this.px(6), this.px(4)]);
       ctx.strokeStyle = 'rgba(190,100,30,.8)'; ctx.lineWidth = this.px(1.5); ctx.stroke(); ctx.setLineDash([]);
@@ -332,7 +333,7 @@ export class Renderer {
       const size = b.city ? S * (1 + Math.min(0.6, (b.city.tier) * 0.2)) : b.type === 'pont_du_gard' ? S * 1.3 : S;
       const sel = v.selected?.kind === 'building' && v.selected.id === b.id;
       if (sel) { ctx.beginPath(); ctx.arc(x, y, size * 0.72, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.45)'; ctx.fill(); }
-      ctx.globalAlpha = b.built ? 1 : 0.5;
+      ctx.globalAlpha = (b.built ? 1 : 0.5) * (b.paused ? 0.65 : 1);
       ctx.drawImage(BICON[b.type], x - size / 2, y - size / 2, size, size);
       ctx.globalAlpha = 1;
       if (!b.built || b.upgrading) {
@@ -353,6 +354,14 @@ export class Renderer {
           ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
           ctx.fillStyle = '#fff'; ctx.font = 'bold 11px system-ui'; ctx.fillText('!', px, py + 4);
         }
+      }
+      if (b.paused) {
+        // bâtiment ou chantier en pause : pastille « pause » sur l'icône
+        const px = x + size * 0.36, py = y + size * 0.36, r = Math.max(8, size * 0.2);
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = '#343a40'; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = '#fff'; const bw = r * 0.28, bh = r * 0.95;
+        ctx.fillRect(px - bw * 1.6, py - bh / 2, bw, bh); ctx.fillRect(px + bw * 0.6, py - bh / 2, bw, bh);
       }
       if (b.node === null && b.type !== 'poste' && b.type !== 'pont_du_gard') {
         // non relié par la route
@@ -427,7 +436,7 @@ export class Renderer {
     const ctx = this.ctx; this.screen();
     const [x, y] = this.cam.toScreen(g.x, g.y), S = this.iconSize();
     if (g.type === 'village') {
-      ctx.beginPath(); ctx.arc(x, y, WORK_RANGE * this.cam.scale, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(x, y, workRange({ city: { tier: 0 } } as Building, s) * this.cam.scale, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(214,120,40,.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(190,100,30,.6)'; ctx.stroke();
     }
     ctx.globalAlpha = 0.75; ctx.drawImage(BICON[g.type], x - S / 2, y - S / 2, S, S); ctx.globalAlpha = 1;

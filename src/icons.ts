@@ -4,12 +4,13 @@ import type { BType, ResId, VType } from './defs';
 // ---- Bâtiments : pictogrammes (pastille colorée par catégorie, symbole blanc) ----
 /** Couleurs des catégories de bâtiments */
 export const CATEGORY: Record<string, { name: string; color: string }> = {
-  logistique: { name: 'Logistique', color: '#1d5fa8' },
-  commerce: { name: 'Commerce', color: '#7048b6' },
-  extraction: { name: 'Extraction', color: '#8a5a2b' },
-  nature: { name: 'Agriculture et forêt', color: '#2f9e44' },
-  artisanat: { name: 'Artisanat', color: '#d9480f' },
+  // ordre d'affichage dans l'onglet Construire
   ville: { name: 'Ville', color: '#b42318' },
+  logistique: { name: 'Logistique', color: '#1d5fa8' },
+  nature: { name: 'Agriculture et forêt', color: '#2f9e44' },
+  extraction: { name: 'Extraction', color: '#8a5a2b' },
+  commerce: { name: 'Commerce', color: '#7048b6' },
+  artisanat: { name: 'Artisanat', color: '#d9480f' },
   ouvrage: { name: 'Grands ouvrages', color: '#0c7c8c' },
 };
 export const BCAT: Record<BType, string> = {
