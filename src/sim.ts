@@ -217,6 +217,13 @@ export function priceAt(s: GameState, b: Building, res: ResId) {
   if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1); }
   return base * (1 + 0.1 * (b.city?.tier ?? 0)) * demandMult(s, res);
 }
+/** Merveilles construites dont le rayon couvre ce point */
+const wondersNear = (s: GameState, x: number, y: number, key: 'range' | 'prodRange') =>
+  s.buildings.filter(w => w.built && BUILD[w.type].wonder && Math.hypot(w.x - x, w.y - y) <= BUILD[w.type].wonder![key]);
+/** Réduction de consommation d'une ville grâce aux merveilles proches */
+export const wonderNeedMult = (s: GameState, b: Building) => wondersNear(s, b.x, b.y, 'range').reduce((a, w) => a * BUILD[w.type].wonder!.needMult, 1);
+/** Bonus de production d'un atelier grâce aux merveilles proches */
+export const wonderProdMult = (s: GameState, b: Building) => wondersNear(s, b.x, b.y, 'prodRange').filter(w => BUILD[w.type].wonder!.prodTypes.includes(b.type)).reduce((a, w) => a * BUILD[w.type].wonder!.prodMult, 1);
 /** Stock minimal qu'une ville accepte pour chaque bien dont elle a besoin (en tonnes) */
 export const CITY_MIN_STOCK = 10;
 /** Réserve de céréales d'une ville, en mois de consommation */
@@ -235,7 +242,7 @@ export function missingNextGoods(b: Building): ResId[] {
 export const RESERVE_TO_GROW = 1;
 export function cityNeeds(b: Building): Stock {
   const c = b.city!; const t = TIERS[c.tier], out: Stock = {};
-  for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * c.pop / 100;
+  for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * c.pop / 100 * (c.needMult ?? 1);
   return out;
 }
 /** Quantité qu'un bâtiment accepte de recevoir */
@@ -413,7 +420,7 @@ export class Sim {
   staffing() {
     const s = this.s, cs = cities(s);
     const avail = new Map<number, number>();
-    for (const c of cs) avail.set(c.id, Math.floor(c.city!.pop * 0.4));
+    for (const c of cs) { avail.set(c.id, Math.floor(c.city!.pop * 0.4)); c.city!.needMult = wonderNeedMult(s, c); }
     const jobs = s.buildings.filter(b => b.built && !b.paused && BUILD[b.type].workers);
     const near = new Map(jobs.map(b => [b.id, cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= workRange(o.c, s)).sort((a, z) => a.d - z.d)]));
     const take = (b: Building, want: number) => {
@@ -516,7 +523,7 @@ export class Sim {
     const out = Object.values(d.recipe.out)[0]!;
     const event = prodMult(this.s);
     const skilled = event * (this.s.techs.includes('ouvrier_qualifie') && (d.deposit === 'bois' || d.deposit === 'pierre' || d.deposit === 'cereales') ? 1.2 : 1);
-    return out * LEVEL_MULT[b.level] * staffRatio * skilled * (d.deposit ? this.depositFactor(b) : 1);
+    return out * LEVEL_MULT[b.level] * staffRatio * skilled * wonderProdMult(this.s, b) * (d.deposit ? this.depositFactor(b) : 1);
   }
   production(dt: number) {
     const s = this.s;

@@ -10,6 +10,8 @@ export interface City {
   pop: number; stock: Stock; sat: number; foodSat: number; tier: number;
   /** consommation du mois en cours : quantités voulues et réellement mangées (au jour le jour) */
   want?: Stock; ate?: Stock;
+  /** effet des merveilles proches sur la consommation (1 = aucun) */
+  needMult?: number;
   /** livraisons reçues ce mois-ci */
   got?: Stock;
   /** céréales reçues le mois dernier ; la ville a-t-elle grandi ce mois-ci */

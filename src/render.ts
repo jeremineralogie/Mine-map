@@ -127,6 +127,7 @@ export class Renderer {
     for (const l of lines) if (l !== hl) this.drawLinePath(s, l, !hl && (v.selectedLine === l.id || lines.length === 1), hl ? 0.18 : 1);
     if (hl) this.drawLinePath(s, hl, true, 1, true);
     this.drawSeaRoutes(s, v);
+    this.drawWonder(s, v);
     this.drawBuildings(s, v, time);
     this.drawVehicles(s, v);
     for (const l of hl ? [hl] : lines) this.drawLineBadges(s, l);
@@ -181,6 +182,22 @@ export class Renderer {
     this.world();
   }
   /** Port de commerce sélectionné : routes maritimes vers ses partenaires */
+  /** Merveille sélectionnée (ou en projet) : rayons d'effet */
+  private drawWonder(s: GameState, v: View) {
+    const sel = v.selected?.kind === 'building' ? s.buildings.find(x => x.id === v.selected!.id) : undefined;
+    const w = sel && BUILD[sel.type].wonder; if (!sel || !w) return;
+    const ctx = this.ctx;
+    for (const [r, fill, stroke] of [[w.range, 'rgba(12,124,140,.07)', 'rgba(12,124,140,.8)'], [w.prodRange, 'rgba(217,72,15,.10)', 'rgba(217,72,15,.85)']] as [number, string, string][]) {
+      ctx.beginPath(); ctx.arc(sel.x, sel.y, r, 0, Math.PI * 2); ctx.fillStyle = fill; ctx.fill();
+      ctx.setLineDash([this.px(7), this.px(5)]); ctx.strokeStyle = stroke; ctx.lineWidth = this.px(2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    this.screen();
+    const [sx, sy] = this.cam.toScreen(sel.x, sel.y - w.range), [px, py] = this.cam.toScreen(sel.x, sel.y - w.prodRange);
+    ctx.font = '700 12px system-ui, sans-serif'; ctx.textAlign = 'center';
+    halo(ctx, `Eau et consommation −${Math.round((1 - w.needMult) * 100)} % (${w.range} km)`, sx, sy - 6, '#0b5560');
+    halo(ctx, `Carrières et bûcherons +${Math.round((w.prodMult - 1) * 100)} % (${w.prodRange} km)`, px, py - 6, '#a33a0c');
+    this.world();
+  }
   private drawSeaRoutes(s: GameState, v: View) {
     // port de commerce sélectionné : routes maritimes réelles vers les comptoirs de sa mer
     const sel = v.selected?.kind === 'building' ? s.buildings.find(x => x.id === v.selected!.id) : undefined;

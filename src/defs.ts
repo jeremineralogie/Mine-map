@@ -168,6 +168,8 @@ export interface BDef {
   river?: boolean;           // doit être au bord d'un fleuve navigable
   coast?: boolean;           // doit être sur la côte (port de commerce maritime)
   upgrade?: Partial<Record<ResId, number>>;  // matériaux d'amélioration au niveau 2 (×1,5 au niveau 3)
+  /** merveille : effets permanents autour d'elle une fois construite */
+  wonder?: { range: number; needMult: number; prodRange: number; prodMult: number; prodTypes: BType[] };
 }
 
 export const BUILD: Record<BType, BDef> = {
@@ -188,7 +190,8 @@ export const BUILD: Record<BType, BDef> = {
   port_mer: { name: 'Port de commerce', desc: 'Port maritime d\'où partent les navires marchands vers les comptoirs d\'outre-mer (Bretagne insulaire, Hispanie, Afrique, Grèce…). Stocke tout, comme un entrepôt.', era: 1, tech: 'negoce_maritime', cost: { bois: 40, pierre: 30 }, money: 450, days: 40, workers: 6, coast: true, storage: 250, maxLevel: 3, upgrade: { pierre: 25, bois: 15 } },
   comptoir: { name: 'Comptoir maritime', desc: 'Port étranger au bout d\'une route maritime : les navires marchands y vendent tes marchandises et y chargent ce que tu as acheté.', era: 1, tech: 'negoce_maritime', cost: {}, money: 0, days: 0, workers: 0, storage: 200, maxLevel: 1, hidden: true },
   poste: { name: 'Poste-frontière', desc: 'Les marchands étrangers y achètent certaines ressources.', era: 1, cost: {}, money: 0, days: 0, workers: 0, storage: 120, maxLevel: 1, hidden: true },
-  pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille facultative du chapitre I : elle n\'est pas nécessaire pour passer au chapitre suivant.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 20, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947] },
+  pont_du_gard: { name: 'Pont du Gard', desc: 'Le grand pont-aqueduc qui alimente Nemausus (Nîmes). Merveille facultative du chapitre I. Une fois construit : eau courante dans un rayon de 50 km, consommation des villes réduite de 10 % dans ce rayon, et +20 % de production pour les carrières et camps de bûcherons à moins de 15 km.', era: 1, tech: 'aqueduc', cost: { pierre: 250, bois: 40, plomb: 10 }, money: 1500, days: 90, workers: 0, waterRange: 50, storage: 0, maxLevel: 1, unique: true, site: [4.535, 43.947],
+    wonder: { range: 50, needMult: 0.9, prodRange: 15, prodMult: 1.2, prodTypes: ['carriere', 'bucheron'] } },
 };
 
 export const LEVEL_MULT = [0, 1, 1.6, 2.3];            // production par niveau

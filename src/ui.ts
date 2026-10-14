@@ -8,7 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
-import { missingNextGoods, foodReserve, RESERVE_TO_GROW,
+import { wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
   hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
@@ -591,7 +591,7 @@ export class Game {
     {
       // actions principales en haut de la fiche : nouvelle ligne, amélioration
       let top = '';
-      if (b.partner ? b.node !== null : b.built && b.type !== 'village')
+      if (b.partner ? b.node !== null : b.built && d.storage > 0)
         top += `<button class="primary" data-act="newline" data-id="${b.id}">+ Nouvelle ligne depuis ${b.partner ? 'ce poste' : 'ici'}</button>`;
       const hh = h; h = '';
     if (b.built && !b.upgrading && b.level < d.maxLevel) {
@@ -654,6 +654,16 @@ export class Game {
       } else h += `<div class="gauge big"><i style="width:${Math.round(this.sim.constructionProgress(b) * 100)}%"></i></div><p class="muted">Travaux : ${Math.round(this.sim.constructionProgress(b) * 100)} %</p>`;
     }
 
+    if (d.wonder) {
+      const w = d.wonder;
+      const cities = s.buildings.filter(x => x.city && x.built && Math.hypot(x.x - b.x, x.y - b.y) <= w.range);
+      const shops = s.buildings.filter(x => w.prodTypes.includes(x.type) && x.built && Math.hypot(x.x - b.x, x.y - b.y) <= w.prodRange);
+      const on = b.built;
+      h += `<h3>Effets de la merveille ${on ? '' : '<small class="muted">— une fois construite</small>'}</h3><div class="stocks">
+        <div class="srow"><span class="wfx">💧</span><div class="sinfo"><div class="sline"><span>Eau courante</span><b>${w.range} km</b></div><small class="muted">On peut bâtir villes et ateliers loin des rivières dans ce rayon.</small></div></div>
+        <div class="srow"><span class="wfx">🏛</span><div class="sinfo"><div class="sline"><span>Consommation des villes</span><b>−${Math.round((1 - w.needMult) * 100)} %</b></div><small class="muted">Villes à moins de ${w.range} km : ${cities.length ? cities.map(x => esc(x.name)).join(', ') : 'aucune pour l\'instant'}.</small></div></div>
+        <div class="srow"><span class="wfx">⚒</span><div class="sinfo"><div class="sline"><span>Production des ${w.prodTypes.map(t => BUILD[t].name.toLowerCase().replace('camp de bûcherons', 'camps de bûcherons').replace('carrière de pierre', 'carrières')).join(' et ')}</span><b>+${Math.round((w.prodMult - 1) * 100)} %</b></div><small class="muted">À moins de ${w.prodRange} km : ${shops.length} bâtiment${shops.length > 1 ? 's' : ''}.</small></div></div></div>`;
+    }
     if (b.city) {
       const c = b.city, needs = cityNeeds(b), next = TIERS[c.tier + 1];
       h += this.kpis([[fmt(c.pop), 'habitants'], [fmt(c.pop * 0.4), `ouvriers (rayon ${workRange(b, s)} km)`], [`${Math.round(c.foodSat * 100)} %`, 'nourriture', c.foodSat >= 0.9 ? 'good' : c.foodSat >= 0.5 ? 'warn' : 'bad'], [`${Math.round(c.sat * 100)} %`, 'confort', c.sat >= 0.9 ? 'good' : c.sat >= 0.5 ? 'warn' : 'bad']]);
@@ -670,6 +680,7 @@ export class Game {
           <small>${why}</small></div></div>`;
       }
       h += `<p class="muted">Recherche : <b>+${String(RP_TIER[c.tier]).replace('.', ',')} point/mois</b> (palier ${TIERS[c.tier].name.toLowerCase()})${next ? ` · ${String(RP_TIER[c.tier + 1]).replace('.', ',')} en devenant ${next.name.toLowerCase()}` : ''}</p>`;
+      if ((c.needMult ?? 1) < 1) h += `<p class="hint good">Merveille à proximité : consommation −${Math.round((1 - c.needMult!) * 100)} %.</p>`;
       if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
       h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
         const have = c.stock[r] ?? 0, months = q > 0 ? have / q : 0, pct = Math.min(100, months / 12 * 100);
@@ -688,6 +699,8 @@ export class Game {
       const outR = Object.keys(d.recipe.out)[0] as ResId, real = b.flow ? b.flow.pin[outR] ?? 0 : undefined;
       const items: [string, string, string?][] = [[real === undefined ? '—' : `${fmt(real)} t`, 'produites le mois dernier (réel)', real === undefined ? undefined : real >= rate * 0.8 ? 'good' : real > 0 ? 'warn' : 'bad'], [`${rate.toFixed(1)} t`, 'par mois au maximum', rate > 0 ? 'good' : 'bad'], [`${b.staff} / ${need}`, b.staff > need ? `ouvriers (+${Math.round(50 * (b.staff - need) / need)} % de renfort)` : 'ouvriers', b.staff >= need ? 'good' : b.staff ? 'warn' : 'bad']];
       if (d.deposit && b.dep !== null) items.push([`${Math.round(this.sim.depositFactor(b) / b.rich * 100)} %`, 'rendement du gisement']);
+      const wb = wonderProdMult(s, b);
+      if (wb > 1) items.push([`+${Math.round((wb - 1) * 100)} %`, 'bonus de merveille', 'good']);
       items.push([`${fmt(b.produced)} t`, 'produites au total']);
       h += this.kpis(items);
       // schéma de production : entrées → sorties, par mois au niveau actuel

@@ -494,3 +494,5 @@ table.eco tr.click:hover td { background: #faf3e6; }
 .loadres .lr .res { flex: 1; min-width: 0; }
 .loadres select.pct { margin: 0; padding: 3px 4px; font-size: 13px; max-width: 120px; }
 .loadres .x { border: 0; background: none; color: var(--muted); padding: 2px 4px; }
+.hint.good { background: #e8f5ea; color: #1f6b2d; }
+.wfx { width: 34px; text-align: center; font-size: 20px; flex: none; }
