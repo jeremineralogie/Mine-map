@@ -1,5 +1,6 @@
 import './style.css';
 import { Geo } from './geo';
+import { setTerritoryGeo } from './territory';
 import { Game } from './ui';
 
 // Les gestes faits sur le jeu (glisser, pincer, double-toucher) ne doivent jamais faire défiler,
@@ -12,6 +13,7 @@ document.addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, 
 
 const geo = new Geo();
 geo.load(import.meta.env.BASE_URL).then(() => {
+  setTerritoryGeo(geo);
   document.getElementById('loading')!.remove();
   // exposé pour le débogage depuis la console du navigateur
   (window as unknown as { game: Game }).game = new Game(geo);

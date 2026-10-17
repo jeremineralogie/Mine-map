@@ -4,7 +4,7 @@ import { depositShape, type DepositKm, type Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
-import { territoryRadius } from './rivals';
+import { territories } from './territory';
 import { PLAYER, hostile, ownerColor, targetPos } from './war';
 import type { Building, GameState, Line } from './state';
 
@@ -373,32 +373,28 @@ export class Renderer {
     this.world();
   }
   iconSize() { return Math.min(56, Math.max(24, this.cam.scale * 7)); }
-  /** Territoires : zones d'influence du joueur et des rivaux (contour des cercles réunis) */
+  /** Territoires : une seule zone par camp (main-d'œuvre des villes, bâtiments, routes), fondue */
+  private terrCache: { key: string; img: HTMLCanvasElement; paths: Path2D[] } | null = null;
   private drawTerritories(s: GameState) {
     if (!s.factions?.length) return;
-    const ctx = this.ctx;
-    const zones: { color: string; c: [number, number, number][] }[] = [
-      { color: PLAYER_COLOR, c: s.buildings.filter(b => !b.partner && b.type !== 'comptoir').map(b => [b.x, b.y, b.city ? 18 + 8 * b.city.tier : 6] as [number, number, number]) },
-      ...s.factions.map(f => ({ color: f.color, c: f.b.map(b => [b.x, b.y, territoryRadius(b)] as [number, number, number]) })),
-    ];
-    for (const z of zones) {
-      if (!z.c.length) continue;
-      ctx.beginPath();
-      for (const [x, y, r] of z.c) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
-      ctx.globalAlpha = 0.09; ctx.fillStyle = z.color; ctx.fill('nonzero'); ctx.globalAlpha = 1;
-      // contour extérieur seulement : on ne trace que les arcs hors des autres cercles
-      ctx.beginPath();
-      for (const [x, y, r] of z.c) {
-        let pen = false;
-        for (let k = 0; k <= 72; k++) {
-          const a = k / 72 * Math.PI * 2, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
-          const inside = z.c.some(([ox, oy, or]) => (ox !== x || oy !== y) && Math.hypot(px - ox, py - oy) < or - 0.01);
-          if (inside) { pen = false; continue; }
-          if (pen) ctx.lineTo(px, py); else { ctx.moveTo(px, py); pen = true; }
-        }
-      }
-      ctx.setLineDash([this.px(6), this.px(4)]); ctx.strokeStyle = z.color; ctx.globalAlpha = 0.7; ctx.lineWidth = this.px(1.8); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    const t = territories(s); if (!t) return;
+    const colors = [PLAYER_COLOR, ...s.factions.map(f => f.color)];
+    if (this.terrCache?.key !== t.key) {
+      const img = document.createElement('canvas'); img.width = t.w; img.height = t.h;
+      const c = img.getContext('2d')!, id = c.createImageData(t.w, t.h);
+      const rgb = colors.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
+      for (let k = 0; k < t.owner.length; k++) { const o = t.owner[k]; if (o < 0) continue; const [r, g, b] = rgb[o]; id.data.set([r, g, b, 40], k * 4); }
+      c.putImageData(id, 0, 0);
+      const paths = t.outlines.map(seg => { const p = new Path2D(); for (let i = 0; i < seg.length; i += 4) { p.moveTo(seg[i], seg[i + 1]); p.lineTo(seg[i + 2], seg[i + 3]); } return p; });
+      this.terrCache = { key: t.key, img, paths };
     }
+    const ctx = this.ctx, { img, paths } = this.terrCache;
+    ctx.save(); ctx.clip(this.land);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, t.x0, t.y0, t.w * t.cell, t.h * t.cell);
+    ctx.setLineDash([this.px(6), this.px(4)]); ctx.lineWidth = this.px(1.8); ctx.globalAlpha = 0.75; ctx.lineCap = 'round';
+    paths.forEach((p, o) => { ctx.strokeStyle = colors[o]; ctx.stroke(p); });
+    ctx.restore();
   }
   /** Armées : pastille aux couleurs du camp, effectif et barre de vie ; trajet vers la cible */
   private drawArmies(s: GameState, v: View) {

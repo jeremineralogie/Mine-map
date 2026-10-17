@@ -4,6 +4,7 @@
 import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, DIFFICULTY, RES, RIVALS, TECHS, TIERS, type BType } from './defs';
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState, RBuilding } from './state';
+import { ownerAt, territoryReady } from './territory';
 
 /** Rayon de territoire d'un bâtiment (km) : les villes rayonnent selon leur palier */
 export const territoryRadius = (b: { tier?: number; pop?: number; type: BType }) => b.type === 'village' ? 18 + 8 * (b.tier ?? 0) : 6;
@@ -12,6 +13,7 @@ const playerRadius = (b: Building) => b.city ? 18 + 8 * b.city.tier : 6;
 
 /** Faction dont le territoire couvre ce point (hors alliés) */
 export function rivalAt(s: GameState, x: number, y: number): Faction | null {
+  if (territoryReady()) { const o = ownerAt(s, x, y); return o && o !== 'player' ? o : null; }
   for (const f of s.factions ?? []) for (const b of f.b) if (Math.hypot(b.x - x, b.y - y) <= territoryRadius(b)) return f;
   return null;
 }
@@ -21,7 +23,9 @@ export const depOwner = (s: GameState, dep: number) => (s.factions ?? []).find(f
 export const rivalTooClose = (s: GameState, x: number, y: number, d = 2.5) => (s.factions ?? []).some(f => f.b.some(b => Math.hypot(b.x - x, b.y - y) < d));
 export const findRival = (s: GameState, id: number) => { for (const f of s.factions ?? []) { const b = f.b.find(x => x.id === id); if (b) return { f, b }; } return null; };
 
-const inPlayerLand = (s: GameState, x: number, y: number, margin = 0) => s.buildings.some(b => !b.partner && b.type !== 'comptoir' && Math.hypot(b.x - x, b.y - y) <= playerRadius(b) + margin);
+const inPlayerLand = (s: GameState, x: number, y: number, margin = 0) => territoryReady()
+  ? [[0, 0], ...[0, 1, 2, 3, 4, 5, 6, 7].map(k => [Math.cos(k * Math.PI / 4) * margin, Math.sin(k * Math.PI / 4) * margin])].some(([dx, dy]) => ownerAt(s, x + dx, y + dy) === 'player')
+  : s.buildings.some(b => !b.partner && b.type !== 'comptoir' && Math.hypot(b.x - x, b.y - y) <= playerRadius(b) + margin);
 const tierOf = (pop: number) => { let t = 0; for (let i = 0; i < TIERS.length; i++) if (pop >= TIERS[i].minPop) t = i; return Math.min(t, 3); };
 const land = (geo: Geo, f: Faction, x: number, y: number) => { const m = geo.maskAt(x, y); return m === 1 || (m === 2 && !!f.frontier); };
 
