@@ -8,6 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
+import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction } from './diplomacy';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
@@ -75,6 +76,7 @@ export class Game {
       toast: (t: string, k?: 'info' | 'good' | 'bad') => { if (!this.ffwd) this.toast(t, k); },
       // pendant l'avance rapide, les événements sont résumés à la fin au lieu d'interrompre le jeu
       event: (title: string, text: string) => this.ffwd ? void this.ffwd.push(title) : this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Continuer', primary: true }]),
+      ask: (title: string, text: string, yes: () => void) => { if (this.ffwd) { this.ffwd.push(title + ' (sans réponse)'); return; } this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Refuser' }, { label: 'Accepter', primary: true, fn: () => { yes(); this.toast('Accord conclu.', 'good'); } }]); },
       chapter: () => { if (this.ffwd) this.endFfwd(() => this.chapterModal()); else this.chapterModal(); },
       gameOver: () => this.modal(`<h2>Faillite</h2><p>Ta trésorerie est restée négative pendant 6 mois. Tes créanciers saisissent tes biens.</p>`, [{ label: 'Nouvelle partie', primary: true, fn: () => this.fresh() }]),
     };
@@ -387,6 +389,7 @@ export class Game {
       if (!c.ok) { this.toast(c.reason!, 'bad'); return; }
       const b = place(s, this.geo, m.type, x, y, suggestName(s, this.geo, m.type, x, y));
       const linked = b.type !== 'pont_du_gard' && this.linkToRoad(b);
+      notePlayerBuild(s, b);
       this.setMode({ kind: 'select' });
       this.select({ kind: 'building', id: b.id });
       this.toast(linked ? 'Chantier ouvert et relié à la route.' : 'Chantier ouvert. Relie-le par une route à un entrepôt qui contient les matériaux.', linked ? 'good' : undefined);
@@ -612,7 +615,9 @@ export class Game {
     h += `<h3>${esc(f.name)}</h3><p class="muted">${esc(RIVALS.find(x => x.id === f.id)?.desc ?? '')}</p>
       <p><b>Caractère :</b> ${CHARACTERS[f.character as keyof typeof CHARACTERS] ?? ''}</p>
       ${this.kpis([[`${cities.length}`, `ville${cities.length > 1 ? 's' : ''}`], [fmt(pop), 'habitants'], [`${f.b.length - cities.length}`, 'autres bâtiments']])}
-      <p class="hint info">On ne peut pas construire sur son territoire ni exploiter ses gisements. La diplomatie (taverne) arrivera à la prochaine étape.</p>
+      <p>Relation : <span class="pill ${relLabel(f).level}">${relLabel(f).label}</span> <small class="muted">(${Math.round(relOf(f))})</small>${f.trade ? ' · <span class="pill good">Accord commercial</span>' : ''}${f.alliance ? ' · <span class="pill good">Alliance</span>' : ''}</p>
+      <p class="hint info">${f.alliance ? 'Allié : tu peux construire sur son territoire et exploiter ses gisements.' : 'On ne peut pas construire sur son territoire ni exploiter ses gisements sans alliance.'}</p>
+      <div class="actions top"><button class="primary" data-act="diplo">🤝 Diplomatie</button></div>
       <div class="chips">${cities.map(c => `<span class="res">${esc(c.name)} <b>${fmt(c.pop ?? 0)}</b></span>`).join(' ')}</div>`;
     return h;
   }
@@ -682,6 +687,23 @@ export class Game {
       if (top) h += `<div class="actions top">${top}</div>`;
     }
 
+    if (b.type === 'taverne' && b.built) {
+      const fs = (s.factions ?? []).filter(f => f.trade), f = tradeFaction(s, b);
+      h += `<div class="actions top"><button data-act="diplo">🤝 Diplomatie</button></div>`;
+      if (!f) h += `<p class="hint info">Aucun accord commercial pour l'instant. Ouvre la diplomatie pour en proposer un : la taverne pourra alors vendre et acheter aux villes du rival.</p>`;
+      else {
+        const sold = s.stats.soldMonth['riv:' + f.id] ?? 0, vol = rivalVolume(f);
+        h += `<p>Commerce avec : <select data-field="tf" data-id="${b.id}">${fs.map(o => `<option value="${o.id}" ${o === f ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select></p>`;
+        h += this.kpis([[`${fmt(sold)} / ${vol} t`, 'vendu ce mois'], [`${fmt(s.stats.sold['riv:' + f.id] ?? 0)} t`, 'vendu au total']]);
+        h += `<h3>Ils achètent <small class="muted">— livre-les à la taverne avec une ligne</small></h3><div class="stocks">${factionBuys(s, f).map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${rivalPrice(f, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
+        h += `<h3>Ils vendent <small class="muted">— les achats attendent à la taverne</small></h3><div class="stocks">${factionSells(f).map(r => { const pr = rivalImportPrice(f, r); return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${pr.toFixed(1)} <small class="muted">sest./t</small></b></div>
+          <div class="buy"><button data-act="buyriv" data-id="${b.id}" data-r="${r}" data-q="10">Acheter 10 t (${fmt(pr * 10)})</button><button data-act="buyriv" data-id="${b.id}" data-r="${r}" data-q="20">20 t (${fmt(pr * 20)})</button></div></div></div>`; }).join('') || '<p class="muted">Rien pour l\'instant.</p>'}</div>`;
+      }
+      const st = (Object.entries(b.stock) as [ResId, number][]).filter(([, q]) => q >= 0.5);
+      h += `<h3>Marchandises en attente (${fmt(st.reduce((a, [, q]) => a + q, 0))} / ${BUILD.taverne.storage} t)</h3>${st.length ? `<div class="chips">${st.map(([r, q]) => resChip(r, q)).join(' ')}</div>` : '<p class="muted">Aucune.</p>'}`;
+      h += this.buildingLines(b);
+      return h;
+    }
     if (b.type === 'comptoir') {
       const p = SEA_PARTNERS.find(x => x.id === b.sp)!, sold = s.stats.soldMonth['mer:' + p.id] ?? 0, vol = seaVolume(s, p);
       const ports = s.buildings.filter(x => x.type === 'port_mer' && x.built && x.sea === b.sea);
@@ -899,10 +921,10 @@ export class Game {
       const role = i === 0 ? 'Départ' : i === n - 1 ? 'Terminus' : `Arrêt ${i}`;
       const b = getB(s, st.bid), moved = (Object.entries(month[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
       const tot = (Object.entries(total[i] ?? {}) as [ResId, number][]).filter(([, q]) => q >= 0.5);
-      const verb = st.action === 'load' ? 'chargé' : b?.city || b?.partner || b?.type === 'comptoir' ? 'vendu' : 'déposé';
+      const verb = st.action === 'load' ? 'chargé' : b?.city || b?.partner || b?.type === 'comptoir' || b?.type === 'taverne' ? 'vendu' : 'déposé';
       const what = st.action === 'load'
         ? `<span class="lc-act load">Charge</span> ${st.res.map(r => resChip(r) + (st.pct?.[r] ? ` <small>${st.pct[r]} %</small>` : '')).join(' ') || '<small class="warn">aucune ressource choisie</small>'}${(st.share ?? 100) < 100 ? ` <small>jusqu'à ${st.share} % du véhicule</small>` : ''}`
-        : `<span class="lc-act unload">${b?.city || b?.partner || b?.type === 'comptoir' ? 'Vend' : 'Dépose'}</span> ${st.res.map(r => resChip(r)).join(' ')} <small>${(st.share ?? 100) >= 100 ? (st.res.length ? 'tout' : 'tout le reste') : `${st.share} % du chargement`}</small>`;
+        : `<span class="lc-act unload">${b?.city || b?.partner || b?.type === 'comptoir' || b?.type === 'taverne' ? 'Vend' : 'Dépose'}</span> ${st.res.map(r => resChip(r)).join(' ')} <small>${(st.share ?? 100) >= 100 ? (st.res.length ? 'tout' : 'tout le reste') : `${st.share} % du chargement`}</small>`;
       return `<li class="${i === 0 ? 'first' : i === n - 1 ? 'last' : ''}"><span class="lc-dot">${i + 1}</span><div class="lc-stop">
         <div class="lc-st-head"><span class="lc-role">${role}</span><b>${esc(b?.name.split(' — ')[0] ?? '?')}</b></div>
         <div class="lc-st-what">${what}</div>
@@ -922,6 +944,7 @@ export class Game {
   private foreignSells(b: Building): ResId[] | null {
     if (b.partner) return PARTNERS.find(p => p.id === b.partner)!.sells;
     if (b.type === 'comptoir') return SEA_PARTNERS.find(p => p.id === b.sp)?.sells ?? [];
+    if (b.type === 'taverne') { const f = tradeFaction(this.s, b); return f ? factionSells(f) : null; }
     return null;
   }
   private suggestRes(b: Building): ResId[] {
@@ -948,7 +971,7 @@ export class Game {
       } else if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 8)) warn = '<small class="warn">trop loin d\'un fleuve navigable (plus de 8 km) : les barges ne peuvent pas y accoster</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
       else if (b && b.node === null) warn = '<small class="warn">non relié par la route</small>';
       else if (b && i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && p.node !== null && b.node !== null && !findPath(s, p.node, b.node, VEH[l.vtype].voie)) warn = `<small class="warn">aucun itinéraire${VEH[l.vtype].voie ? ' par voie romaine' : ''} depuis l'arrêt précédent</small>`; }
-      if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && !isStore(b)) {
+      if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && !isStore(b) && b.type !== 'taverne') {
         const ok = b.type === 'comptoir' ? loaded.filter(r => SEA_PARTNERS.find(p => p.id === b.sp)!.buys.includes(r)) : loaded.filter(r => BUILD[b.type].recipe?.in[r]);
         if (!ok.length) warn += ' <small class="warn">ce bâtiment n\'accepte aucun de ces matériaux</small>';
       }
@@ -1222,12 +1245,42 @@ export class Game {
       ${rows}${this.rivalsSummary()}<h3>Journal</h3><ul class="log">${log || '<li class="muted">Rien à signaler.</li>'}</ul>`;
   }
 
+  /** Fenêtre de diplomatie : relations, traités et actions envers chaque rival */
+  private diplomacyPanel(): string {
+    const s = this.s, fs = s.factions ?? [], open = hasTavern(s);
+    let h = `<h2 class="ph">🤝 Diplomatie</h2>`;
+    if (!fs.length) return h + '<p class="muted">Pas de rivaux dans cette partie.</p>';
+    if (!open) h += `<p class="hint warn">Construis une <b>taverne</b> près d'une de tes villes pour ouvrir la diplomatie : cadeaux, accords, alliances, espionnage.</p>`;
+    else h += `<p class="muted">${tavernes(s).length} taverne${tavernes(s).length > 1 ? 's' : ''} : chacune améliore un peu chaque mois tes relations, surtout avec les rivaux proches.</p>`;
+    const top = (Object.keys(RES) as ResId[]).filter(r => RES[r].era <= s.era && storeTotal(s, r) >= 20).sort((a, z) => RES[z].price - RES[a].price).slice(0, 3);
+    for (const f of fs) {
+      const rl = relLabel(f), r = relOf(f), cities = f.b.filter(b => b.type === 'village'), know = (f.intel ?? 0) > s.day;
+      const th = (k: 'trade' | 'pact' | 'alliance') => THRESHOLD[k][f.character as keyof typeof THRESHOLD.trade];
+      const btn = (act: string, label: string, extra = '', dis = false) => `<button data-act="${act}" data-f="${f.id}" ${extra} ${!open || dis ? 'disabled' : ''}>${label}</button>`;
+      h += `<div class="dipl" style="--fc:${f.color}">
+        <div class="dipl-h"><i></i><b>${esc(f.name)}</b><span class="pill ${rl.level}">${rl.label}</span></div>
+        <small class="muted">${CHARACTERS[f.character as keyof typeof CHARACTERS]} · ${cities.length} ville${cities.length > 1 ? 's' : ''} · ${fmt(factionPop(f))} hab.</small>
+        <div class="relbar"><span style="left:${(r + 100) / 2}%"></span></div><div class="relscale"><small>Hostile</small><small>Neutre</small><small>Allié</small></div>
+        <div class="chips">${f.trade ? '<span class="pill good">Accord commercial</span>' : ''}${f.pact && f.pact > s.day ? `<span class="pill info">Non-agression jusqu'en ${yearOf(f.pact)}</span>` : ''}${f.alliance ? '<span class="pill good">Alliance</span>' : ''}${!f.trade && !f.pact && !f.alliance ? '<small class="muted">Aucun traité.</small>' : ''}</div>
+        ${know ? `<p class="spy">🕵 Trésor : <b>${fmt(f.money)}</b> sesterces · ${f.b.length} bâtiments · ${r < -40 ? 'Ils te considèrent comme une menace et s\'arment.' : r < 0 ? 'Ils se méfient de ton expansion.' : 'Ils cherchent surtout à commercer.'}${f.rels ? ` Meilleur ami : ${esc(fs.filter(o => o !== f).sort((a, z) => (f.rels![z.id] ?? 0) - (f.rels![a.id] ?? 0))[0]?.short ?? '—')}.` : ''}</p>` : ''}
+        <div class="dipl-act">
+          ${btn('gift', 'Offrir 300', 'data-a="300"', s.money < 300)}${btn('gift', 'Offrir 1 000', 'data-a="1000"', s.money < 1000)}
+          ${top.map(rs => btn('giftres', `Offrir 20 t de ${RES[rs].name.toLowerCase()}`, `data-r="${rs}"`)).join('')}
+        </div><div class="dipl-act">
+          ${f.trade ? btn('break', 'Rompre l\'accord commercial', 'data-k="trade"') : btn('treaty', `Accord commercial <small>(relation ≥ ${th('trade')})</small>`, 'data-k="trade"')}
+          ${f.pact && f.pact > s.day ? '' : btn('treaty', `Non-agression <small>(≥ ${th('pact')})</small>`, 'data-k="pact"')}
+          ${f.alliance ? btn('break', 'Rompre l\'alliance', 'data-k="alliance"') : btn('treaty', `Alliance <small>(≥ ${th('alliance')}, accord commercial)</small>`, 'data-k="alliance"', !f.trade)}
+          ${btn('spy', `🕵 Espionner (${SPY_COST})`, '', s.money < SPY_COST)}
+        </div></div>`;
+    }
+    return h;
+  }
   /** Comparaison avec les rivaux */
   private rivalsSummary(): string {
     const s = this.s; if (!s.factions?.length) return '';
     const me = playerPop(s), rows = [{ name: 'Toi', color: PLAYER_COLOR, pop: me, cities: s.buildings.filter(b => b.city).length }, ...s.factions.map(f => ({ name: f.name, color: f.color, pop: factionPop(f), cities: f.b.filter(b => b.type === 'village').length }))];
     const max = Math.max(1, ...rows.map(r => r.pop));
-    return `<h3>Rivaux <small class="muted">— difficulté ${DIFFICULTY[s.difficulty ?? 'equilibre'].name.toLowerCase()}</small></h3><div class="rivals">${rows.map(r => `<div class="rv"><span class="rv-n"><i style="background:${r.color}"></i>${esc(r.name)}</span><span class="gauge"><i style="width:${r.pop / max * 100}%;background:${r.color}"></i></span><small>${fmt(r.pop)} hab. · ${r.cities} ville${r.cities > 1 ? 's' : ''}</small></div>`).join('')}</div>`;
+    return `<h3>Rivaux <small class="muted">— difficulté ${DIFFICULTY[s.difficulty ?? 'equilibre'].name.toLowerCase()}</small></h3><div class="actions top"><button class="primary" data-act="diplo">🤝 Diplomatie</button></div><div class="rivals">${rows.map(r => `<div class="rv"><span class="rv-n"><i style="background:${r.color}"></i>${esc(r.name)}</span><span class="gauge"><i style="width:${r.pop / max * 100}%;background:${r.color}"></i></span><small>${fmt(r.pop)} hab. · ${r.cities} ville${r.cities > 1 ? 's' : ''}</small></div>`).join('')}</div>`;
   }
   private layersPanel(): string {
     const L = this.view.layers, s = this.s;
@@ -1316,6 +1369,19 @@ export class Game {
       }
       case 'research': this.sim.research(t.dataset.id!); break;
       case 'nextera': this.chapterModal(); break;
+      case 'diplo': this.openPanel(() => this.diplomacyPanel()); return;
+      case 'gift': case 'giftres': case 'treaty': case 'break': case 'spy': {
+        const f = s.factions?.find(x => x.id === t.dataset.f); if (!f) break;
+        if (!hasTavern(s)) { this.toast('Construis d\'abord une taverne près d\'une de tes villes.', 'bad'); break; }
+        const a = t.dataset.act;
+        if (a === 'gift') this.toast(giftMoney(s, f, Number(t.dataset.a)), 'good');
+        else if (a === 'giftres') this.toast(giftRes(s, f, t.dataset.r as ResId, 20), 'good');
+        else if (a === 'treaty') { const r = propose(s, f, t.dataset.k as 'trade' | 'pact' | 'alliance'); this.toast(r.msg, r.ok ? 'good' : 'bad'); }
+        else if (a === 'break') this.toast(breakTreaty(s, f, t.dataset.k as 'trade' | 'alliance'), 'bad');
+        else this.toast(spy(s, f));
+        break;
+      }
+      case 'buyriv': { const b = getB(s, id)!; const err = buyFromRival(s, b, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? 'Achat livré à la taverne.', err ? 'bad' : 'good'); break; }
       case 'repair': { const b = getB(s, id)!; const err = startRepair(s, b); this.toast(err ?? 'Réparation lancée : les matériaux arrivent par convoi.', err ? 'bad' : 'good'); break; }
       case 'ffwd': this.startFfwd(); break;
       case 'pauseb': { const b = getB(s, id); if (b) { b.paused = !b.paused; const n = b.staff, site = !b.built || b.upgrading; this.sim.staffing();
@@ -1379,6 +1445,7 @@ export class Game {
         st.res = []; st.share = 100; delete st.pct;
         if (st.action === 'load' && b) st.res = this.suggestRes(b).slice(0, 1);
       } break;
+      case 'tf': { const b = getB(s, Number(t.dataset.id)); if (b) b.tf = t.value; break; }
       case 'share': if (l) l.stops[Number(t.dataset.i)].share = Number(t.value); break;
       case 'pct': if (l) { const st = l.stops[Number(t.dataset.i)], r = t.dataset.r as ResId, v = Number(t.value); st.pct ??= {}; if (v > 0) st.pct[r] = v; else delete st.pct[r]; } break;
       case 'addres': if (l && t.value) { const st = l.stops[Number(t.dataset.i)]; if (!st.res.includes(t.value as ResId)) st.res.push(t.value as ResId); } break;

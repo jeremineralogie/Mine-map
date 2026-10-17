@@ -49,6 +49,7 @@ export interface Building {
   paused?: boolean;       // production mise en pause par le joueur
   sea?: 'atlantique' | 'mediterranee';  // port de commerce : mer bordant le port
   sp?: string;           // comptoir maritime : partenaire d'outre-mer
+  tf?: string;           // taverne : rival avec qui elle commerce
   damaged?: boolean;     // endommagé par une invasion : à l'arrêt jusqu'à sa réparation
   repair?: boolean;      // chantier de réparation en cours (utilise need/work comme une amélioration)
   haltWhy?: string;      // raison d'un arrêt temporaire (éboulement, révolte…)
@@ -97,6 +98,10 @@ export interface Faction {
   money: number; b: RBuilding[]; roads: [number, number, number, number][];
   /** objectif de taille propre à ce rival (autour de 1) */
   drive: number;
+  /** relation avec le joueur (−100 hostile … +100 allié) et traités */
+  rel?: number; trade?: boolean; pact?: number; alliance?: boolean; intel?: number; lastGift?: number;
+  /** relations avec les autres rivaux */
+  rels?: Record<string, number>;
 }
 export interface GameState {
   version: number;

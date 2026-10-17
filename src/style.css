@@ -512,3 +512,17 @@ ul.intro li { margin: 3px 0; }
 .rivals .rv-n { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
 .rivals .rv-n i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .rivals small { color: var(--muted); font-size: 11.5px; }
+
+/* Diplomatie */
+.dipl { border: 1px solid var(--line); border-left: 4px solid var(--fc); border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: #fff; }
+.dipl-h { display: flex; align-items: center; gap: 8px; }
+.dipl-h i { width: 12px; height: 12px; border-radius: 50%; background: var(--fc); }
+.dipl-h b { flex: 1; }
+.relbar { position: relative; height: 8px; border-radius: 4px; margin: 8px 0 2px; background: linear-gradient(90deg, #d92d20, #f08c00 30%, #adb5bd 50%, #74b816 75%, #2b8a3e); }
+.relbar span { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; background: #212529; border-radius: 2px; box-shadow: 0 0 0 2px #fff; }
+.relscale { display: flex; justify-content: space-between; color: var(--muted); font-size: 10.5px; }
+.dipl .chips { margin: 6px 0; }
+.dipl-act { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.dipl-act button { font-size: 12.5px; padding: 6px 9px; }
+.dipl-act button small { opacity: .7; }
+.dipl .spy { background: #f4f0e8; border-radius: 8px; padding: 6px 8px; font-size: 12.5px; margin: 6px 0; }

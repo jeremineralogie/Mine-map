@@ -7,6 +7,7 @@ import {
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
 import { depOwner, monthlyRivals, rivalAt, rivalTooClose } from './rivals';
+import { monthlyDiplomacy, tavernAccepts, tavernSell, tradeFaction } from './diplomacy';
 import { addFlow, cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
 
 export const MONTH = 30.4375;
@@ -14,7 +15,7 @@ export const YEAR = 365.25;
 /** 1 heure de jeu = 10 ans à vitesse ×1 */
 export const DAYS_PER_SEC = (10 * YEAR) / 3600;
 
-export interface Notifier { toast(text: string, kind?: 'info' | 'good' | 'bad'): void; event(title: string, text: string): void; chapter(): void; gameOver(): void; }
+export interface Notifier { toast(text: string, kind?: 'info' | 'good' | 'bad'): void; event(title: string, text: string): void; chapter(): void; gameOver(): void; ask?(title: string, text: string, yes: () => void): void; }
 
 // ---------- Création ----------
 export function newGame(geo: Geo): GameState {
@@ -84,16 +85,18 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
   if (s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 2.5) || rivalTooClose(s, x, y)) return { ok: false, reason: 'Trop près d\'un autre bâtiment.' };
   // territoire d'un rival : on ne peut pas y construire (sauf alliance, plus tard à la taverne)
   const owner = rivalAt(s, x, y);
-  if (owner && !free) return { ok: false, reason: `Territoire des ${owner.name} : impossible d'y construire sans alliance.` };
+  if (owner && !free && !owner.alliance) return { ok: false, reason: `Territoire des ${owner.name} : impossible d'y construire sans alliance.` };
   if (!free && s.money < buildMoney(s, type)) return { ok: false, reason: `Pas assez d'argent (${fmt(buildMoney(s, type))} sesterces).` };
   const r: PlaceCheck = { ok: true, rich: 1 };
   if (d.deposit) {
     const { value, dep } = geo.richness(d.deposit, x, y);
     if (d.deposit === 'cereales') { r.rich = Math.max(0.45, value); r.depName = dep?.name ?? 'Terres ordinaires'; }
     else if (!dep) return { ok: false, reason: `Il faut un gisement de ${RES[d.deposit].name.toLowerCase()} (calque Gisements).` };
-    else if (depOwner(s, dep.id)) return { ok: false, reason: `Ce gisement est déjà exploité par les ${depOwner(s, dep.id)!.name}.` };
+    else if (depOwner(s, dep.id) && !depOwner(s, dep.id)!.alliance) return { ok: false, reason: `Ce gisement est déjà exploité par les ${depOwner(s, dep.id)!.name}.` };
     else { r.rich = value; r.depName = dep.name; }
   }
+  if (type === 'taverne' && s.buildings.some(b => b.type === 'taverne' && Math.hypot(b.x - x, b.y - y) < 12))
+    return { ok: false, reason: 'Une seule taverne par ville : il y en a déjà une tout près.' };
   if (d.city && !cities(s).some(c => Math.hypot(c.x - x, c.y - y) <= CITY_BUILD_RANGE))
     return { ok: false, reason: `${d.name} : à construire à moins de ${CITY_BUILD_RANGE} km d'une ville.` };
   if (d.coast) {
@@ -289,6 +292,7 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
     if (!p.buys.includes(res) || partnerMods(s, p.id).closed) return 0;
     return Math.max(0, partnerVolume(s, p.id) - (s.stats.soldMonth[p.id] ?? 0));
   }
+  if (b.type === 'taverne' && b.built) return tavernAccepts(s, b, res);
   if (b.type === 'comptoir') {
     const p = SEA_PARTNERS.find(x => x.id === b.sp);
     if (!p || !p.buys.includes(res)) return 0;
@@ -317,6 +321,8 @@ function deliver(s: GameState, b: Building, res: ResId, qty: number, v: Vehicle 
     s.market[key] = Math.max(0.4, (s.market[key] ?? 1) * (1 - (b.partner ? 0.012 : 0.004) * qty));
     if (b.city) { b.city.stock[res] = (b.city.stock[res] ?? 0) + qty; const got = b.city.got ??= {}; got[res] = (got[res] ?? 0) + qty; if (res === 'cereales') s.stats.food += qty; }
     else { s.stats.sold[b.partner!] = (s.stats.sold[b.partner!] ?? 0) + qty; s.stats.soldMonth[b.partner!] = (s.stats.soldMonth[b.partner!] ?? 0) + qty; }
+  } else if (b.type === 'taverne' && b.built) {
+    const g = tavernSell(s, b, res, qty); if (v) v.income += g;
   } else if (b.type === 'comptoir') {
     // vente outre-mer, dans la limite du volume mensuel du partenaire
     const p = SEA_PARTNERS.find(x => x.id === b.sp)!;
@@ -827,6 +833,7 @@ export class Sim {
 
     this.objectives();
     monthlyRivals(s, this.geo);
+    monthlyDiplomacy(s, this.notify);
     this.events();
     this.randomEvents();
 
@@ -1057,6 +1064,10 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     if (closed) return { label: 'Frontière fermée', level: 'bad' };
     if (b.node === null) return { label: 'Non relié', level: 'info', hint: 'Trace une route jusqu\'à ce poste pour y commercer.' };
     return { label: 'Commerce ouvert', level: 'good' };
+  }
+  if (b.type === 'taverne' && b.built && s.factions?.length) {
+    const f = tradeFaction(s, b);
+    return f ? { label: `Commerce avec ${f.short}`, level: 'good' } : { label: 'Diplomatie ouverte', level: 'info', hint: 'Signe un accord commercial avec un rival pour commercer par cette taverne.' };
   }
   if (b.type === 'comptoir') {
     const p = SEA_PARTNERS.find(x => x.id === b.sp)!, sold = s.stats.soldMonth['mer:' + p.id] ?? 0;

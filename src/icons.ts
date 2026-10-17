@@ -21,6 +21,7 @@ export const BCAT: Record<BType, string> = {
   vignoble: 'nature', oliveraie: 'nature', pecherie: 'nature', bergerie: 'nature', villa: 'nature',
   potier: 'artisanat', verrerie: 'artisanat', four_chaux: 'artisanat', saloir: 'artisanat', tissage: 'artisanat', fonderie: 'artisanat',
   carriere_marbre: 'extraction', mine_cuivre: 'extraction', mine_etain: 'extraction',
+  taverne: 'commerce', caserne: 'ville',
   thermes: 'ville', amphitheatre: 'ville', remparts: 'ville', basilique: 'ville', relais: 'logistique', phare: 'commerce', arenes: 'ouvrage',
 };
 const badge = (t: BType, glyph: string) => {
@@ -68,6 +69,8 @@ const G: Record<BType, string> = {
   relais: `<path d="M20 46 Q14 34 20 22 Q26 12 32 12 Q38 12 44 22 Q50 34 44 46" stroke-width="5" fill="none"/><g fill="{c}" stroke-width="0"><circle cx="18" cy="32" r="1.6"/><circle cx="46" cy="32" r="1.6"/><circle cx="21" cy="22" r="1.6"/><circle cx="43" cy="22" r="1.6"/></g>`,
   phare: `<path d="M26 48 L28 20 H36 L38 48 Z" stroke-width="0"/><rect x="26" y="13" width="12" height="7" stroke-width="0"/><path d="M24 13 L32 7 L40 13 Z" stroke-width="0"/><path d="M42 15 L52 11 M42 18 L53 18 M22 15 L12 11 M22 18 L11 18" stroke-width="1.8" fill="none"/><path d="M29 30 H35 M29 38 H35" stroke="{c}" stroke-width="1.6"/>`,
   arenes: `<ellipse cx="32" cy="30" rx="23" ry="15" stroke-width="0"/><ellipse cx="32" cy="29" rx="12" ry="7" fill="{c}" stroke-width="0"/><path d="M11 34 V42 Q32 52 53 42 V34" stroke-width="0"/><path d="M15 39 V43 M21 41 V46 M27 42 V47 M33 42.5 V47.5 M39 42 V47 M45 41 V46 M50 39 V43" stroke="{c}" stroke-width="2.2"/>`,
+  taverne: `<path d="M18 22 H38 V44 Q38 48 34 48 H22 Q18 48 18 44 Z" stroke-width="0"/><path d="M38 27 Q47 27 47 34 Q47 41 38 41" stroke-width="3.4" fill="none"/><path d="M18 22 Q18 14 24 15 Q27 10 32 13 Q37 11 38 17 Q41 19 38 22" stroke-width="0"/><path d="M23 28 V43 M28 28 V43 M33 28 V43" stroke="{c}" stroke-width="1.6"/>`,
+  caserne: `<path d="M14 48 L32 14 L50 48" stroke-width="0"/><path d="M14 48 L32 14 L50 48 Z" stroke-width="0"/><path d="M27 48 V37 Q32 31 37 37 V48 Z" fill="{c}" stroke-width="0"/><path d="M32 14 V6 M32 7 L42 10 L32 13" stroke-width="2" fill="#fff"/><path d="M22 34 L42 34" stroke="{c}" stroke-width="1.6"/>`,
   port_mer: `<path d="M31 12 V36" stroke-width="2.4" fill="none"/><path d="M33 13 L46 33 H33 Z" stroke-width="0"/><path d="M29 17 L19 33 H29 Z" stroke-width="0"/><path d="M14 37 H50 L45 44 H19 Z" stroke-width="0"/><path d="M12 48 q5 -2.5 10 0 t10 0 t10 0 t10 0" stroke-width="1.8" fill="none"/>`,
 };
 const SVG = Object.fromEntries((Object.keys(G) as BType[]).map(t => [t, badge(t, G[t])])) as Record<BType, string>;

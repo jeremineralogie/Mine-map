@@ -177,7 +177,9 @@ export type BType =
   // Gaule romaine (chapitre II)
   | 'vignoble' | 'oliveraie' | 'potier' | 'verrerie' | 'four_chaux' | 'carriere_marbre' | 'pecherie' | 'saloir'
   | 'bergerie' | 'tissage' | 'mine_cuivre' | 'mine_etain' | 'fonderie'
-  | 'thermes' | 'amphitheatre' | 'remparts' | 'basilique' | 'villa' | 'relais' | 'phare' | 'arenes';
+  | 'thermes' | 'amphitheatre' | 'remparts' | 'basilique' | 'villa' | 'relais' | 'phare' | 'arenes'
+  // Rivaux : diplomatie et guerre
+  | 'taverne' | 'caserne';
 
 export interface Recipe { in: Partial<Record<ResId, number>>; out: Partial<Record<ResId, number>>; }
 
@@ -253,6 +255,9 @@ export const BUILD: Record<BType, BDef> = {
   phare: { name: 'Phare', desc: 'Guide les navires : volume du commerce maritime +25 % (jusqu\'à deux phares).', era: 2, tech: 'phares', cost: { pierre: 40, chaux: 10 }, money: 350, days: 30, workers: 2, coast: true, storage: 0, maxLevel: 1, effect: { seaVolume: 0.25 } },
   arenes: { name: 'Arènes de Nîmes', desc: 'Le grand amphithéâtre de Nemausus, symbole de l\'âge d\'or de la Gaule romaine. Merveille du chapitre II, nécessaire pour le terminer. Une fois construites : +30 % de croissance pour les villes à moins de 60 km, +1 point de recherche par mois et un revenu des jeux.', era: 2, tech: 'spectacles', cost: { pierre: 300, chaux: 40, marbre: 15 }, money: 2500, days: 120, workers: 0, storage: 0, maxLevel: 1, unique: true, site: [4.359, 43.835],
     wonder: { range: 60, needMult: 1, prodRange: 0, prodMult: 1, prodTypes: [], growth: 1.3, rp: 1, games: 0.02 } },
+  // ---- Rivaux : diplomatie et guerre ----
+  taverne: { name: 'Taverne', desc: 'Lieu de rencontre des marchands et des émissaires : ouvre la diplomatie avec les rivaux et le commerce avec ceux qui ont signé un accord. Une par ville ; plus elles sont proches d\'un rival, plus les relations progressent.', era: 1, cost: { bois: 20, pierre: 10 }, money: 200, days: 15, workers: 2, storage: 100, maxLevel: 1, city: true },
+  caserne: { name: 'Caserne', desc: 'Recrute légionnaires et auxiliaires parmi les habitants de la ville voisine. Les armées se déplacent sur la carte.', era: 2, cost: { pierre: 30, bois: 20 }, money: 400, days: 30, workers: 0, storage: 0, maxLevel: 1, city: true },
 };
 
 export const LEVEL_MULT = [0, 1, 1.6, 2.3];            // production par niveau
