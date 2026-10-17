@@ -441,7 +441,9 @@ export class Renderer {
       const sel = v.selected?.kind === 'rival' && v.selected.id === b.id;
       ctx.beginPath(); ctx.arc(x, y, size * 0.56, 0, Math.PI * 2); ctx.fillStyle = f.color; ctx.globalAlpha = sel ? 0.9 : 0.75; ctx.fill(); ctx.globalAlpha = 1;
       if (sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd43b'; ctx.stroke(); }
+      if (b.ready && b.ready > s.day) ctx.globalAlpha = 0.45; // chantier en cours
       ctx.drawImage(BICON[b.type], x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
+      ctx.globalAlpha = 1;
       // vue d'ensemble : seulement les capitales ; en zoomant, toutes les villes puis les ateliers
       const capital = b === f.b[0], far = this.cam.scale < 1.1;
       const label = b.type === 'village' ? (far ? (capital ? `${b.name} (${f.short})` : '') : `${b.name} · ${Math.round(b.pop ?? 0)} hab.`) : this.cam.scale > 2.5 ? b.name : '';

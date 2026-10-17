@@ -8,6 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, DEP_COLOR, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
+import { rivalWorkRange } from './rivaleco';
 import { MERC, PLAYER, RECRUIT, declareWar, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
 import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction } from './diplomacy';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
@@ -641,11 +642,18 @@ export class Game {
     const { f, b } = r, cities = f.b.filter(x => x.type === 'village'), pop = factionPop(f);
     let h = `<div class="bhead"><img class="bic" src="${bIconUrl(b.type)}" style="background:${f.color};border-radius:50%"><div class="bt"><b class="name">${esc(b.name)}</b>
       <small class="muted">${b.type === 'village' ? TIERS[b.tier ?? 0].name : BUILD[b.type].name}</small><span class="pill" style="background:${f.color};color:#fff">${esc(f.name)}</span></div></div>`;
-    if (b.type === 'village') h += this.kpis([[fmt(b.pop ?? 0), 'habitants'], [`${18 + 8 * (b.tier ?? 0)} km`, 'rayon du territoire']]);
+    if (b.ready && b.ready > s.day) h += `<p class="hint info">Chantier en cours : terminé ${dateLabel({ ...s, day: b.ready })}.</p>`;
+    if (b.type === 'village') {
+      h += this.kpis([[fmt(b.pop ?? 0), 'habitants'], [`${rivalWorkRange(f, b)} km`, 'rayon de main-d\'œuvre']]);
+      h += b.growing ? '<p><span class="pill good">En croissance</span></p>'
+        : `<p><span class="pill ${(b.short ?? []).includes('cereales') ? 'bad' : 'warn'}">${(b.short ?? []).includes('cereales') ? 'Famine' : 'Stagne'}</span></p>`;
+      if (b.short?.length) h += `<p class="muted">Manque : ${b.short.map(r => RES[r].name.toLowerCase()).join(', ')}.</p>`;
+    } else if (BUILD[b.type].recipe) h += `<p class="muted">Produit : ${Object.keys(BUILD[b.type].recipe!.out).map(r => RES[r as ResId].name.toLowerCase()).join(', ')}.</p>`;
     h += `<h3>${esc(f.name)}</h3><p class="muted">${esc(RIVALS.find(x => x.id === f.id)?.desc ?? '')}</p>
       <p><b>Caractère :</b> ${CHARACTERS[f.character as keyof typeof CHARACTERS] ?? ''}</p>
       <p><b>Technologies :</b> ${(f.techs ?? []).length ? (f.techs ?? []).map(id => TECHS.find(t => t.id === id)?.name ?? id).join(', ') : '<span class="muted">aucune pour l\'instant</span>'}</p>
       ${this.kpis([[`${cities.length}`, `ville${cities.length > 1 ? 's' : ''}`], [fmt(pop), 'habitants'], [`${f.b.length - cities.length}`, 'autres bâtiments']])}
+      <p><b>Réserves :</b> ${Object.entries(f.stock ?? {}).filter(([, q]) => (q ?? 0) >= 1).map(([r, q]) => `${RES[r as ResId].name.toLowerCase()} ${fmt(q!)} t`).join(' · ') || '<span class="muted">vides</span>'}</p>
       <p>Relation : <span class="pill ${relLabel(f).level}">${relLabel(f).label}</span> <small class="muted">(${Math.round(relOf(f))})</small>${f.trade ? ' · <span class="pill good">Accord commercial</span>' : ''}${f.alliance ? ' · <span class="pill good">Alliance</span>' : ''}</p>
       <p class="hint info">${f.alliance ? 'Allié : tu peux construire sur son territoire et exploiter ses gisements.' : 'On ne peut pas construire sur son territoire ni exploiter ses gisements sans alliance.'}</p>
       ${f.war ? '<p class="hint bad">⚔ En guerre avec toi.</p>' : ''}

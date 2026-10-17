@@ -42,9 +42,8 @@ export function factionBuys(s: GameState, f: Faction): ResId[] {
 }
 /** Ce que produisent ses ateliers (et qu'il peut vendre) */
 export function factionSells(f: Faction): ResId[] {
-  const g = new Set<ResId>();
-  for (const b of f.b) for (const r of Object.keys(BUILD[b.type].recipe?.out ?? {}) as ResId[]) g.add(r);
-  return [...g];
+  // il ne vend que ce qu'il a en réserve
+  return (Object.keys(f.stock ?? {}) as ResId[]).filter(r => (f.stock![r] ?? 0) >= 5);
 }
 export const rivalPrice = (f: Faction, r: ResId) => RES[r].price * 1.2 * (f.alliance ? 1.1 : 1);
 /** Toujours plus cher que ce que le rival rachète (pas d'achat-revente) */
@@ -117,11 +116,12 @@ export function buyFromRival(s: GameState, b: Building, r: ResId, qty: number): 
   if (!f) return 'Aucun accord commercial.';
   if (!factionSells(f).includes(r)) return `Les ${f.name} ne vendent pas cette ressource.`;
   const room = BUILD.taverne.storage - Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
-  qty = Math.min(qty, Math.floor(room));
-  if (qty <= 0) return 'La taverne est pleine : fais enlever les marchandises.';
+  qty = Math.min(qty, Math.floor(room), Math.floor(f.stock?.[r] ?? 0));
+  if (qty <= 0) return Math.floor(f.stock?.[r] ?? 0) <= 0 ? `Les ${f.name} n'en ont plus en réserve.` : 'La taverne est pleine : fais enlever les marchandises.';
   const cost = rivalImportPrice(f, r) * qty;
   if (s.money < cost) return 'Pas assez d\'argent.';
   s.money -= cost; s.stats.expenses += cost; f.money += cost;
+  f.stock![r] = (f.stock![r] ?? 0) - qty;
   b.stock[r] = (b.stock[r] ?? 0) + qty;
   changeRel(f, qty * 0.03);
   return null;
@@ -131,12 +131,15 @@ export function buyFromRival(s: GameState, b: Building, r: ResId, qty: number): 
 export function tavernAccepts(s: GameState, b: Building, r: ResId) {
   const f = tradeFaction(s, b);
   if (!f || !factionBuys(s, f).includes(r)) return 0;
-  return Math.max(0, rivalVolume(f) - (s.stats.soldMonth['riv:' + f.id] ?? 0));
+  // il n'achète que ce qu'il peut payer
+  return Math.max(0, Math.min(rivalVolume(f) - (s.stats.soldMonth['riv:' + f.id] ?? 0), Math.floor(f.money / rivalPrice(f, r))));
 }
 export function tavernSell(s: GameState, b: Building, r: ResId, qty: number) {
   const f = tradeFaction(s, b)!;
   const gain = rivalPrice(f, r) * qty;
-  s.money += gain; s.stats.income += gain; f.money = Math.max(0, f.money - gain * 0.5);
+  s.money += gain; s.stats.income += gain; f.money = Math.max(0, f.money - gain);
+  // la marchandise rejoint ses réserves
+  f.stock ??= {}; f.stock[r] = (f.stock[r] ?? 0) + qty;
   const k = 'riv:' + f.id;
   s.stats.soldMonth[k] = (s.stats.soldMonth[k] ?? 0) + qty; s.stats.sold[k] = (s.stats.sold[k] ?? 0) + qty;
   changeRel(f, qty * 0.05 * (ch(f) === 'commercant' ? 1.5 : 1));

@@ -92,10 +92,18 @@ export interface Vehicle {
 }
 
 /** Bâtiment d'un rival (simulation simplifiée, hors de l'économie du joueur) */
-export interface RBuilding { id: number; type: BType; x: number; y: number; name: string; pop?: number; tier?: number; dep?: number | null; }
+export interface RBuilding {
+  id: number; type: BType; x: number; y: number; name: string; pop?: number; tier?: number; dep?: number | null;
+  /** richesse du gisement exploité, jour de fin du chantier */
+  rich?: number; ready?: number; level?: number;
+  /** ville : reçoit les produits de la Gaule romaine, grandit, ce qui lui manque */
+  modern?: boolean; growing?: boolean; short?: ResId[];
+}
 export interface Faction {
   id: string; name: string; short: string; capital: string; color: string; character: string; frontier?: boolean;
   money: number; b: RBuilding[]; roads: [number, number, number, number][];
+  /** stock commun du rival et production du dernier mois */
+  stock?: Partial<Record<ResId, number>>; made?: Partial<Record<ResId, number>>; bought?: Partial<Record<ResId, number>>;
   /** objectif de taille propre à ce rival (autour de 1) */
   drive: number;
   /** technologies du rival : il en découvre une chaque fois que le joueur en découvre une, selon sa situation */

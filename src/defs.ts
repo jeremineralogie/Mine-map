@@ -520,9 +520,9 @@ export const START_STOCK: Partial<Record<ResId, number>> = { bois: 120, pierre: 
 // ---- Rivaux (grandes familles et cités romaines) ----
 export type Difficulty = 'facile' | 'equilibre' | 'ambitieux';
 export const DIFFICULTY: Record<Difficulty, { name: string; desc: string; mult: number }> = {
-  facile: { name: 'Facile', desc: 'Les rivaux grandissent un peu moins vite que toi.', mult: 0.8 },
-  equilibre: { name: 'Équilibré', desc: 'Les rivaux grandissent à ton rythme.', mult: 1 },
-  ambitieux: { name: 'Ambitieux', desc: 'Les rivaux grandissent un peu plus vite et visent les meilleurs gisements.', mult: 1.2 },
+  facile: { name: 'Facile', desc: 'Les rivaux suivent les mêmes règles que toi, avec 20 % d\'argent de départ et de production en moins.', mult: 0.8 },
+  equilibre: { name: 'Équilibré', desc: 'Les rivaux suivent exactement les mêmes règles et les mêmes chiffres que toi.', mult: 1 },
+  ambitieux: { name: 'Ambitieux', desc: 'Les rivaux suivent les mêmes règles, avec 20 % d\'argent de départ et de production en plus, et construisent plus vite.', mult: 1.2 },
 };
 export interface RivalDef { id: string; name: string; short: string; capital: string; home: [number, number]; color: string; character: 'fidele' | 'commercant' | 'opportuniste' | 'guerrier'; frontier?: boolean; desc: string; }
 export const CHARACTERS: Record<RivalDef['character'], string> = {
