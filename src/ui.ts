@@ -6,7 +6,7 @@ import { CHARACTERS, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
 import type { Geo } from './geo';
 import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
-import { Camera, Renderer, type View } from './render';
+import { Camera, DEP_COLOR, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
 import { MERC, PLAYER, RECRUIT, declareWar, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
 import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction } from './diplomacy';
@@ -1329,9 +1329,10 @@ export class Game {
     // les ressources des époques suivantes restent secrètes
     const resList = [...new Set(this.geo.deposits.map(d => d.res))].filter(r => RES[r].era <= s.era);
     const opts = `<option value="all">Toutes les ressources (sauf terres fertiles)</option>` + resList.map(r => `<option value="${r}" ${this.view.depositFilter === r ? 'selected' : ''}>${RES[r].name}</option>`).join('');
-    const legend = resList.filter(r => r !== 'cereales').map(r => `<span class="res"><i style="background:${RES[r].color}"></i>${RES[r].name}</span>`).join(' ');
+    const legend = resList.filter(r => r !== 'cereales').map(r => `<span class="res"><i class="sw" style="background:${DEP_COLOR[r] ?? RES[r].color}"></i>${RES[r].name}</span>`).join(' ');
     return `<h2 class="ph">${IC.layers}Calques</h2>
       <label class="tog"><input type="checkbox" data-layer="deposits" ${L.deposits ? 'checked' : ''}> Gisements</label>
+      <label class="tog"><input type="checkbox" data-layer="depLabels" ${L.depLabels !== false ? 'checked' : ''}> Noms des gisements (ressource et lieu)</label>
       <p><select data-field="depfilter">${opts}</select></p>
       <div class="chips">${legend}</div>
       <p class="muted">De nouveaux gisements apparaîtront à chaque nouvelle époque.</p>

@@ -21,7 +21,7 @@ export class Camera {
 }
 
 export interface View {
-  layers: { deposits: boolean; water: boolean; workers: boolean; trade: boolean; territory?: boolean };
+  layers: { deposits: boolean; water: boolean; workers: boolean; trade: boolean; territory?: boolean; depLabels?: boolean };
   depositFilter: ResId | 'all';
   selected: { kind: 'building' | 'vehicle' | 'edge' | 'rival' | 'army'; id: number } | null;
   selectedLine: number | null;
@@ -171,7 +171,7 @@ export class Renderer {
     ctx.closePath();
   }
   private drawDeposits(s: GameState, v: View) {
-    const ctx = this.ctx, showLabels = this.cam.scale > 1.3;
+    const ctx = this.ctx, showLabels = this.cam.scale > 1.3 && v.layers.depLabels !== false;
     // seuls les gisements de l'époque en cours (ou passées) sont visibles : les autres se découvrent plus tard
     const shown = this.geo.deposits.filter(d => RES[d.res].era <= s.era
       && (v.depositFilter === 'all' ? d.res !== 'cereales' : d.res === v.depositFilter)); // les terres fertiles ont leur propre filtre
@@ -618,7 +618,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 /** Ressources courantes : simple teinte ; les autres sont plus soutenues */
 const COMMON_DEP = new Set<ResId>(['bois', 'pierre', 'argile', 'sable', 'calcaire', 'cereales']);
 /** Couleurs d'affichage des gisements dont la couleur de ressource est trop pâle ou trop grise */
-const DEP_COLOR: Partial<Record<ResId, string>> = { sel: '#3f8fc4', plomb: '#4b4f8f', etain: '#5f7f9c', marbre: '#b49a86', calcaire: '#b8ab82', kaolin: '#c9a37a', laine: '#a8875a' };
+export const DEP_COLOR: Partial<Record<ResId, string>> = { sel: '#3f8fc4', plomb: '#4b4f8f', etain: '#5f7f9c', marbre: '#b49a86', calcaire: '#b8ab82', kaolin: '#c9a37a', laine: '#a8875a' };
 function halo(ctx: CanvasRenderingContext2D, t: string, x: number, y: number, col: string) {
   ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(t, x, y);
   ctx.fillStyle = col; ctx.fillText(t, x, y);
