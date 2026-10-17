@@ -1,6 +1,6 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
 import { BUILD, PLAYER_COLOR, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
-import type { Geo } from './geo';
+import type { DepositKm, Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
@@ -165,7 +165,9 @@ export class Renderer {
     const shown = this.geo.deposits.filter(d => RES[d.res].era <= s.era
       && (v.depositFilter === 'all' ? d.res !== 'cereales' : d.res === v.depositFilter)); // les terres fertiles ont leur propre filtre
     const fade = this.cam.scale > 4 ? 0.5 : 1; // plus discret quand on zoome, pour laisser voir le relief
-    for (const d of shown) {
+    const style = (window as unknown as { __depStyle?: number }).__depStyle ?? 0;
+    if (style) { this.drawDepositsStyled(shown, style); }
+    else for (const d of shown) {
       ctx.beginPath(); ctx.ellipse(d.x, d.y, d.rx, d.ry, 0, 0, Math.PI * 2);
       const col = RES[d.res].color;
       ctx.globalAlpha = (0.18 + 0.12 * d.rich) * fade; ctx.fillStyle = col; ctx.fill();
@@ -183,6 +185,84 @@ export class Renderer {
       ctx.font = '10px system-ui, sans-serif'; halo(ctx, d.name, x, y + 7, '#555'); ctx.font = '600 11px system-ui, sans-serif';
     }
     this.world();
+  }
+  /** Contour irrégulier d'un gisement (bruit déterministe propre à chaque gisement) */
+  private blob(d: DepositKm, k = 1, n = 72) {
+    const rnd = mulberry(d.id * 7919 + 13), p1 = rnd() * 6.28, p2 = rnd() * 6.28, p3 = rnd() * 6.28, p4 = rnd() * 6.28;
+    const pts: [number, number][] = [];
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2;
+      const r = k * (1 + 0.16 * Math.sin(3 * a + p1) + 0.09 * Math.sin(5 * a + p2) + 0.05 * Math.sin(9 * a + p3) + 0.03 * Math.sin(15 * a + p4));
+      pts.push([d.x + Math.cos(a) * d.rx * r, d.y + Math.sin(a) * d.ry * r]);
+    }
+    return pts;
+  }
+  private blobPath(pts: [number, number][]) { const ctx = this.ctx; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); }
+  /** Propositions de rendu des gisements (maquettes) */
+  private drawDepositsStyled(shown: DepositKm[], style: number) {
+    const ctx = this.ctx, px = (v: number) => this.px(v);
+    for (const d of shown) {
+      const col = RES[d.res].color, dark = shade(col, -0.35), rnd = mulberry(d.id * 31 + 7);
+      if (style === 1) {
+        // A. teinte du relief : couleur « multipliée » sur le relief, bords fondus
+        ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.filter = `blur(${Math.max(2, px(9))}px)`;
+        for (const [k, a] of [[1, 0.22], [0.75, 0.2], [0.45, 0.18]] as [number, number][]) { this.blobPath(this.blob(d, k)); ctx.globalAlpha = a * (0.8 + 0.25 * d.rich); ctx.fillStyle = col; ctx.fill(); }
+        ctx.restore();
+      } else if (style === 2) {
+        // B. texture naturelle : motif propre à la ressource, fondu sur les bords
+        ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.filter = `blur(${Math.max(2, px(7))}px)`;
+        this.blobPath(this.blob(d, 1)); ctx.globalAlpha = 0.16; ctx.fillStyle = col; ctx.fill(); ctx.restore();
+        ctx.save(); this.blobPath(this.blob(d, 0.97)); ctx.clip();
+        const area = d.rx * d.ry, n = Math.min(900, Math.round(area / 6 * (0.6 + 0.4 * d.rich)));
+        for (let i = 0; i < n; i++) {
+          const a = rnd() * 6.283, r = Math.sqrt(rnd()), x = d.x + Math.cos(a) * d.rx * r * 1.15, y = d.y + Math.sin(a) * d.ry * r * 1.15;
+          const edge = 1 - r * r; ctx.globalAlpha = 0.15 + 0.5 * edge;
+          this.motif(d.res, x, y, rnd, col, dark);
+        }
+        ctx.restore();
+      } else if (style === 3) {
+        // C. aquarelle : plusieurs lavis décalés et un liseré irrégulier
+        ctx.save(); ctx.globalCompositeOperation = 'multiply';
+        for (let i = 0; i < 4; i++) {
+          const dx = (rnd() - 0.5) * d.rx * 0.25, dy = (rnd() - 0.5) * d.ry * 0.25, k = 0.65 + rnd() * 0.4;
+          const pts = this.blob({ ...d, id: d.id * 10 + i, x: d.x + dx, y: d.y + dy }, k);
+          ctx.filter = `blur(${Math.max(1, px(3))}px)`; this.blobPath(pts); ctx.globalAlpha = 0.13; ctx.fillStyle = col; ctx.fill();
+        }
+        ctx.filter = `blur(${Math.max(0.5, px(1.2))}px)`; this.blobPath(this.blob(d, 1.02)); ctx.globalAlpha = 0.45; ctx.strokeStyle = dark; ctx.lineWidth = px(2.2); ctx.stroke();
+        ctx.restore();
+      } else if (style === 4) {
+        // D. carte ancienne : symboles semés, teinte très légère
+        ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.filter = `blur(${Math.max(2, px(8))}px)`;
+        this.blobPath(this.blob(d, 1)); ctx.globalAlpha = 0.12; ctx.fillStyle = col; ctx.fill(); ctx.restore();
+        ctx.save(); this.blobPath(this.blob(d, 0.95)); ctx.clip();
+        const step = Math.max(2.2, 9 / Math.max(0.6, this.cam.scale)) * 1.6;
+        for (let gx = d.x - d.rx * 1.2; gx < d.x + d.rx * 1.2; gx += step) for (let gy = d.y - d.ry * 1.2; gy < d.y + d.ry * 1.2; gy += step * 0.87) {
+          const x = gx + (rnd() - 0.5) * step * 0.8 + ((Math.round(gy / step) % 2) ? step / 2 : 0), y = gy + (rnd() - 0.5) * step * 0.6;
+          const q = ((x - d.x) / d.rx) ** 2 + ((y - d.y) / d.ry) ** 2; if (q > 1.2) continue;
+          ctx.globalAlpha = 0.85 * (1 - Math.min(1, q) * 0.6);
+          this.symbol(d.res, x, y, step * 0.42, col, dark);
+        }
+        ctx.restore();
+      }
+    }
+  }
+  /** Petits motifs de texture (proposition B) */
+  private motif(res: ResId, x: number, y: number, rnd: () => number, col: string, dark: string) {
+    const ctx = this.ctx, s = this.px(2.2);
+    if (res === 'bois') { ctx.beginPath(); ctx.arc(x, y, s * (0.8 + rnd()), 0, 6.283); ctx.fillStyle = rnd() < 0.5 ? col : dark; ctx.fill(); }
+    else if (res === 'cereales') { ctx.beginPath(); ctx.moveTo(x - s * 2, y); ctx.lineTo(x + s * 2, y - s * 0.6); ctx.strokeStyle = dark; ctx.lineWidth = s * 0.5; ctx.stroke(); }
+    else if (res === 'pierre' || res === 'calcaire' || res === 'marbre') { ctx.beginPath(); ctx.moveTo(x - s, y + s * 0.6); ctx.lineTo(x - s * 0.2, y - s); ctx.lineTo(x + s, y - s * 0.2); ctx.lineTo(x + s * 0.6, y + s * 0.8); ctx.closePath(); ctx.fillStyle = rnd() < 0.5 ? col : dark; ctx.fill(); }
+    else { ctx.beginPath(); ctx.arc(x, y, s * 0.55, 0, 6.283); ctx.fillStyle = dark; ctx.fill(); }
+  }
+  /** Symboles de carte ancienne (proposition D) */
+  private symbol(res: ResId, x: number, y: number, r: number, col: string, dark: string) {
+    const ctx = this.ctx;
+    ctx.lineWidth = Math.max(this.px(1), r * 0.12); ctx.strokeStyle = dark; ctx.fillStyle = col;
+    if (res === 'bois') { ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.6, y + r * 0.35); ctx.lineTo(x - r * 0.6, y + r * 0.35); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x, y + r * 0.35); ctx.lineTo(x, y + r * 0.75); ctx.stroke(); }
+    else if (res === 'cereales') { ctx.beginPath(); ctx.moveTo(x, y + r * 0.7); ctx.lineTo(x, y - r * 0.7); ctx.moveTo(x, y - r * 0.2); ctx.lineTo(x - r * 0.35, y - r * 0.55); ctx.moveTo(x, y - r * 0.2); ctx.lineTo(x + r * 0.35, y - r * 0.55); ctx.moveTo(x, y + r * 0.2); ctx.lineTo(x - r * 0.35, y - r * 0.15); ctx.moveTo(x, y + r * 0.2); ctx.lineTo(x + r * 0.35, y - r * 0.15); ctx.stroke(); }
+    else if (res === 'pierre' || res === 'calcaire' || res === 'marbre') { ctx.beginPath(); ctx.moveTo(x - r * 0.7, y + r * 0.5); ctx.lineTo(x - r * 0.2, y - r * 0.5); ctx.lineTo(x + r * 0.2, y - r * 0.1); ctx.lineTo(x + r * 0.45, y - r * 0.6); ctx.lineTo(x + r * 0.8, y + r * 0.5); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    else if (res === 'vin') { for (const [dx, dy] of [[-0.3, -0.3], [0.3, -0.3], [0, 0.15], [-0.15, 0.55], [0.15, 0.55]]) { ctx.beginPath(); ctx.arc(x + dx * r, y + dy * r, r * 0.22, 0, 6.283); ctx.fill(); ctx.stroke(); } }
+    else { ctx.beginPath(); ctx.moveTo(x - r * 0.6, y + r * 0.4); ctx.lineTo(x, y - r * 0.5); ctx.lineTo(x + r * 0.6, y + r * 0.4); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   }
   /** Port de commerce sélectionné : routes maritimes vers ses partenaires */
   /** Merveille sélectionnée (ou en projet) : rayons d'effet */
@@ -603,3 +683,11 @@ function halo(ctx: CanvasRenderingContext2D, t: string, x: number, y: number, co
 }
 
 export const ROAD_LABEL = (t: keyof typeof ROADS) => ROADS[t].name;
+
+/** Générateur pseudo-aléatoire déterministe */
+function mulberry(a: number) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+/** Couleur assombrie (k < 0) ou éclaircie (k > 0) */
+function shade(hex: string, k: number) {
+  const n = parseInt(hex.slice(1), 16), f = (c: number) => Math.round(Math.max(0, Math.min(255, k < 0 ? c * (1 + k) : c + (255 - c) * k)));
+  return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
