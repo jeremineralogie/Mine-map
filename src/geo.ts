@@ -240,7 +240,7 @@ export class Geo {
     let best = 0, dep: DepositKm | null = null;
     for (const d of this.deposits) {
       if (d.res !== res) continue;
-      const u = (x - d.x) / d.rx, v = (y - d.y) / d.ry, q = u * u + v * v;
+      const u = (x - d.x) / d.rx, v = (y - d.y) / d.ry, k = depositShape(d, Math.atan2(v, u)), q = (u * u + v * v) / (k * k);
       if (q >= 1) continue;
       const val = d.rich * (1 - 0.5 * q);
       if (val > best) { best = val; dep = d; }
@@ -286,6 +286,13 @@ export class Geo {
 }
 
 // tas binaire minimal sur la première valeur
+/** Contour irrégulier d'un gisement : facteur de rayon selon l'angle (bruit déterministe propre au gisement) */
+export function depositShape(d: { id: number }, a: number) {
+  let t = d.id * 7919 + 13;
+  const rnd = () => { t = t + 0x6D2B79F5 | 0; let z = Math.imul(t ^ t >>> 15, 1 | t); z = z + Math.imul(z ^ z >>> 7, 61 | z) ^ z; return ((z ^ z >>> 14) >>> 0) / 4294967296; };
+  const p1 = rnd() * 6.28, p2 = rnd() * 6.28, p3 = rnd() * 6.28, p4 = rnd() * 6.28;
+  return 1 + 0.16 * Math.sin(3 * a + p1) + 0.09 * Math.sin(5 * a + p2) + 0.05 * Math.sin(9 * a + p3) + 0.03 * Math.sin(15 * a + p4);
+}
 function heapPush(h: [number, number][], v: [number, number]) {
   h.push(v); let i = h.length - 1;
   while (i > 0) { const p = (i - 1) >> 1; if (h[p][0] <= h[i][0]) break; [h[p], h[i]] = [h[i], h[p]]; i = p; }

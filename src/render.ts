@@ -1,6 +1,6 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
 import { BUILD, PLAYER_COLOR, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
-import type { Geo } from './geo';
+import { depositShape, type DepositKm, type Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
@@ -42,6 +42,7 @@ export class Renderer {
   private france = new Path2D();
   private neigh = new Path2D();
   private lakes = new Path2D();
+  private land = new Path2D();
   private rivers: { p: Path2D; w: number }[] = [];
   private waterLayer: HTMLCanvasElement;
 
@@ -50,6 +51,7 @@ export class Renderer {
     const ring = (p: Path2D, r: [number, number][]) => { r.forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y)); p.closePath(); };
     for (const poly of geo.data.france) for (const r of poly) ring(this.france, r);
     for (const n of geo.data.neighbours) for (const r of n.rings) ring(this.neigh, r);
+    this.land.addPath(this.france); this.land.addPath(this.neigh);
     for (const poly of geo.data.lakes) for (const r of poly) ring(this.lakes, r);
     const groups = new Map<number, Path2D>();
     for (const r of geo.data.rivers) {
@@ -159,20 +161,36 @@ export class Renderer {
       ctx.strokeStyle = 'rgba(190,100,30,.8)'; ctx.lineWidth = this.px(1.5); ctx.stroke(); ctx.setLineDash([]);
     }
   }
+  /** Contour irrégulier d'un gisement, réduit d'un facteur k */
+  private depositPath(d: DepositKm, k: number) {
+    const ctx = this.ctx, n = 72; ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2, r = k * depositShape(d, a), x = d.x + Math.cos(a) * d.rx * r, y = d.y + Math.sin(a) * d.ry * r;
+      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  }
   private drawDeposits(s: GameState, v: View) {
     const ctx = this.ctx, showLabels = this.cam.scale > 1.3;
     // seuls les gisements de l'époque en cours (ou passées) sont visibles : les autres se découvrent plus tard
     const shown = this.geo.deposits.filter(d => RES[d.res].era <= s.era
       && (v.depositFilter === 'all' ? d.res !== 'cereales' : d.res === v.depositFilter)); // les terres fertiles ont leur propre filtre
-    const fade = this.cam.scale > 4 ? 0.5 : 1; // plus discret quand on zoome, pour laisser voir le relief
-    for (const d of shown) {
-      ctx.beginPath(); ctx.ellipse(d.x, d.y, d.rx, d.ry, 0, 0, Math.PI * 2);
-      const col = RES[d.res].color;
-      ctx.globalAlpha = (0.18 + 0.12 * d.rich) * fade; ctx.fillStyle = col; ctx.fill();
-      ctx.globalAlpha = 0.9; ctx.strokeStyle = col === '#f1f1f1' ? '#9aa' : col;
-      ctx.lineWidth = this.px(1.6);
-      ctx.stroke(); ctx.globalAlpha = 1;
+    const fade = this.cam.scale > 4 ? 0.6 : 1; // plus discret quand on zoome, pour laisser voir le relief
+    // teinte fondue dans le relief, jamais sur la mer ; les grandes zones d'abord, les petites par-dessus
+    ctx.save();
+    ctx.clip(this.land);
+    ctx.globalCompositeOperation = 'multiply';
+    for (const d of [...shown].sort((a, b) => b.rx * b.ry - a.rx * a.ry)) {
+      const col = DEP_COLOR[d.res] ?? RES[d.res].color, rare = !COMMON_DEP.has(d.res);
+      // les petits gisements et les ressources rares sont plus soutenus, pour ne pas se noyer dans une forêt
+      const boost = Math.min(2.2, Math.max(1, 900 / Math.max(80, d.rx * d.ry)) ** 0.35) * (rare ? 1.35 : 1);
+      ctx.filter = `blur(${Math.max(2, this.px(rare ? 6 : 9))}px)`;
+      ctx.fillStyle = col;
+      for (const [k, a] of [[1, 0.22], [0.75, 0.2], [0.45, 0.18]] as [number, number][]) {
+        this.depositPath(d, k); ctx.globalAlpha = Math.min(0.6, a * (0.8 + 0.25 * d.rich) * boost) * fade; ctx.fill();
+      }
     }
+    ctx.restore();
     if (!showLabels) return;
     this.screen();
     ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
@@ -597,6 +615,10 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
+/** Ressources courantes : simple teinte ; les autres sont plus soutenues */
+const COMMON_DEP = new Set<ResId>(['bois', 'pierre', 'argile', 'sable', 'calcaire', 'cereales']);
+/** Couleurs d'affichage des gisements dont la couleur de ressource est trop pâle ou trop grise */
+const DEP_COLOR: Partial<Record<ResId, string>> = { sel: '#3f8fc4', plomb: '#4b4f8f', etain: '#5f7f9c', marbre: '#b49a86', calcaire: '#b8ab82', kaolin: '#c9a37a', laine: '#a8875a' };
 function halo(ctx: CanvasRenderingContext2D, t: string, x: number, y: number, col: string) {
   ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(t, x, y);
   ctx.fillStyle = col; ctx.fillText(t, x, y);
