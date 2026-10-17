@@ -1,7 +1,7 @@
 // Rivaux : grandes familles et cités romaines gérées par l'ordinateur.
 // Simulation volontairement simplifiée : villes, ateliers sur les gisements, routes dessinées,
 // croissance réglée sur celle du joueur selon la difficulté.
-import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, DIFFICULTY, RES, RIVALS, TIERS, type BType } from './defs';
+import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, DIFFICULTY, RES, RIVALS, TECHS, TIERS, type BType } from './defs';
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState, RBuilding } from './state';
 
@@ -67,7 +67,7 @@ export function initRivals(s: GameState, geo: Geo, px: number, py: number) {
 function buildProducer(s: GameState, geo: Geo, f: Faction) {
   const cities = f.b.filter(b => b.type === 'village');
   // les rivaux débloquent leurs ateliers en même temps que le joueur (mêmes technologies)
-  const kinds = (Object.keys(BUILD) as BType[]).filter(t => BUILD[t].deposit && BUILD[t].era <= s.era && !BUILD[t].hidden && (!BUILD[t].tech || s.techs.includes(BUILD[t].tech!)));
+  const kinds = (Object.keys(BUILD) as BType[]).filter(t => BUILD[t].deposit && BUILD[t].era <= s.era && !BUILD[t].hidden && (!BUILD[t].tech || (f.techs ?? []).includes(BUILD[t].tech!)));
   const count = (t: BType) => f.b.filter(b => b.type === t).length;
   const deps = geo.deposits.filter((d: DepositKm) => RES[d.res].era <= s.era && kinds.some(t => BUILD[t].deposit === d.res)
     && cities.some(c => Math.hypot(c.x - d.x, c.y - d.y) < 95)
@@ -122,6 +122,36 @@ function foundCity(s: GameState, geo: Geo, f: Faction) {
 export const playerPop = (s: GameState) => s.buildings.reduce((a, b) => a + (b.city?.pop ?? 0), 0);
 export const factionPop = (f: Faction) => f.b.reduce((a, b) => a + (b.pop ?? 0), 0);
 
+/** Le rival découvre autant de technologies que le joueur, mais choisit les siennes selon sa situation :
+ *  gisements proches, fleuves ou côte, caractère. Pas de copie de l'arbre du joueur. */
+function syncTechs(s: GameState, geo: Geo, f: Faction) {
+  f.techs ??= [];
+  const known = new Set(TECHS.map(t => t.id));
+  const playerCount = s.techs.filter(t => known.has(t)).length;
+  const cities = f.b.filter(b => b.type === 'village');
+  let guard = 0;
+  while (f.techs.length < playerCount && guard++ < 40) {
+    const avail = TECHS.filter(t => t.era <= s.era && !f.techs!.includes(t.id) && t.req.every(r => f.techs!.includes(r)));
+    if (!avail.length) break;
+    const score = (t: typeof TECHS[number]) => {
+      let sc = Math.random() * 12 - t.cost / 8;
+      // ateliers débloqués : intéressants s'il y a des gisements près de ses villes
+      for (const b of (Object.keys(BUILD) as BType[]).filter(k => BUILD[k].tech === t.id)) {
+        const res = BUILD[b].deposit;
+        if (res && geo.deposits.some(d => d.res === res && cities.some(c => Math.hypot(c.x - d.x, c.y - d.y) < 90))) sc += 20;
+        if (BUILD[b].river && cities.some(c => geo.nearestNav(c.x, c.y, 20))) sc += 8;
+        if (BUILD[b].coast && cities.some(c => geo.nearSea(c.x, c.y, 25))) sc += 10;
+      }
+      const bias: Record<string, string[]> = { commercant: ['negoce', 'monnaie', 'negoce_maritime', 'peche', 'phares'], guerrier: ['metallurgie', 'forge', 'remparts', 'relais', 'charronnerie'], fidele: ['aqueduc', 'urbanisme', 'voie_romaine', 'thermes', 'spectacles'], opportuniste: ['navigation', 'negoce_maritime', 'viticulture', 'batellerie'] };
+      if (bias[f.character]?.includes(t.id)) sc += 10;
+      return sc;
+    };
+    const pick = avail.map(t => ({ t, sc: score(t) })).sort((a, z) => z.sc - a.sc)[0].t;
+    f.techs.push(pick.id);
+    s.log.unshift({ day: s.day, text: `Les ${f.name} découvrent : ${pick.name}.` });
+  }
+}
+
 /** Évolution mensuelle des rivaux : ils suivent la croissance du joueur selon la difficulté */
 export function monthlyRivals(s: GameState, geo: Geo) {
   if (!s.factions?.length) return;
@@ -129,8 +159,9 @@ export function monthlyRivals(s: GameState, geo: Geo) {
   for (const f of s.factions) {
     const cities = f.b.filter(b => b.type === 'village');
     if (f.dead || !cities.length) continue;
+    syncTechs(s, geo, f);
     // partie déjà commencée : un atelier construit avant que la technologie soit connue disparaît
-    const locked = f.b.filter(b => BUILD[b.type].tech && !s.techs.includes(BUILD[b.type].tech!));
+    const locked = f.b.filter(b => BUILD[b.type].tech && !(f.techs ?? []).includes(BUILD[b.type].tech!));
     if (locked.length) { f.b = f.b.filter(b => !locked.includes(b)); f.roads = f.roads.filter(([, , x, y]) => !locked.some(b => b.x === x && b.y === y)); }
     const fp = factionPop(f);
     const target = Math.max(160, pp * mult * f.drive);

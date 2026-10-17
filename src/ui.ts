@@ -644,6 +644,7 @@ export class Game {
     if (b.type === 'village') h += this.kpis([[fmt(b.pop ?? 0), 'habitants'], [`${18 + 8 * (b.tier ?? 0)} km`, 'rayon du territoire']]);
     h += `<h3>${esc(f.name)}</h3><p class="muted">${esc(RIVALS.find(x => x.id === f.id)?.desc ?? '')}</p>
       <p><b>Caractère :</b> ${CHARACTERS[f.character as keyof typeof CHARACTERS] ?? ''}</p>
+      <p><b>Technologies :</b> ${(f.techs ?? []).length ? (f.techs ?? []).map(id => TECHS.find(t => t.id === id)?.name ?? id).join(', ') : '<span class="muted">aucune pour l\'instant</span>'}</p>
       ${this.kpis([[`${cities.length}`, `ville${cities.length > 1 ? 's' : ''}`], [fmt(pop), 'habitants'], [`${f.b.length - cities.length}`, 'autres bâtiments']])}
       <p>Relation : <span class="pill ${relLabel(f).level}">${relLabel(f).label}</span> <small class="muted">(${Math.round(relOf(f))})</small>${f.trade ? ' · <span class="pill good">Accord commercial</span>' : ''}${f.alliance ? ' · <span class="pill good">Alliance</span>' : ''}</p>
       <p class="hint info">${f.alliance ? 'Allié : tu peux construire sur son territoire et exploiter ses gisements.' : 'On ne peut pas construire sur son territoire ni exploiter ses gisements sans alliance.'}</p>

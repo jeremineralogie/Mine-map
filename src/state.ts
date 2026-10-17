@@ -98,6 +98,8 @@ export interface Faction {
   money: number; b: RBuilding[]; roads: [number, number, number, number][];
   /** objectif de taille propre à ce rival (autour de 1) */
   drive: number;
+  /** technologies du rival : il en découvre une chaque fois que le joueur en découvre une, selon sa situation */
+  techs?: string[];
   /** relation avec le joueur (−100 hostile … +100 allié) et traités */
   rel?: number; trade?: boolean; pact?: number; alliance?: boolean; intel?: number; lastGift?: number;
   /** relations avec les autres rivaux */
