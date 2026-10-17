@@ -166,7 +166,8 @@ export class Renderer {
       && (v.depositFilter === 'all' ? d.res !== 'cereales' : d.res === v.depositFilter)); // les terres fertiles ont leur propre filtre
     const fade = this.cam.scale > 4 ? 0.5 : 1; // plus discret quand on zoome, pour laisser voir le relief
     const style = (window as unknown as { __depStyle?: number }).__depStyle ?? 0;
-    if (style) { this.drawDepositsStyled(shown, style); }
+    if (style >= 5) { this.drawDepositsFondu(shown, style - 4); }
+    else if (style) { this.drawDepositsStyled(shown, style); }
     else for (const d of shown) {
       ctx.beginPath(); ctx.ellipse(d.x, d.y, d.rx, d.ry, 0, 0, Math.PI * 2);
       const col = RES[d.res].color;
@@ -198,6 +199,46 @@ export class Renderer {
     return pts;
   }
   private blobPath(pts: [number, number][]) { const ctx = this.ctx; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); }
+  /** Variantes de la teinte fondue : ressources rares plus visibles, superpositions lisibles */
+  private drawDepositsFondu(shown: DepositKm[], v: number) {
+    const ctx = this.ctx, px = (x: number) => this.px(x);
+    const COMMON = new Set<ResId>(['bois', 'pierre', 'argile', 'sable', 'calcaire', 'cereales']);
+    // couleurs d'affichage : les teintes trop pâles ou trop grises sont rendues plus franches
+    const DISP: Partial<Record<ResId, string>> = { sel: '#3f8fc4', plomb: '#4b4f8f', etain: '#5f7f9c', marbre: '#b49a86', calcaire: '#b8ab82', kaolin: '#c9a37a', chaux: '#a89f8a' };
+    // grandes zones d'abord, petites (et rares) par-dessus
+    const list = [...shown].sort((a, b) => b.rx * b.ry - a.rx * a.ry);
+    for (const d of list) {
+      const col = DISP[d.res] ?? RES[d.res].color, dark = shade(col, -0.4), rare = !COMMON.has(d.res);
+      const area = d.rx * d.ry, boost = Math.min(2.2, Math.max(1, 900 / Math.max(80, area)) ** 0.35) * (rare ? 1.35 : 1);
+      ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.filter = `blur(${Math.max(2, px(rare ? 6 : 9))}px)`;
+      for (const [k, a] of [[1, 0.22], [0.75, 0.2], [0.45, 0.18]] as [number, number][]) { this.blobPath(this.blob(d, k)); ctx.globalAlpha = Math.min(0.6, a * (0.8 + 0.25 * d.rich) * boost); ctx.fillStyle = col; ctx.fill(); }
+      ctx.restore();
+      if (!rare) continue;
+      if (v === 2) {
+        // cœur : le centre du filon est plus dense, en couleur franche (pas seulement multipliée)
+        ctx.save(); ctx.filter = `blur(${Math.max(1.5, px(5))}px)`;
+        this.blobPath(this.blob(d, 0.42)); ctx.globalAlpha = 0.55; ctx.fillStyle = col; ctx.fill();
+        this.blobPath(this.blob(d, 0.2)); ctx.globalAlpha = 0.6; ctx.fillStyle = dark; ctx.fill();
+        ctx.restore();
+      } else if (v === 3) {
+        // lisière : un bord flou et foncé qui détache le gisement même posé sur une forêt
+        ctx.save(); ctx.filter = `blur(${Math.max(1, px(2.5))}px)`;
+        this.blobPath(this.blob(d, 0.98)); ctx.globalAlpha = 0.7; ctx.strokeStyle = dark; ctx.lineWidth = px(3); ctx.stroke();
+        ctx.restore();
+      } else if (v === 4) {
+        // éclats : paillettes de minerai semées vers le centre, fondues vers les bords
+        ctx.save(); this.blobPath(this.blob(d, 0.9)); ctx.clip();
+        const rnd = mulberry(d.id * 53 + 11), n = Math.min(400, Math.round(area / 5) + 25), s = px(1.8);
+        for (let i = 0; i < n; i++) {
+          const a = rnd() * 6.283, r = Math.sqrt(rnd()), x = d.x + Math.cos(a) * d.rx * r, y = d.y + Math.sin(a) * d.ry * r;
+          ctx.globalAlpha = 0.25 + 0.6 * (1 - r * r);
+          ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s * 0.7, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s * 0.7, y); ctx.closePath();
+          ctx.fillStyle = rnd() < 0.6 ? dark : '#ffffff'; ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+  }
   /** Propositions de rendu des gisements (maquettes) */
   private drawDepositsStyled(shown: DepositKm[], style: number) {
     const ctx = this.ctx, px = (v: number) => this.px(v);
