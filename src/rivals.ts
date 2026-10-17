@@ -66,7 +66,8 @@ export function initRivals(s: GameState, geo: Geo, px: number, py: number) {
 /** Le rival construit un atelier sur un gisement libre proche de ses villes */
 function buildProducer(s: GameState, geo: Geo, f: Faction) {
   const cities = f.b.filter(b => b.type === 'village');
-  const kinds = (Object.keys(BUILD) as BType[]).filter(t => BUILD[t].deposit && BUILD[t].era <= s.era && !BUILD[t].hidden);
+  // les rivaux débloquent leurs ateliers en même temps que le joueur (mêmes technologies)
+  const kinds = (Object.keys(BUILD) as BType[]).filter(t => BUILD[t].deposit && BUILD[t].era <= s.era && !BUILD[t].hidden && (!BUILD[t].tech || s.techs.includes(BUILD[t].tech!)));
   const count = (t: BType) => f.b.filter(b => b.type === t).length;
   const deps = geo.deposits.filter((d: DepositKm) => RES[d.res].era <= s.era && kinds.some(t => BUILD[t].deposit === d.res)
     && cities.some(c => Math.hypot(c.x - d.x, c.y - d.y) < 95)
@@ -128,6 +129,9 @@ export function monthlyRivals(s: GameState, geo: Geo) {
   for (const f of s.factions) {
     const cities = f.b.filter(b => b.type === 'village');
     if (f.dead || !cities.length) continue;
+    // partie déjà commencée : un atelier construit avant que la technologie soit connue disparaît
+    const locked = f.b.filter(b => BUILD[b.type].tech && !s.techs.includes(BUILD[b.type].tech!));
+    if (locked.length) { f.b = f.b.filter(b => !locked.includes(b)); f.roads = f.roads.filter(([, , x, y]) => !locked.some(b => b.x === x && b.y === y)); }
     const fp = factionPop(f);
     const target = Math.max(160, pp * mult * f.drive);
     const gap = target - fp;
