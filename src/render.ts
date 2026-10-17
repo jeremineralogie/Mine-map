@@ -1,9 +1,10 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
-import { BUILD, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
+import { BUILD, PLAYER_COLOR, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
 import type { Geo } from './geo';
 import { BICON, VICON } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
+import { territoryRadius } from './rivals';
 import type { Building, GameState, Line } from './state';
 
 export class Camera {
@@ -19,9 +20,9 @@ export class Camera {
 }
 
 export interface View {
-  layers: { deposits: boolean; water: boolean; workers: boolean; trade: boolean };
+  layers: { deposits: boolean; water: boolean; workers: boolean; trade: boolean; territory?: boolean };
   depositFilter: ResId | 'all';
-  selected: { kind: 'building' | 'vehicle' | 'edge'; id: number } | null;
+  selected: { kind: 'building' | 'vehicle' | 'edge' | 'rival'; id: number } | null;
   selectedLine: number | null;
   /** lignes à afficher sur la carte (tracé, sens, départ et arrivée) */
   showLines: number[];
@@ -117,6 +118,8 @@ export class Renderer {
     if (v.layers.workers) this.drawWorkers(s);
     if (v.layers.deposits) this.drawDeposits(s, v);
     this.drawGardSite(s);
+    if (v.layers.territory !== false) this.drawTerritories(s);
+    this.drawRivals(s, v);
     this.drawRoads(s, v);
     const ids = v.hoverLine !== null && !v.showLines.includes(v.hoverLine) ? [...v.showLines, v.hoverLine] : v.showLines;
     const lines = ids.map(id => s.lines.find(l => l.id === id)).filter(Boolean) as Line[];
@@ -350,6 +353,59 @@ export class Renderer {
     this.world();
   }
   iconSize() { return Math.min(56, Math.max(24, this.cam.scale * 7)); }
+  /** Territoires : zones d'influence du joueur et des rivaux (contour des cercles réunis) */
+  private drawTerritories(s: GameState) {
+    if (!s.factions?.length) return;
+    const ctx = this.ctx;
+    const zones: { color: string; c: [number, number, number][] }[] = [
+      { color: PLAYER_COLOR, c: s.buildings.filter(b => !b.partner && b.type !== 'comptoir').map(b => [b.x, b.y, b.city ? 18 + 8 * b.city.tier : 6] as [number, number, number]) },
+      ...s.factions.map(f => ({ color: f.color, c: f.b.map(b => [b.x, b.y, territoryRadius(b)] as [number, number, number]) })),
+    ];
+    for (const z of zones) {
+      if (!z.c.length) continue;
+      ctx.beginPath();
+      for (const [x, y, r] of z.c) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+      ctx.globalAlpha = 0.09; ctx.fillStyle = z.color; ctx.fill('nonzero'); ctx.globalAlpha = 1;
+      // contour extérieur seulement : on ne trace que les arcs hors des autres cercles
+      ctx.beginPath();
+      for (const [x, y, r] of z.c) {
+        let pen = false;
+        for (let k = 0; k <= 72; k++) {
+          const a = k / 72 * Math.PI * 2, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+          const inside = z.c.some(([ox, oy, or]) => (ox !== x || oy !== y) && Math.hypot(px - ox, py - oy) < or - 0.01);
+          if (inside) { pen = false; continue; }
+          if (pen) ctx.lineTo(px, py); else { ctx.moveTo(px, py); pen = true; }
+        }
+      }
+      ctx.setLineDash([this.px(6), this.px(4)]); ctx.strokeStyle = z.color; ctx.globalAlpha = 0.7; ctx.lineWidth = this.px(1.8); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+  }
+  /** Rivaux : routes, villes et ateliers à leurs couleurs */
+  private drawRivals(s: GameState, v: View) {
+    if (!s.factions?.length) return;
+    const ctx = this.ctx, S = this.iconSize() * 0.82;
+    for (const f of s.factions) {
+      ctx.beginPath();
+      for (const [ax, ay, bx, by] of f.roads) { ctx.moveTo(ax, ay); ctx.lineTo(bx, by); }
+      ctx.strokeStyle = f.color; ctx.globalAlpha = 0.55; ctx.lineWidth = this.px(2.2); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    this.screen();
+    for (const f of s.factions) for (const b of f.b) {
+      const [x, y] = this.cam.toScreen(b.x, b.y);
+      if (x < -60 || y < -60 || x > this.cam.w + 60 || y > this.cam.h + 60) continue;
+      const size = b.type === 'village' ? S * (1 + Math.min(0.6, (b.tier ?? 0) * 0.2)) : S;
+      const sel = v.selected?.kind === 'rival' && v.selected.id === b.id;
+      ctx.beginPath(); ctx.arc(x, y, size * 0.56, 0, Math.PI * 2); ctx.fillStyle = f.color; ctx.globalAlpha = sel ? 0.9 : 0.75; ctx.fill(); ctx.globalAlpha = 1;
+      if (sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd43b'; ctx.stroke(); }
+      ctx.drawImage(BICON[b.type], x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
+      // vue d'ensemble : seulement les capitales ; en zoomant, toutes les villes puis les ateliers
+      const capital = b === f.b[0], far = this.cam.scale < 1.1;
+      const label = b.type === 'village' ? (far ? (capital ? `${b.name} (${f.short})` : '') : `${b.name} · ${Math.round(b.pop ?? 0)} hab.`) : this.cam.scale > 2.5 ? b.name : '';
+      if (label) { ctx.font = b.type === 'village' ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; ctx.textAlign = 'center'; halo(ctx, label, x, y + size / 2 + 12, f.color); }
+      if (b.type === 'village' && !far && capital) { ctx.font = '600 10px system-ui, sans-serif'; ctx.textAlign = 'center'; halo(ctx, f.short, x, y - size / 2 - 6, f.color); }
+    }
+    this.world();
+  }
   private drawBuildings(s: GameState, v: View, time: number) {
     const ctx = this.ctx; this.screen();
     const S = this.iconSize();
@@ -483,6 +539,10 @@ export class Renderer {
     let best: Building | null = null, bd = S * 0.6;
     for (const b of s.buildings) { const [x, y] = this.cam.toScreen(b.x, b.y), d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; best = b; } }
     if (best) return { kind: 'building', id: best.id };
+    // bâtiments des rivaux
+    let rb: number | null = null; bd = S * 0.6;
+    for (const f of s.factions ?? []) for (const b of f.b) { const [x, y] = this.cam.toScreen(b.x, b.y), d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; rb = b.id; } }
+    if (rb !== null) return { kind: 'rival', id: rb };
     const e = this.pickEdge(s, sx, sy);
     return e !== null ? { kind: 'edge', id: e } : null;
   }

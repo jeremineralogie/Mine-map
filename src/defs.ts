@@ -511,3 +511,34 @@ export const EVENTS: HistEvent[] = [
 
 export const START_MONEY = 2500;
 export const START_STOCK: Partial<Record<ResId, number>> = { bois: 120, pierre: 50, cereales: 40 };
+
+// ---- Rivaux (grandes familles et cités romaines) ----
+export type Difficulty = 'facile' | 'equilibre' | 'ambitieux';
+export const DIFFICULTY: Record<Difficulty, { name: string; desc: string; mult: number }> = {
+  facile: { name: 'Facile', desc: 'Les rivaux grandissent un peu moins vite que toi.', mult: 0.8 },
+  equilibre: { name: 'Équilibré', desc: 'Les rivaux grandissent à ton rythme.', mult: 1 },
+  ambitieux: { name: 'Ambitieux', desc: 'Les rivaux grandissent un peu plus vite et visent les meilleurs gisements.', mult: 1.2 },
+};
+export interface RivalDef { id: string; name: string; short: string; capital: string; home: [number, number]; color: string; character: 'fidele' | 'commercant' | 'opportuniste' | 'guerrier'; frontier?: boolean; desc: string; }
+export const CHARACTERS: Record<RivalDef['character'], string> = {
+  fidele: 'Fidèles à Rome, attachés aux accords',
+  commercant: 'Commerçants, préfèrent négocier',
+  opportuniste: 'Opportunistes, tournés vers la mer',
+  guerrier: 'Méfiants et guerriers',
+};
+export const RIVALS: RivalDef[] = [
+  { id: 'aedui', name: 'Éduens d\'Augustodunum', short: 'Éduens', capital: 'Augustodunum', home: [4.3, 46.95], color: '#2b8a3e', character: 'fidele', desc: 'Le plus fidèle allié de Rome en Gaule, riche de ses terres de Bourgogne.' },
+  { id: 'narbo', name: 'Domitii de Narbo Martius', short: 'Narbonne', capital: 'Narbo Martius', home: [3.0, 43.18], color: '#1971c2', character: 'commercant', desc: 'Famille de la plus ancienne colonie romaine de Gaule, tournée vers la Méditerranée.' },
+  { id: 'burdigala', name: 'Notables de Burdigala', short: 'Burdigala', capital: 'Burdigala', home: [-0.58, 44.84], color: '#7048e8', character: 'opportuniste', desc: 'Marchands du grand port de l\'Atlantique : vin, étain et commerce maritime.' },
+  { id: 'treveri', name: 'Trévires d\'Augusta Treverorum', short: 'Trévires', capital: 'Augusta Treverorum', home: [6.64, 49.75], color: '#c92a2a', character: 'guerrier', frontier: true, desc: 'Peuple de la frontière du Rhin, cavaliers redoutés, dont la capitale deviendra une résidence impériale.' },
+];
+/** Régions de repli si le joueur s'installe trop près d'une capitale rivale */
+export const ALT_HOMES: { capital: string; home: [number, number] }[] = [
+  { capital: 'Augustonemetum', home: [3.08, 45.78] }, { capital: 'Andematunnum', home: [5.33, 47.86] },
+  { capital: 'Vesontio', home: [6.02, 47.24] }, { capital: 'Limonum', home: [0.34, 46.58] },
+  { capital: 'Autricum', home: [1.49, 48.45] }, { capital: 'Condate', home: [-1.68, 48.11] },
+  { capital: 'Tolosa', home: [1.44, 43.6] }, { capital: 'Durocortorum', home: [4.03, 49.26] },
+];
+/** Couleur du joueur (territoire, armées) */
+export const PLAYER_COLOR = '#e8590c';
+

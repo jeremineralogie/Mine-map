@@ -1,5 +1,5 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
-import { RP_TIER,
+import { CHARACTERS, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
   BRANCHES, BUILD, ERAS, LEVEL_COST, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
@@ -7,6 +7,7 @@ import type { Geo } from './geo';
 import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
+import { factionPop, findRival, initRivals, playerPop } from './rivals';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
@@ -93,8 +94,10 @@ export class Game {
         <li>Construis carrières, camps de bûcherons et villas agricoles sur les <b>gisements</b> (calque coloré).</li>
         <li>Crée des <b>lignes</b> de charrettes pour transporter et vendre ta production aux villes et aux partenaires étrangers.</li>
       </ol>
+      <h3>Tes rivaux</h3><p>Quatre grandes familles romaines développent aussi leurs cités : <b>${RIVALS.map(r => r.short).join(', ')}</b>. Elles se disputent les gisements et étendent leur territoire. Choisis leur ambition :</p>
+      <ul class="intro">${(Object.keys(DIFFICULTY) as Difficulty[]).map(k => `<li><b>${DIFFICULTY[k].name}</b> — ${DIFFICULTY[k].desc}</li>`).join('')}</ul>
       <p class="muted">À vitesse ×1, une heure de jeu équivaut à dix ans. La partie est sauvegardée automatiquement dans ce navigateur.</p>`,
-      [{ label: 'Choisir mon emplacement', primary: true }]);
+      (Object.keys(DIFFICULTY) as Difficulty[]).map(k => ({ label: DIFFICULTY[k].name, primary: k === 'equilibre', fn: () => { this.s.difficulty = k; } })));
   }
   load(s: GameState) {
     this.s = s = migrate(s);
@@ -370,6 +373,7 @@ export class Game {
       const c = checkPlace(s, this.geo, 'entrepot', x, y, true);
       if (!c.ok) { this.toast(c.reason!, 'bad'); return; }
       const b = startingCamp(s, this.geo, x, y);
+      if (s.factions && !s.factions.length) initRivals(s, this.geo, x, y);
       this.view.ghost = null;
       this.setMode({ kind: 'select' });
       this.centerOn(x, y, Math.max(this.cam.scale, 6));
@@ -598,10 +602,25 @@ export class Game {
     return h;
   }
 
+  /** Fiche d'un bâtiment ou d'une ville rivale */
+  private rivalPanel(id: number): string {
+    const s = this.s, r = findRival(s, id); if (!r) return '';
+    const { f, b } = r, cities = f.b.filter(x => x.type === 'village'), pop = factionPop(f);
+    let h = `<div class="bhead"><img class="bic" src="${bIconUrl(b.type)}" style="background:${f.color};border-radius:50%"><div class="bt"><b class="name">${esc(b.name)}</b>
+      <small class="muted">${b.type === 'village' ? TIERS[b.tier ?? 0].name : BUILD[b.type].name}</small><span class="pill" style="background:${f.color};color:#fff">${esc(f.name)}</span></div></div>`;
+    if (b.type === 'village') h += this.kpis([[fmt(b.pop ?? 0), 'habitants'], [`${18 + 8 * (b.tier ?? 0)} km`, 'rayon du territoire']]);
+    h += `<h3>${esc(f.name)}</h3><p class="muted">${esc(RIVALS.find(x => x.id === f.id)?.desc ?? '')}</p>
+      <p><b>Caractère :</b> ${CHARACTERS[f.character as keyof typeof CHARACTERS] ?? ''}</p>
+      ${this.kpis([[`${cities.length}`, `ville${cities.length > 1 ? 's' : ''}`], [fmt(pop), 'habitants'], [`${f.b.length - cities.length}`, 'autres bâtiments']])}
+      <p class="hint info">On ne peut pas construire sur son territoire ni exploiter ses gisements. La diplomatie (taverne) arrivera à la prochaine étape.</p>
+      <div class="chips">${cities.map(c => `<span class="res">${esc(c.name)} <b>${fmt(c.pop ?? 0)}</b></span>`).join(' ')}</div>`;
+    return h;
+  }
   private detailPanel(): string {
     const sel = this.view.selected, s = this.s;
     if (!sel) return '';
     if (sel.kind === 'building') { const b = getB(s, sel.id); return b ? this.buildingPanel(b) : ''; }
+    if (sel.kind === 'rival') return this.rivalPanel(sel.id);
     if (sel.kind === 'vehicle') {
       const v = s.vehicles.find(x => x.id === sel.id); if (!v) return '';
       const l = s.lines.find(x => x.id === v.line);
@@ -1200,9 +1219,16 @@ export class Game {
       ${s.chapterDone ? `<div class="actions top"><button class="primary" data-act="nextera">Chapitre suivant →</button></div>` : ffwdBtn}
       <p class="muted">Objectifs historiques : <b>${doneN} / ${objs.length}</b>. Ils sont facultatifs${end ? ` (sauf ${BUILD[end.wonder].name})` : ''} et rapportent argent et points de recherche.</p>
       ${this.modsHtml()}
-      ${rows}<h3>Journal</h3><ul class="log">${log || '<li class="muted">Rien à signaler.</li>'}</ul>`;
+      ${rows}${this.rivalsSummary()}<h3>Journal</h3><ul class="log">${log || '<li class="muted">Rien à signaler.</li>'}</ul>`;
   }
 
+  /** Comparaison avec les rivaux */
+  private rivalsSummary(): string {
+    const s = this.s; if (!s.factions?.length) return '';
+    const me = playerPop(s), rows = [{ name: 'Toi', color: PLAYER_COLOR, pop: me, cities: s.buildings.filter(b => b.city).length }, ...s.factions.map(f => ({ name: f.name, color: f.color, pop: factionPop(f), cities: f.b.filter(b => b.type === 'village').length }))];
+    const max = Math.max(1, ...rows.map(r => r.pop));
+    return `<h3>Rivaux <small class="muted">— difficulté ${DIFFICULTY[s.difficulty ?? 'equilibre'].name.toLowerCase()}</small></h3><div class="rivals">${rows.map(r => `<div class="rv"><span class="rv-n"><i style="background:${r.color}"></i>${esc(r.name)}</span><span class="gauge"><i style="width:${r.pop / max * 100}%;background:${r.color}"></i></span><small>${fmt(r.pop)} hab. · ${r.cities} ville${r.cities > 1 ? 's' : ''}</small></div>`).join('')}</div>`;
+  }
   private layersPanel(): string {
     const L = this.view.layers, s = this.s;
     // les ressources des époques suivantes restent secrètes
@@ -1215,7 +1241,8 @@ export class Game {
       <div class="chips">${legend}</div>
       <p class="muted">De nouveaux gisements apparaîtront à chaque nouvelle époque.</p>
       <label class="tog"><input type="checkbox" data-layer="water" ${L.water ? 'checked' : ''}> Accès à l'eau (fleuves, lacs, côte, aqueducs)</label>
-      <label class="tog"><input type="checkbox" data-layer="workers" ${L.workers ? 'checked' : ''}> Main-d'œuvre (rayon des villes)</label>`;
+      <label class="tog"><input type="checkbox" data-layer="workers" ${L.workers ? 'checked' : ''}> Main-d'œuvre (rayon des villes)</label>
+      ${s.factions?.length ? `<label class="tog"><input type="checkbox" data-layer="territory" ${L.territory !== false ? 'checked' : ''}> Territoires (toi et tes rivaux)</label>` : ''}`;
   }
 
   private menuPanel(): string {

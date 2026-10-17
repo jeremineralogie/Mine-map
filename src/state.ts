@@ -1,5 +1,5 @@
 // État d'une partie (sérialisable en JSON pour la sauvegarde).
-import type { BType, ResId, RoadType, VType } from './defs';
+import type { BType, Difficulty, ResId, RoadType, VType } from './defs';
 
 export type Stock = Partial<Record<ResId, number>>;
 
@@ -90,6 +90,14 @@ export interface Vehicle {
   income: number;        // recettes cumulées
 }
 
+/** Bâtiment d'un rival (simulation simplifiée, hors de l'économie du joueur) */
+export interface RBuilding { id: number; type: BType; x: number; y: number; name: string; pop?: number; tier?: number; dep?: number | null; }
+export interface Faction {
+  id: string; name: string; short: string; capital: string; color: string; character: string; frontier?: boolean;
+  money: number; b: RBuilding[]; roads: [number, number, number, number][];
+  /** objectif de taille propre à ce rival (autour de 1) */
+  drive: number;
+}
 export interface GameState {
   version: number;
   day: number;
@@ -114,6 +122,9 @@ export interface GameState {
   chapterDone: boolean;
   log: { day: number; text: string }[];
   ledger: { month: number; income: number; expenses: number }[];
+  /** rivaux (nouvelles parties uniquement) */
+  difficulty?: Difficulty;
+  factions?: Faction[];
 }
 
 export const SAVE_KEY = 'mine-map-save-v1';

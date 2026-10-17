@@ -6,6 +6,7 @@ import {
 } from './defs';
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
+import { depOwner, monthlyRivals, rivalAt, rivalTooClose } from './rivals';
 import { addFlow, cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
 
 export const MONTH = 30.4375;
@@ -21,7 +22,7 @@ export function newGame(geo: Geo): GameState {
     version: 3, day: 0, money: START_MONEY, rp: 0, era: 1, techs: [], nextId: 1,
     nodes: [], edges: [], buildings: [], lines: [], vehicles: [], extracted: {},
     stats: { produced: {}, food: 0, sold: {}, soldMonth: {}, income: 0, expenses: 0 },
-    objectives: [], events: [], mods: [], market: {}, negMonths: 0, over: false, chapterDone: false,
+    objectives: [], events: [], mods: [], market: {}, negMonths: 0, over: false, chapterDone: false, factions: [], difficulty: 'equilibre',
     log: [], ledger: [],
   };
   for (const p of PARTNERS) {
@@ -80,13 +81,17 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
     if (Math.hypot(sx - x, sy - y) > 6) return { ok: false, reason: 'Ce monument doit être bâti sur son site historique (marqué sur la carte).' };
     if (s.buildings.some(b => b.type === type)) return { ok: false, reason: 'Déjà construit.' };
   }
-  if (s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 2.5)) return { ok: false, reason: 'Trop près d\'un autre bâtiment.' };
+  if (s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 2.5) || rivalTooClose(s, x, y)) return { ok: false, reason: 'Trop près d\'un autre bâtiment.' };
+  // territoire d'un rival : on ne peut pas y construire (sauf alliance, plus tard à la taverne)
+  const owner = rivalAt(s, x, y);
+  if (owner && !free) return { ok: false, reason: `Territoire des ${owner.name} : impossible d'y construire sans alliance.` };
   if (!free && s.money < buildMoney(s, type)) return { ok: false, reason: `Pas assez d'argent (${fmt(buildMoney(s, type))} sesterces).` };
   const r: PlaceCheck = { ok: true, rich: 1 };
   if (d.deposit) {
     const { value, dep } = geo.richness(d.deposit, x, y);
     if (d.deposit === 'cereales') { r.rich = Math.max(0.45, value); r.depName = dep?.name ?? 'Terres ordinaires'; }
     else if (!dep) return { ok: false, reason: `Il faut un gisement de ${RES[d.deposit].name.toLowerCase()} (calque Gisements).` };
+    else if (depOwner(s, dep.id)) return { ok: false, reason: `Ce gisement est déjà exploité par les ${depOwner(s, dep.id)!.name}.` };
     else { r.rich = value; r.depName = dep.name; }
   }
   if (d.city && !cities(s).some(c => Math.hypot(c.x - x, c.y - y) <= CITY_BUILD_RANGE))
@@ -821,6 +826,7 @@ export class Sim {
     if (s.ledger.length > 120) s.ledger.shift();
 
     this.objectives();
+    monthlyRivals(s, this.geo);
     this.events();
     this.randomEvents();
 
