@@ -173,7 +173,7 @@ export function upgradeCost(b: Building): Stock {
 }
 /** Rayon de main-d'œuvre d'une ville (il grandit avec elle) */
 export const workRange = (c: Building, s?: GameState) => (WORK_RANGES[c.city?.tier ?? 0] ?? WORK_RANGE) + (s?.techs.includes('cite_prospere') ? 15 : 0);
-export function maxLevelAllowed(s: GameState) { return s.techs.includes('urbanisme') ? 3 : s.techs.includes('outillage') ? 2 : 1; }
+export function maxLevelAllowed(s: GameState) { return s.techs.includes('urbanisme') ? 3 : s.techs.includes('metallurgie') ? 2 : 1; }
 
 export function demolish(s: GameState, b: Building) {
   if (b.type === 'poste' || b.type === 'comptoir') return;
@@ -744,7 +744,17 @@ export class Sim {
     // en quittant un arrêt de chargement, on mémorise le chargement (base des pourcentages de déchargement)
     if (l.stops[v.stop % l.stops.length]?.action === 'load') v.ref = { ...v.cargo };
     v.drop = {};
-    v.stop = (v.stop + 1) % l.stops.length;
+    // saute les arrêts de déchargement où il n'y a plus rien à déposer : pas de trajet à vide
+    const n = l.stops.length;
+    let next = (v.stop + 1) % n;
+    for (let k = 0; k < n; k++) {
+      const st = l.stops[next];
+      if (st.action === 'load') break;
+      const useful = (Object.entries(v.cargo) as [ResId, number][]).some(([r, q]) => q >= 0.5 && (!st.res.length || st.res.includes(r)));
+      if (useful) break;
+      next = (next + 1) % n;
+    }
+    v.stop = next;
     if (!this.route(v)) { v.state = 'lost'; v.timer = 2; }
   }
 

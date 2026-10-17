@@ -395,16 +395,15 @@ export const TECHS: Tech[] = [
   // Production
   { id: 'terre_cuite', name: 'Terre cuite', desc: 'Argilières et tuileries-briqueteries.', era: 1, cost: 17, req: [], branch: 'production' },
   { id: 'salines', name: 'Salines', desc: 'Exploitation des marais salants et des sources salées.', era: 1, cost: 17, req: [], branch: 'production' },
-  { id: 'metallurgie', name: 'Métallurgie du fer', desc: 'Mines de fer et bas fourneaux.', era: 1, cost: 31, req: ['terre_cuite'], branch: 'production' },
+  { id: 'metallurgie', name: 'Métallurgie du fer', desc: 'Mines de fer et bas fourneaux. Les outils de fer débloquent le niveau 2 des bâtiments.', era: 1, cost: 31, req: ['terre_cuite'], branch: 'production' },
   { id: 'forge', name: 'Forgerons', desc: 'Forges : fabrication d\'outils.', era: 1, cost: 39, req: ['metallurgie'], branch: 'production' },
   { id: 'plomb', name: 'Plomb et argent', desc: 'Mines de plomb argentifère.', era: 1, cost: 34, req: ['metallurgie'], branch: 'production' },
   { id: 'exhaure', name: 'Exhaure (vis d\'Archimède)', desc: 'Pompage des galeries : +30 % de rendement pour toutes les mines et carrières.', era: 1, cost: 48, req: ['plomb'], branch: 'production' },
-  { id: 'outillage', name: 'Outillage', desc: 'Débloque le niveau 2 des bâtiments.', era: 1, cost: 42, req: ['forge'], branch: 'production' },
   // Cité
   { id: 'cite_prospere', name: 'Cité prospère', desc: 'Les villes attirent des travailleurs de plus loin : rayon de main-d\'œuvre de toutes les villes +15 km.', era: 1, cost: 38, req: ['terre_cuite'], branch: 'cite' },
   { id: 'ouvrier_qualifie', name: 'Ouvriers qualifiés', desc: 'Des ouvriers formés aux outils de fer : +20 % de production de bois, de pierre et de céréales.', era: 1, cost: 50, req: ['cite_prospere', 'metallurgie'], branch: 'cite' },
   { id: 'aqueduc', name: 'Aqueducs', desc: 'Châteaux d\'eau d\'aqueduc et Pont du Gard.', era: 1, cost: 45, req: ['terre_cuite'], branch: 'cite' },
-  { id: 'urbanisme', name: 'Urbanisme romain', desc: 'Débloque le niveau 3 des bâtiments et accélère la croissance des villes.', era: 1, cost: 56, req: ['outillage', 'aqueduc'], branch: 'cite' },
+  { id: 'urbanisme', name: 'Urbanisme romain', desc: 'Débloque le niveau 3 des bâtiments et accélère la croissance des villes.', era: 1, cost: 56, req: ['aqueduc', 'exhaure'], branch: 'cite' },
   // Commerce
   { id: 'negoce', name: 'Négoce méditerranéen', desc: 'Les partenaires étrangers paient 20 % plus cher et vendent 10 % moins cher.', era: 1, cost: 28, req: [], branch: 'commerce' },
   { id: 'negoce_maritime', name: 'Négoce maritime', desc: 'Ouvre les routes maritimes : ports de commerce, navires marchands et comptoirs en Bretagne insulaire, Hibernie, Frise, Hispanie, Sardaigne, Italie, Afrique et Grèce.', era: 1, cost: 48, req: ['navigation'], branch: 'commerce' },
