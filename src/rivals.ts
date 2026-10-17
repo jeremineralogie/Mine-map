@@ -127,6 +127,7 @@ export function monthlyRivals(s: GameState, geo: Geo) {
   const mult = DIFFICULTY[s.difficulty ?? 'equilibre'].mult, pp = playerPop(s);
   for (const f of s.factions) {
     const cities = f.b.filter(b => b.type === 'village');
+    if (f.dead || !cities.length) continue;
     const fp = factionPop(f);
     const target = Math.max(160, pp * mult * f.drive);
     const gap = target - fp;

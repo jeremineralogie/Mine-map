@@ -7,6 +7,7 @@ import {
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
 import { depOwner, monthlyRivals, rivalAt, rivalTooClose } from './rivals';
+import { monthlyWar, warStep } from './war';
 import { monthlyDiplomacy, tavernAccepts, tavernSell, tradeFaction } from './diplomacy';
 import { addFlow, cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
 
@@ -15,7 +16,7 @@ export const YEAR = 365.25;
 /** 1 heure de jeu = 10 ans à vitesse ×1 */
 export const DAYS_PER_SEC = (10 * YEAR) / 3600;
 
-export interface Notifier { toast(text: string, kind?: 'info' | 'good' | 'bad'): void; event(title: string, text: string): void; chapter(): void; gameOver(): void; ask?(title: string, text: string, yes: () => void): void; }
+export interface Notifier { toast(text: string, kind?: 'info' | 'good' | 'bad'): void; event(title: string, text: string): void; chapter(): void; gameOver(text?: string): void; ask?(title: string, text: string, yes: () => void): void; choose?(title: string, text: string, options: { label: string; fn: () => void }[]): void; }
 
 // ---------- Création ----------
 export function newGame(geo: Geo): GameState {
@@ -448,6 +449,7 @@ export class Sim {
     this.production(dtDays);
     this.consumption(dtDays);
     this.vehicles(dtDays);
+    warStep(s, this.geo, dtDays, this.notify);
     this.dispatchTimer -= dtDays;
     if (this.dispatchTimer <= 0) { this.dispatchTimer = 1; this.dispatchConvoys(); }
     if (Math.floor(s.day / MONTH) !== m0) this.monthly();
@@ -834,6 +836,7 @@ export class Sim {
     this.objectives();
     monthlyRivals(s, this.geo);
     monthlyDiplomacy(s, this.notify);
+    monthlyWar(s, this.notify);
     this.events();
     this.randomEvents();
 

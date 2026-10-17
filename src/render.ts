@@ -5,6 +5,7 @@ import { BICON, VICON } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
 import { territoryRadius } from './rivals';
+import { PLAYER, hostile, ownerColor, targetPos } from './war';
 import type { Building, GameState, Line } from './state';
 
 export class Camera {
@@ -22,7 +23,7 @@ export class Camera {
 export interface View {
   layers: { deposits: boolean; water: boolean; workers: boolean; trade: boolean; territory?: boolean };
   depositFilter: ResId | 'all';
-  selected: { kind: 'building' | 'vehicle' | 'edge' | 'rival'; id: number } | null;
+  selected: { kind: 'building' | 'vehicle' | 'edge' | 'rival' | 'army'; id: number } | null;
   selectedLine: number | null;
   /** lignes à afficher sur la carte (tracé, sens, départ et arrivée) */
   showLines: number[];
@@ -131,6 +132,7 @@ export class Renderer {
     this.drawWonder(s, v);
     this.drawBuildings(s, v, time);
     this.drawVehicles(s, v);
+    this.drawArmies(s, v);
     for (const l of hl ? [hl] : lines) this.drawLineBadges(s, l);
     this.drawDraft(v);
     this.drawGhost(s, v);
@@ -380,6 +382,34 @@ export class Renderer {
       ctx.setLineDash([this.px(6), this.px(4)]); ctx.strokeStyle = z.color; ctx.globalAlpha = 0.7; ctx.lineWidth = this.px(1.8); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
   }
+  /** Armées : pastille aux couleurs du camp, effectif et barre de vie ; trajet vers la cible */
+  private drawArmies(s: GameState, v: View) {
+    const list = s.armies ?? []; if (!list.length) return;
+    const ctx = this.ctx;
+    for (const a of list) {
+      const p = targetPos(s, a.target ?? null);
+      if (!p || (a.owner !== PLAYER && !(v.selected?.kind === 'army' && v.selected.id === a.id) && !hostile(s, a.owner, PLAYER))) continue;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(p.x, p.y);
+      ctx.setLineDash([this.px(6), this.px(5)]); ctx.strokeStyle = ownerColor(s, a.owner); ctx.lineWidth = this.px(2); ctx.globalAlpha = 0.8; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    this.screen();
+    for (const a of list) {
+      const [x, y] = this.cam.toScreen(a.x, a.y), col = ownerColor(s, a.owner), sel = v.selected?.kind === 'army' && v.selected.id === a.id;
+      const r = 12 + Math.min(6, a.men / 60);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+      ctx.lineWidth = sel ? 3.5 : 2; ctx.strokeStyle = sel ? '#ffd43b' : '#fff'; ctx.stroke();
+      // aigle stylisé : deux épées croisées
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(x - r * 0.45, y - r * 0.45); ctx.lineTo(x + r * 0.45, y + r * 0.45); ctx.moveTo(x + r * 0.45, y - r * 0.45); ctx.lineTo(x - r * 0.45, y + r * 0.45); ctx.stroke();
+      if (a.state === 'fight' || a.state === 'siege') { ctx.beginPath(); ctx.arc(x, y, r + 5, 0, Math.PI * 2); ctx.strokeStyle = '#e03131'; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+      halo(ctx, `${Math.round(a.men)} hommes`, x, y - r - 6, col);
+      const w = 30, hp = Math.max(0, Math.min(1, a.hp / 100));
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(x - w / 2, y + r + 4, w, 5);
+      ctx.fillStyle = hp > 0.6 ? '#40c057' : hp > 0.3 ? '#fab005' : '#fa5252'; ctx.fillRect(x - w / 2, y + r + 4, w * hp, 5);
+    }
+    this.world();
+  }
   /** Rivaux : routes, villes et ateliers à leurs couleurs */
   private drawRivals(s: GameState, v: View) {
     if (!s.factions?.length) return;
@@ -531,6 +561,7 @@ export class Renderer {
   /** Objet sous le pointeur (coordonnées écran) */
   pick(s: GameState, sx: number, sy: number): View['selected'] {
     const S = this.iconSize();
+    for (const a of s.armies ?? []) { const [x, y] = this.cam.toScreen(a.x, a.y); if (Math.hypot(x - sx, y - sy) < 16) return { kind: 'army', id: a.id }; }
     for (const veh of s.vehicles) {
       if (veh.at !== null && veh.state !== 'go') continue;
       const [x, y] = this.cam.toScreen(veh.x, veh.y);

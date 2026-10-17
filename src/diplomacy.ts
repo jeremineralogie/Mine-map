@@ -158,6 +158,7 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
   const fs = s.factions ?? [];
   const tv = tavernes(s);
   for (const f of fs) {
+    if (f.dead) continue;
     const before = relLabel(f).label;
     f.rel = relOf(f);
     // retour lent vers son humeur naturelle
@@ -186,9 +187,9 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
     }
   }
   // relations entre rivaux (pour les alliances contre le joueur, à l'étape de la guerre)
-  for (const f of fs) {
+  for (const f of fs.filter(x => !x.dead && x.b.length)) {
     f.rels ??= {};
-    for (const o of fs) if (o !== f) {
+    for (const o of fs) if (o !== f && !o.dead && o.b.length) {
       const v = f.rels[o.id] ?? 0, near = Math.min(...f.b.map(a => Math.min(...o.b.map(b => Math.hypot(a.x - b.x, a.y - b.y)))));
       f.rels[o.id] = Math.max(-100, Math.min(100, v * 0.97 + (Math.random() - 0.5) * 6 + (near < 60 ? -1.5 : 0.3)));
     }

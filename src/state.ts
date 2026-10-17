@@ -102,6 +102,20 @@ export interface Faction {
   rel?: number; trade?: boolean; pact?: number; alliance?: boolean; intel?: number; lastGift?: number;
   /** relations avec les autres rivaux */
   rels?: Record<string, number>;
+  /** guerre avec le joueur, ennemis parmi les rivaux, début de la guerre */
+  war?: boolean; foes?: string[]; warSince?: number;
+  /** plus aucune ville : soumis au joueur ou détruit */
+  dead?: boolean;
+}
+/** Armée sur la carte (joueur : owner = 'player') */
+export interface Army {
+  id: number; owner: string; x: number; y: number;
+  men: number; leg: number;      // effectif, part de légionnaires (0-1)
+  hp: number;                    // vie / moral (0-100)
+  merc?: boolean;                // mercenaires (solde double)
+  target?: { kind: 'b' | 'rb' | 'army'; id: number } | null;
+  siege?: number;                // garnison restante de la ville assiégée
+  state: 'idle' | 'march' | 'fight' | 'siege';
 }
 export interface GameState {
   version: number;
@@ -130,6 +144,9 @@ export interface GameState {
   /** rivaux (nouvelles parties uniquement) */
   difficulty?: Difficulty;
   factions?: Faction[];
+  armies?: Army[];
+  tributes?: { f: string; amount: number; until: number }[];
+  hadCity?: boolean;
 }
 
 export const SAVE_KEY = 'mine-map-save-v1';

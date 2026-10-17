@@ -8,6 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
+import { MERC, PLAYER, RECRUIT, declareWar, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
 import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction } from './diplomacy';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
@@ -21,7 +22,7 @@ interface Snap { node: RNode | null; x: number; y: number; bid?: number; edge?: 
 
 type Mode =
   | { kind: 'start' } | { kind: 'select' } | { kind: 'build'; type: BType } | { kind: 'road' }
-  | { kind: 'demolish' } | { kind: 'pickStop'; line: number };
+  | { kind: 'demolish' } | { kind: 'pickStop'; line: number } | { kind: 'target'; army: number };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (t: string) => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -78,7 +79,8 @@ export class Game {
       event: (title: string, text: string) => this.ffwd ? void this.ffwd.push(title) : this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Continuer', primary: true }]),
       ask: (title: string, text: string, yes: () => void) => { if (this.ffwd) { this.ffwd.push(title + ' (sans réponse)'); return; } this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Refuser' }, { label: 'Accepter', primary: true, fn: () => { yes(); this.toast('Accord conclu.', 'good'); } }]); },
       chapter: () => { if (this.ffwd) this.endFfwd(() => this.chapterModal()); else this.chapterModal(); },
-      gameOver: () => this.modal(`<h2>Faillite</h2><p>Ta trésorerie est restée négative pendant 6 mois. Tes créanciers saisissent tes biens.</p>`, [{ label: 'Nouvelle partie', primary: true, fn: () => this.fresh() }]),
+      gameOver: (text?: string) => this.modal(`<h2>${text ? 'Défaite' : 'Faillite'}</h2><p>${text ?? 'Ta trésorerie est restée négative pendant 6 mois. Tes créanciers saisissent tes biens.'}</p>`, [{ label: 'Nouvelle partie', primary: true, fn: () => this.fresh() }]),
+      choose: (title: string, text: string, options: { label: string; fn: () => void }[]) => this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, options.map((o, i) => ({ label: o.label, primary: i === 0, fn: o.fn }))),
     };
   }
   fresh() {
@@ -134,7 +136,8 @@ export class Game {
       <h3>Villes</h3><ul class="intro">
         ${item('Nouveaux besoins', 'poterie, vin, huile, tissus puis verre ; les villes qui les reçoivent consomment 20 % de moins des anciens produits')}
         ${item('Thermes, amphithéâtres, basiliques', 'croissance plus rapide et points de recherche ; nouveau palier : Capitale (15 000 habitants)')}
-        ${item('Remparts', 'protègent des invasions les bâtiments à moins de 20 km')}</ul>
+        ${item('Remparts', 'protègent des invasions les bâtiments à moins de 20 km et doublent la garnison de la ville')}
+        ${this.s.factions?.length ? item('Caserne et guerre', 'tes rivaux peuvent désormais te déclarer la guerre : lève des légionnaires et des auxiliaires, engage des mercenaires à la taverne') : ''}</ul>
       <h3>Transport</h3><ul class="intro">
         ${item('Relais routiers', 'véhicules 25 % plus rapides autour d\'eux')}
         ${item('Carpentum, grande barge, oneraria', 'chariot couvert de 6 t (voies romaines), barge de 25 t, navire de 40 t')}</ul>
@@ -304,6 +307,7 @@ export class Game {
     }
     else if (m.kind === 'demolish') html = 'Touche une route ou un bâtiment à démolir. <button data-a="cancel">Terminer</button>';
     else if (m.kind === 'pickStop') html = 'Touche un bâtiment pour l\'ajouter comme arrêt de la ligne. <button data-a="cancel">Terminer</button>';
+    else if (m.kind === 'target') html = 'Touche une <b>ville ennemie</b> ou une <b>armée ennemie</b> à attaquer. <button data-a="cancel">Annuler</button>';
     h.innerHTML = html; h.hidden = !html;
   }
 
@@ -401,6 +405,16 @@ export class Game {
       const p = this.ren.pick(s, sx, sy);
       if (p?.kind === 'building') { this.askDemolish(getB(s, p.id)!); return; }
       if (e !== null) { removeEdge(s, e); this.rerouteAll(); this.toast('Route démolie.'); }
+      return;
+    }
+    if (m.kind === 'target') {
+      const p = this.ren.pick(s, sx, sy), a = (s.armies ?? []).find(x => x.id === m.army);
+      if (!a) { this.setMode({ kind: 'select' }); return; }
+      let ok = false;
+      if (p?.kind === 'rival') { const r = findRival(s, p.id); if (r && r.b.type === 'village') { if (!r.f.war) this.toast(`Tu n'es pas en guerre avec les ${r.f.name} : déclare d'abord la guerre (Diplomatie).`, 'bad'); else { a.target = { kind: 'rb', id: p.id }; a.state = 'march'; ok = true; } } else this.toast('Choisis une ville.', 'bad'); }
+      else if (p?.kind === 'army') { const e = (s.armies ?? []).find(x => x.id === p.id); if (e && hostile(s, PLAYER, e.owner)) { a.target = { kind: 'army', id: e.id }; a.state = 'march'; ok = true; } else this.toast('Ce n\'est pas une armée ennemie.', 'bad'); }
+      else this.toast('Touche une ville ou une armée ennemie.', 'bad');
+      if (ok) { this.setMode({ kind: 'select' }); this.select({ kind: 'army', id: a.id }); this.toast('En marche !', 'good'); }
       return;
     }
     if (m.kind === 'pickStop') {
@@ -605,6 +619,22 @@ export class Game {
     return h;
   }
 
+  /** Fiche d'une armée */
+  private armyPanel(id: number): string {
+    const s = this.s, a = (s.armies ?? []).find(x => x.id === id); if (!a) return '<p class="muted">Cette armée n\'existe plus.</p>';
+    const mine = a.owner === PLAYER, col = ownerColor(s, a.owner), t = targetPos(s, a.target ?? null);
+    const tname = a.target ? (a.target.kind === 'army' ? 'une armée ennemie' : a.target.kind === 'b' ? getB(s, a.target.id)?.name : findRival(s, a.target.id)?.b.name) : '';
+    const st = { idle: 'Au repos', march: `En marche vers ${tname}`, fight: 'Au combat !', siege: `Assiège ${tname}` }[a.state];
+    let h = `<h2 class="ph"><span class="army-dot" style="background:${col}"></span>${mine ? (a.merc ? 'Mercenaires' : 'Ton armée') : `Armée des ${esc(ownerName(s, a.owner))}`}</h2>
+      ${this.kpis([[fmt(a.men), 'hommes'], [`${Math.round(a.leg * 100)} %`, 'légionnaires'], [`${Math.round(a.hp)} %`, 'vie et moral', a.hp > 60 ? 'good' : a.hp > 30 ? 'warn' : 'bad'], [fmt(strength(a)), 'force']])}
+      <div class="gauge"><i style="width:${a.hp}%;background:${a.hp > 60 ? '#40c057' : a.hp > 30 ? '#fab005' : '#fa5252'}"></i></div>
+      <p><b>${st}</b>${t && a.state === 'march' ? ` · ${fmt(Math.hypot(t.x - a.x, t.y - a.y))} km` : ''}${a.state === 'siege' && a.siege !== undefined ? ` · garnison restante ${fmt(a.siege)}` : ''}</p>`;
+    if (mine) {
+      h += `<p class="muted">Solde : ${fmt(a.men * (a.merc ? 2.4 : 1.2))} sesterces et ${Math.ceil(a.men * 0.01)} t de céréales par mois (prises dans tes entrepôts). Une armée au repos reprend des forces.</p>
+        <div class="actions top"><button class="primary" data-act="attack" data-id="${a.id}">⚔ Attaquer…</button>${a.target ? `<button data-act="halt" data-id="${a.id}">Arrêter</button>` : ''}<button class="danger" data-act="disband" data-id="${a.id}">Dissoudre</button></div>`;
+    } else h += `<p class="muted">${hostile(s, PLAYER, a.owner) ? 'Ennemie : envoie une de tes armées l\'intercepter.' : 'Pas en guerre avec toi.'}</p>`;
+    return h;
+  }
   /** Fiche d'un bâtiment ou d'une ville rivale */
   private rivalPanel(id: number): string {
     const s = this.s, r = findRival(s, id); if (!r) return '';
@@ -617,7 +647,9 @@ export class Game {
       ${this.kpis([[`${cities.length}`, `ville${cities.length > 1 ? 's' : ''}`], [fmt(pop), 'habitants'], [`${f.b.length - cities.length}`, 'autres bâtiments']])}
       <p>Relation : <span class="pill ${relLabel(f).level}">${relLabel(f).label}</span> <small class="muted">(${Math.round(relOf(f))})</small>${f.trade ? ' · <span class="pill good">Accord commercial</span>' : ''}${f.alliance ? ' · <span class="pill good">Alliance</span>' : ''}</p>
       <p class="hint info">${f.alliance ? 'Allié : tu peux construire sur son territoire et exploiter ses gisements.' : 'On ne peut pas construire sur son territoire ni exploiter ses gisements sans alliance.'}</p>
-      <div class="actions top"><button class="primary" data-act="diplo">🤝 Diplomatie</button></div>
+      ${f.war ? '<p class="hint bad">⚔ En guerre avec toi.</p>' : ''}
+      <div class="actions top"><button class="primary" data-act="diplo">🤝 Diplomatie</button>${f.war && b.type === 'village' ? (s.armies ?? []).filter(x => x.owner === PLAYER).map(x => `<button data-act="sendarmy" data-id="${x.id}" data-t="${b.id}">⚔ Envoyer ${fmt(x.men)} hommes</button>`).join('') : ''}</div>
+      ${b.type === 'village' ? `<p class="muted">Garnison estimée : ${fmt(rivalGarrison(s, b))}.</p>` : ''}
       <div class="chips">${cities.map(c => `<span class="res">${esc(c.name)} <b>${fmt(c.pop ?? 0)}</b></span>`).join(' ')}</div>`;
     return h;
   }
@@ -626,6 +658,7 @@ export class Game {
     if (!sel) return '';
     if (sel.kind === 'building') { const b = getB(s, sel.id); return b ? this.buildingPanel(b) : ''; }
     if (sel.kind === 'rival') return this.rivalPanel(sel.id);
+    if (sel.kind === 'army') return this.armyPanel(sel.id);
     if (sel.kind === 'vehicle') {
       const v = s.vehicles.find(x => x.id === sel.id); if (!v) return '';
       const l = s.lines.find(x => x.id === v.line);
@@ -687,9 +720,16 @@ export class Game {
       if (top) h += `<div class="actions top">${top}</div>`;
     }
 
+    if (b.type === 'caserne' && b.built) {
+      const mine = (s.armies ?? []).filter(x => x.owner === PLAYER);
+      h += `<h3>Recruter <small class="muted">— les hommes viennent de la ville voisine</small></h3><div class="stocks">${(['leg', 'aux'] as const).map(k => { const r = RECRUIT[k]; return `<div class="srow"><span class="wfx">${k === 'leg' ? '🛡' : '🏹'}</span><div class="sinfo"><div class="sline"><span>${r.men} ${r.name.toLowerCase()}</span><b>${fmt(r.money)} <small class="muted">sest.</small></b></div>
+        <small class="muted">${costList(r.res)} · −${r.men} habitants${k === 'leg' ? ' · solides' : ' · rapides, moins chers'}</small>
+        <div class="buy"><button class="primary" data-act="recruit" data-id="${b.id}" data-k="${k}">Recruter</button></div></div></div>`; }).join('')}</div>
+        <h3>Tes armées (${mine.length})</h3>${mine.map(a => `<button class="row" data-act="selarmy" data-id="${a.id}"><span class="army-dot" style="background:${PLAYER_COLOR}"></span><span>${fmt(a.men)} hommes · ${Math.round(a.hp)} %</span><small class="muted">${{ idle: 'au repos', march: 'en marche', fight: 'au combat', siege: 'siège' }[a.state]}</small></button>`).join('') || '<p class="muted">Aucune.</p>'}`;
+    }
     if (b.type === 'taverne' && b.built) {
       const fs = (s.factions ?? []).filter(f => f.trade), f = tradeFaction(s, b);
-      h += `<div class="actions top"><button data-act="diplo">🤝 Diplomatie</button></div>`;
+      h += `<div class="actions top"><button data-act="diplo">🤝 Diplomatie</button>${warAllowed(s) ? `<button data-act="mercs" data-id="${b.id}">⚔ Engager ${MERC.men} mercenaires (${fmt(MERC.money)})</button>` : ''}</div>`;
       if (!f) h += `<p class="hint info">Aucun accord commercial pour l'instant. Ouvre la diplomatie pour en proposer un : la taverne pourra alors vendre et acheter aux villes du rival.</p>`;
       else {
         const sold = s.stats.soldMonth['riv:' + f.id] ?? 0, vol = rivalVolume(f);
@@ -1254,11 +1294,12 @@ export class Game {
     else h += `<p class="muted">${tavernes(s).length} taverne${tavernes(s).length > 1 ? 's' : ''} : chacune améliore un peu chaque mois tes relations, surtout avec les rivaux proches.</p>`;
     const top = (Object.keys(RES) as ResId[]).filter(r => RES[r].era <= s.era && storeTotal(s, r) >= 20).sort((a, z) => RES[z].price - RES[a].price).slice(0, 3);
     for (const f of fs) {
+      if (f.dead) { h += `<div class="dipl" style="--fc:${f.color}"><div class="dipl-h"><i></i><b>${esc(f.name)}</b><span class="pill info">Soumis</span></div><small class="muted">Plus aucune ville.</small></div>`; continue; }
       const rl = relLabel(f), r = relOf(f), cities = f.b.filter(b => b.type === 'village'), know = (f.intel ?? 0) > s.day;
       const th = (k: 'trade' | 'pact' | 'alliance') => THRESHOLD[k][f.character as keyof typeof THRESHOLD.trade];
       const btn = (act: string, label: string, extra = '', dis = false) => `<button data-act="${act}" data-f="${f.id}" ${extra} ${!open || dis ? 'disabled' : ''}>${label}</button>`;
       h += `<div class="dipl" style="--fc:${f.color}">
-        <div class="dipl-h"><i></i><b>${esc(f.name)}</b><span class="pill ${rl.level}">${rl.label}</span></div>
+        <div class="dipl-h"><i></i><b>${esc(f.name)}</b>${f.war ? '<span class="pill bad">⚔ Guerre</span>' : ''}<span class="pill ${rl.level}">${rl.label}</span></div>
         <small class="muted">${CHARACTERS[f.character as keyof typeof CHARACTERS]} · ${cities.length} ville${cities.length > 1 ? 's' : ''} · ${fmt(factionPop(f))} hab.</small>
         <div class="relbar"><span style="left:${(r + 100) / 2}%"></span></div><div class="relscale"><small>Hostile</small><small>Neutre</small><small>Allié</small></div>
         <div class="chips">${f.trade ? '<span class="pill good">Accord commercial</span>' : ''}${f.pact && f.pact > s.day ? `<span class="pill info">Non-agression jusqu'en ${yearOf(f.pact)}</span>` : ''}${f.alliance ? '<span class="pill good">Alliance</span>' : ''}${!f.trade && !f.pact && !f.alliance ? '<small class="muted">Aucun traité.</small>' : ''}</div>
@@ -1271,7 +1312,7 @@ export class Game {
           ${f.pact && f.pact > s.day ? '' : btn('treaty', `Non-agression <small>(≥ ${th('pact')})</small>`, 'data-k="pact"')}
           ${f.alliance ? btn('break', 'Rompre l\'alliance', 'data-k="alliance"') : btn('treaty', `Alliance <small>(≥ ${th('alliance')}, accord commercial)</small>`, 'data-k="alliance"', !f.trade)}
           ${btn('spy', `🕵 Espionner (${SPY_COST})`, '', s.money < SPY_COST)}
-        </div></div>`;
+        </div>${warAllowed(s) ? `<div class="dipl-act">${f.war ? `${btn('peace', 'Proposer la paix')}${btn('peace', 'Paix contre indemnité', 'data-pay="1"')}` : btn('war', '⚔ Déclarer la guerre', '', !!f.alliance)}</div>` : ''}</div>`;
     }
     return h;
   }
@@ -1381,6 +1422,18 @@ export class Game {
         else this.toast(spy(s, f));
         break;
       }
+      case 'war': case 'peace': {
+        const f = s.factions?.find(x => x.id === t.dataset.f); if (!f) break;
+        if (t.dataset.act === 'war') this.toast(declareWar(s, f), 'bad'); else this.toast(proposePeace(s, f, !!t.dataset.pay));
+        break;
+      }
+      case 'recruit': { const b = getB(s, id)!; const err = recruit(s, b, t.dataset.k as 'leg' | 'aux'); this.toast(err ?? 'Troupes recrutées.', err ? 'bad' : 'good'); break; }
+      case 'mercs': { const b = getB(s, id)!; const err = hireMercs(s, b); this.toast(err ?? 'Mercenaires engagés.', err ? 'bad' : 'good'); break; }
+      case 'selarmy': { const a = (s.armies ?? []).find(x => x.id === id); if (a) { this.centerOn(a.x, a.y, Math.max(this.cam.scale, 3)); this.select({ kind: 'army', id }); } return; }
+      case 'attack': this.setMode({ kind: 'target', army: id }); return;
+      case 'halt': { const a = (s.armies ?? []).find(x => x.id === id); if (a) { a.target = null; a.state = 'idle'; a.siege = undefined; } break; }
+      case 'disband': { const a = (s.armies ?? []).find(x => x.id === id); if (a) { disband(s, a); this.select(null); } return; }
+      case 'sendarmy': { const a = (s.armies ?? []).find(x => x.id === id); if (a) { a.target = { kind: 'rb', id: Number(t.dataset.t) }; a.state = 'march'; this.toast('En marche !', 'good'); } break; }
       case 'buyriv': { const b = getB(s, id)!; const err = buyFromRival(s, b, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? 'Achat livré à la taverne.', err ? 'bad' : 'good'); break; }
       case 'repair': { const b = getB(s, id)!; const err = startRepair(s, b); this.toast(err ?? 'Réparation lancée : les matériaux arrivent par convoi.', err ? 'bad' : 'good'); break; }
       case 'ffwd': this.startFfwd(); break;
