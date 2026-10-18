@@ -1,6 +1,6 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
 import { CHARACTERS, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
-  BRANCHES, BUILD, ERAS, LEVEL_COST, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
+  BRANCHES, BUILD, ERAS, LEVEL_MONEY, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
@@ -721,7 +721,7 @@ export class Game {
       }
     if (b.built && !b.upgrading && !b.damaged && b.level < d.maxLevel) {
       const allowed = b.level < maxLevelAllowed(s);
-      const km = costMult(s), cost = Math.round(d.money * LEVEL_COST[b.level + 1] * km);
+      const km = costMult(s), cost = Math.round(d.money * LEVEL_MONEY[b.level + 1] * km);
       h += `<button class="up" data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1}${km < 1 ? ` (remise −${Math.round((1 - km) * 100)} %)` : ''} (${fmt(cost)} + ${costList(scaleStock(upgradeCost(b), km))})${allowed ? '' : ' — technologie requise'}</button>`;
     }
       top += h; h = hh;

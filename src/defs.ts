@@ -274,7 +274,8 @@ export const BUILD: Record<BType, BDef> = {
 };
 
 export const LEVEL_MULT = [0, 1, 1.6, 2.3];            // production par niveau
-export const LEVEL_COST = [0, 1, 1.6, 2.4];            // coût d'amélioration (en fraction du coût initial)
+export const LEVEL_COST = [0, 1, 1.6, 2.4];            // matériaux d'amélioration (en fraction du coût initial)
+export const LEVEL_MONEY = [0, 1, 2, 3];               // argent d'amélioration (en fraction du prix initial)
 export const LEVEL_DAYS = [0, 1, 2, 3.5];              // durée d'amélioration (en fraction de la durée initiale)
 
 // ---- Villes ----

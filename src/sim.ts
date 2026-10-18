@@ -1,6 +1,6 @@
 // Simulation : production, chantiers, main-d'œuvre, villes, véhicules, marché, objectifs, événements.
 import {
-  ANCIENT, BUILD, EVENTS, SPARE_NAMES, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
+  ANCIENT, BUILD, EVENTS, SPARE_NAMES, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_MONEY, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
   START_YEAR, TECHS, TIERS, TIER_NEEDS_2, OLD_NEEDS_MULT, RHINE, CITY_BUILD_RANGE, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
   RP_TIER,
 } from './defs';
@@ -168,7 +168,7 @@ export function place(s: GameState, geo: Geo, type: BType, x: number, y: number,
 export function upgrade(s: GameState, b: Building) {
   const d = BUILD[b.type];
   const next = b.level + 1;
-  const cost = Math.round(d.money * LEVEL_COST[next] * costMult(s));
+  const cost = Math.round(d.money * LEVEL_MONEY[next] * costMult(s));
   if (s.money < cost) return `Pas assez d'argent (${fmt(cost)}).`;
   s.money -= cost; s.stats.expenses += cost;
   b.upgrading = true; b.work = 0;

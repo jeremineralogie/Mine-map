@@ -391,7 +391,7 @@ table.eco td.neg { color: #b42318; font-weight: 700; }
   .tv-close { margin-left: auto; }
   .tv-body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
   .tv-detail { border-left: 0; border-top: 1px solid #e3d8c4; max-height: 40vh; padding: 12px 14px; }
-  .tv-legend small { display: none; }
+  .tv-legend { display: none; }  /* téléphone : pas de légende, plus de place pour naviguer dans l'arbre */
 }
 
 #speedCycle { display: none; }
