@@ -53,9 +53,14 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
   fer lorrain, bauxite du Var, fluorine du Massif central, sel de Lorraine et du Jura, etc.).
 - Visibles grâce au **calque des gisements**, uniquement pour les ressources de l'époque en cours :
   les gisements des époques suivantes se découvrent en changeant d'époque.
-- **Richesse variable** selon le gisement.
-- Ne s'épuisent pas, mais leur **rendement baisse** avec l'extraction cumulée ;
-  certaines technologies relèvent le rendement.
+- Dessinés en **teinte fondue** dans le relief, aux contours irréguliers (sans déborder sur la mer) ;
+  la zone exploitable suit ce contour. Les noms peuvent être masqués (calque).
+- **Même rendement partout** dans un gisement, et **pas d'épuisement**. Une ferme rend 100 % sur
+  n'importe quelles terres. L'exhaure donne +30 % aux mines et carrières.
+- Des gisements réels ont été ajoutés autour des régions des rivaux pour qu'elles offrent toutes
+  le minimum vital (forêt, pierre, terres, argile) : Corbières, calcaire de la Clape, Sallèles-d'Aude,
+  salins de Sigean, Val de Saône, Gueugnon, Lons-le-Saunier, pierre de Bordeaux, Hunsrück, grès de Kordel,
+  potiers de Trèves, Volvic, Lezoux, etc.
 
 ## 5. Construction
 - Départ : un petit capital et un petit stock de matériaux dans un **entrepôt de départ**.
@@ -112,19 +117,53 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
 - **Événements historiques** datés, aux effets concrets et temporaires : remise sur les chantiers (autel des
   Trois Gaules), prix de rachat des villes en hausse (incendie de Lugdunum), production en hausse ou en baisse,
   croissance des villes, frontières fermées… Les effets en cours sont listés dans Économie et Objectifs.
-- Améliorations des bâtiments par niveaux ; un bâtiment en amélioration utilise d'abord sa propre production
+- Améliorations des bâtiments par niveaux (prix : ×2 au niveau 2, ×3 au niveau 3) ; un bâtiment en amélioration utilise d'abord sa propre production
   (bûches du camp de bûcherons, pierre de la carrière…) avant de recevoir des convois, avec des matériaux propres à chaque bâtiment (la carrière
   s'améliore avec de la pierre, la ferme et le camp de bûcherons avec du bois, la forge avec de la pierre
   et des briques, les mines avec du fer et de la pierre…).
 
-## 10. Interface
+## 10. Rivaux, diplomatie et guerre
+Nouvelles parties uniquement. Quatre grandes familles : **Éduens** (Augustodunum, fidèles),
+**Narbonne** (commerçants), **Burdigala** (opportunistes) et **Trévires** (guerriers, frontière du Rhin,
+peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré / Ambitieux
+(argent de départ et production −20 % / 0 / +20 % ; deux ou trois chantiers à la fois).
+
+- **Même économie que le joueur** : chaque rival a sa propre partie complète, simulée par le même moteur
+  (bâtiments et chantiers livrés par convois, routes, lignes, véhicules, ouvriers, besoins des villes,
+  pénuries, croissance, paliers, salaires et entretien). Départ identique au joueur (village de
+  80 habitants, entrepôt, argent et stock de départ).
+- **L'ordinateur** donne une fois par mois les ordres d'un joueur : il bâtit ce qui manque le plus
+  (nourriture, bois et pierre, puis biens du palier), va chercher un gisement même loin (route, village
+  pour les ouvriers), construit la matière première avant l'atelier qui la transforme, améliore ses
+  ateliers, crée ses lignes (ateliers → entrepôt, entrepôt → ateliers de transformation → entrepôt,
+  entrepôt → villes avec retour des restes) et ajuste ses véhicules selon le besoin réel.
+  Leurs véhicules ne sont pas affichés.
+- **Capitale selon les ressources** : sa région historique si elle offre forêt, pierre, terres et argile,
+  sinon la région de repli la mieux pourvue (jamais trop près du joueur ni d'un autre rival).
+- **Commerce** : Rome ne leur vend que bois, pierre et céréales ; le reste se produit ou s'achète à un
+  autre rival (prix +20 % et transport, livré au bout du trajet). Ils exportent leur surplus.
+- **Technologies** : un rival en découvre une chaque fois que le joueur en découvre une, choisie selon
+  ses gisements, ses besoins et son caractère (pas une copie de l'arbre du joueur).
+- **Équilibre visé** (vérifié sur 15 ans) : chaque rival reste entre 70 % et 130 % de la moyenne des rivaux.
+- **Territoires** : une seule zone par camp (rayon de main-d'œuvre des villes, bâtiments, routes) ;
+  impossible de construire chez un rival ou d'exploiter ses gisements sans alliance.
+- **Taverne et diplomatie** : relations, accord commercial, pacte de non-agression, alliance, cadeaux,
+  espionnage. Commerce à la taverne seulement si une **route** la relie à moins de 10 km d'une ville du rival ;
+  on n'achète que ce qu'il a en réserve.
+- **Guerre** : caserne (légionnaires, auxiliaires, mercenaires), armées visibles avec effectif et moral,
+  sièges. Une ville rivale vaincue : **conquête** (la ville et ses environs passent au joueur en état de
+  marche, avec routes, lignes et véhicules), **pillage** ou **tribut**. Un rival peut aussi prendre
+  ou piller une ville du joueur ; perdre la dernière ville = fin de partie.
+
+## 11. Interface
 - Ordinateur, tablette et téléphone (souris et tactile).
 - Sauvegarde automatique dans le navigateur + export / import de fichier.
+- Sur téléphone, l'arbre de recherche n'affiche pas de légende (plus de place pour naviguer).
 - Bâtiments et véhicules détaillés mais lisibles vus du dessus. Pas de musique pour l'instant.
 
-## 11. Feuille de route
-1. **Prototype (chapitre I)** : carte, gisements, routes, chantiers, production, lignes,
-   villes, recherche, objectifs, événements. ← *en cours*
-2. Équilibrage du chapitre I.
-3. Chapitre II (Moyen Âge) : barges et transport fluvial, ports.
-4. Chapitres III à V.
+## 12. Feuille de route
+1. Chapitre I (Antiquité romaine) : fait.
+2. Chapitre II (Gaule romaine) : fait.
+3. Rivaux, diplomatie et guerre : fait.
+4. Chapitre III (Moyen Âge) : à venir. ← *prochaine étape*
+5. Chapitres IV à VI.
