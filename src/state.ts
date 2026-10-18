@@ -161,6 +161,8 @@ export interface GameState {
   hadCity?: boolean;
   /** économie d'un rival (gérée par l'ordinateur) ; rival frontalier qui peut bâtir hors de Gaule */
   ai?: boolean; abroad?: boolean;
+  /** rival : marchandises achetées à un autre rival, en route vers son entrepôt */
+  inbound?: { r: ResId; q: number; day: number; from: string }[];
 }
 
 export const SAVE_KEY = 'mine-map-save-v1';

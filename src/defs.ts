@@ -82,17 +82,27 @@ const DEP_ROWS: DepRow[] = [
   ['bois', 'Brocéliande', -2.2, 48.0, 25, 18, 0.9], ['bois', 'Tronçais', 2.75, 46.65, 15, 15, 1.1],
   ['bois', 'Corse', 9.1, 42.2, 25, 40, 1.0], ['bois', 'Pays de Bray', 1.5, 49.45, 20, 15, 0.9],
   ['bois', 'Sologne', 1.9, 47.5, 35, 20, 0.9], ['bois', 'Forêt noire de Haguenau', 7.8, 48.85, 15, 10, 1.0],
+  ['bois', 'Corbières', 2.65, 43.0, 22, 15, 0.9], ['bois', 'Montagne Noire', 2.35, 43.45, 25, 12, 1.0], ['bois', 'Hunsrück', 7.0, 49.85, 25, 18, 1.1],
+  ['bois', 'Plateau de Langres', 5.15, 47.85, 20, 15, 1.0], ['bois', 'Forêt de Moulière', 0.45, 46.65, 12, 10, 0.9],
+  ['bois', 'Forêt de Senonches', 1.05, 48.55, 12, 10, 0.9], ['bois', 'Forêt de Bouconne', 1.2, 43.65, 10, 8, 0.9],
+  ['bois', 'Montagne de Reims', 4.0, 49.15, 15, 8, 1.0],
   // Pierre de taille (calcaires)
   ['pierre', 'Calcaire de Paris', 2.35, 48.85, 35, 30, 1.3], ['pierre', 'Pierre de Caen', -0.37, 49.18, 20, 15, 1.2],
   ['pierre', 'Pierre de Bourgogne', 4.7, 47.3, 40, 30, 1.1], ['pierre', 'Carrières de Vers (Gard)', 4.5, 43.95, 15, 15, 1.2],
   ['pierre', 'Pierre de Provence', 5.4, 43.6, 40, 25, 1.0], ['pierre', 'Pierre de Saintonge', -0.6, 45.75, 40, 30, 1.0],
   ['pierre', "Pierre d'Euville (Lorraine)", 5.6, 48.75, 25, 25, 1.0], ['pierre', 'Tuffeau de Loire', 0.5, 47.3, 40, 15, 1.0],
   ['pierre', 'Pierre du Quercy', 1.5, 44.5, 30, 25, 0.9], ['pierre', 'Pierre de Lens (Gard)', 4.2, 43.98, 10, 10, 1.1],
+  ['pierre', 'Calcaire de la Clape', 3.12, 43.16, 8, 8, 1.0], ['pierre', 'Pierre de Bordeaux (calcaire à astéries)', -0.35, 44.8, 15, 12, 1.0],
+  ['pierre', 'Grès rouge de Kordel (Trèves)', 6.63, 49.82, 10, 10, 1.0],
+  ['pierre', 'Pierre de Volvic', 3.04, 45.87, 10, 10, 1.1], ['pierre', 'Calcaire de Chailluz (Besançon)', 6.05, 47.28, 10, 10, 1.0],
+  ['pierre', 'Pierre de Courville (Reims)', 3.7, 49.27, 10, 8, 1.0],
   // Argile
   ['argile', 'Beauvaisis', 2.1, 49.4, 30, 20, 1.0], ['argile', 'Soufflenheim (Alsace)', 7.95, 48.83, 20, 15, 1.1],
   ['argile', 'Vallée du Rhône', 4.8, 44.9, 20, 50, 1.0], ['argile', 'Toulousain (brique rose)', 1.45, 43.6, 40, 30, 1.3],
   ['argile', 'Flandres', 3.0, 50.6, 40, 20, 1.0], ['argile', 'Sologne', 1.8, 47.6, 30, 20, 0.9],
   ['argile', 'La Graufesenque (Millau)', 3.08, 44.1, 15, 15, 1.2], ['argile', 'Charentes', -0.7, 45.3, 20, 20, 0.9],
+  ['argile', "Sallèles-d'Aude (amphores)", 2.95, 43.27, 10, 8, 1.1], ['argile', 'Gueugnon (ateliers gallo-romains)', 4.06, 46.6, 15, 15, 1.0],
+  ['argile', 'Ateliers de potiers de Trèves', 6.66, 49.74, 10, 8, 1.0], ['argile', 'Lezoux (sigillée)', 3.38, 45.83, 12, 10, 1.1],
   // Minerai de fer
   ['minerai_fer', 'Minette lorraine', 5.95, 49.3, 30, 40, 1.4], ['minerai_fer', 'Berry', 2.2, 47.0, 30, 25, 0.9],
   ['minerai_fer', 'Mine de Rancié (Ariège)', 1.5, 42.8, 25, 15, 1.0], ['minerai_fer', 'Normandie (May-sur-Orne)', -0.4, 49.0, 25, 15, 0.9],
@@ -106,6 +116,7 @@ const DEP_ROWS: DepRow[] = [
   ['sel', 'Saulnois (Lorraine)', 6.55, 48.82, 25, 20, 1.3], ['sel', 'Salins-les-Bains (Jura)', 5.88, 46.94, 15, 15, 1.1],
   ['sel', 'Salins de Peccais (Camargue)', 4.3, 43.5, 30, 15, 1.2], ['sel', 'Marais de Guérande', -2.45, 47.3, 15, 12, 1.1],
   ['sel', 'Salies-de-Béarn', -0.92, 43.47, 15, 10, 0.9], ['sel', 'Marais charentais', -1.2, 46.0, 20, 15, 1.0],
+  ['sel', 'Salins de Sigean', 3.0, 43.05, 12, 8, 1.0], ['sel', 'Lons-le-Saunier', 5.55, 46.67, 12, 10, 1.0],
   // Terres fertiles
   ['cereales', 'Beauce', 1.6, 48.2, 50, 35, 1.4], ['cereales', 'Brie', 3.1, 48.65, 35, 25, 1.3],
   ['cereales', 'Picardie', 2.6, 49.8, 60, 35, 1.3], ['cereales', 'Limagne', 3.2, 45.95, 20, 25, 1.2],
@@ -115,6 +126,8 @@ const DEP_ROWS: DepRow[] = [
   ['cereales', 'Poitou', 0.3, 46.6, 45, 35, 1.0], ['cereales', 'Bresse', 5.1, 46.4, 30, 30, 1.0],
   ['cereales', 'Languedoc', 3.6, 43.5, 50, 20, 0.9], ['cereales', 'Bretagne', -2.5, 48.2, 70, 30, 0.8],
   ['cereales', 'Vallée du Rhône', 4.8, 44.4, 15, 40, 1.0], ['cereales', 'Touraine', 0.7, 47.3, 35, 25, 1.0],
+  ['cereales', 'Val de Saône (Chalonnais)', 4.85, 46.8, 25, 25, 1.0], ['cereales', 'Narbonnais', 2.85, 43.2, 20, 12, 1.0],
+  ['cereales', 'Entre-deux-Mers', -0.2, 44.75, 20, 15, 1.0], ['cereales', 'Gutland de Bitburg', 6.5, 49.95, 20, 15, 1.0],
   // ---- Gaule romaine (chapitre II) ----
   // Vignobles
   ['vin', 'Côte de Bourgogne', 4.85, 47.1, 18, 40, 1.3], ['vin', 'Côtes du Rhône', 4.8, 44.3, 15, 35, 1.2],

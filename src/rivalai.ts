@@ -266,7 +266,8 @@ function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok'
       // trop loin de ses villes pour y trouver des ouvriers : il y fonde d'abord un village,
       // mais seulement quand sa capitale est assez grande pour fournir des colons et qu'il en a les moyens
       if (!cs.some(c => dist(c, p) <= workRange(c, eco) - 2)) {
-        if (Math.max(...cs.map(c => c.city!.pop)) < 300 || eco.money < 1500) continue;
+        // il préfère l'acheter à un rival qui en produit ; l'expédition lointaine, seulement s'il en a largement les moyens
+        if (Math.max(...cs.map(c => c.city!.pop)) < 300 || eco.money < 2500 || tradeable(s, f, r)) continue;
         for (let k = 0; k < 25; k++) {
           const a = Math.random() * 6.283, rr = 6 + Math.random() * 14, x = p.x + Math.cos(a) * rr, y = p.y + Math.sin(a) * rr;
           if (geo.waterDist(x, y) > WATER_RANGE || cs.some(c => dist(c, { x, y }) < 30)) continue;
@@ -311,7 +312,9 @@ function manageLines(f: Faction) {
       // deux lignes par ville : les céréales d'un côté, les autres marchandises de l'autre
       // (un chariot plein de blé que la ville a déjà ne bloque pas le bois et la pierre)
       const goods = [...new Set([...tierGoods(b.city.tier, eco.era), ...(TIERS[b.city.tier + 1] ? tierGoods(b.city.tier + 1, eco.era) : [])])];
-      for (const group of [['cereales'] as ResId[], goods.filter(r => r !== 'cereales')]) {
+      // ce qui manque le plus à la ville passe en tête du chargement (le chariot est plein avant la fin de la liste)
+      const fill = (r: ResId) => (b.city!.stock[r] ?? 0) / Math.max(0.05, cityNeeds(b)[r] ?? 0.05);
+      for (const group of [['cereales'] as ResId[], goods.filter(r => r !== 'cereales').sort((a, z) => fill(a) - fill(z))]) {
         const res = group.filter(r => goods.includes(r)); if (!res.length) continue;
         // le chariot revient déposer à l'entrepôt ce que la ville n'a pas pris, puis repart avec un chargement frais
         const l = lineOf(eco, x => x.stops.length === 3 && x.stops[0].bid === h.id && x.stops[1].bid === b.id && (x.stops[0].res[0] === 'cereales') === (res[0] === 'cereales'));
@@ -387,11 +390,49 @@ function manageStock(f: Faction, need: Stock) {
   if (room() < BUILD[h.type].storage * h.level * 0.2 && h.level < Math.min(BUILD[h.type].maxLevel, maxLevelAllowed(eco)) && !h.upgrading) upgrade(eco, h);
 }
 
+/** Commerce entre rivaux : il achète à un rival qui en a en trop ce qui manque à ses villes ou à ses ateliers.
+ *  Prix de base +20 %, plus le transport au kilomètre ; livré par la route au bout du temps de trajet. */
+const TRADE_KM = 0.02;
+/** Un autre rival (en paix avec lui) produit-il cette ressource ? */
+function tradeable(s: GameState, f: Faction, r: ResId) {
+  return (s.factions ?? []).some(o => o !== f && o.eco && !o.dead && !(o.foes ?? []).includes(f.id) && !(f.foes ?? []).includes(o.id)
+    && o.eco.buildings.some(b => b.built && BUILD[b.type].recipe?.out[r]));
+}
+function rivalTrade(s: GameState, f: Faction, need: Stock) {
+  const eco = f.eco!, h = hub(eco); if (!h) return;
+  // arrivages
+  for (const sh of (eco.inbound ?? []).filter(x => x.day <= s.day)) h.stock[sh.r] = (h.stock[sh.r] ?? 0) + sh.q;
+  eco.inbound = (eco.inbound ?? []).filter(x => x.day > s.day);
+  const coming = (r: ResId) => (eco.inbound ?? []).filter(x => x.r === r).reduce((a, x) => a + x.q, 0);
+  const wants = (Object.keys(RES) as ResId[]).filter(r => !ROME_SELLS.includes(r) && ((need[r] ?? 0) > 0 || inputsOf(eco, r) > 0));
+  for (const r of wants) {
+    // au moins un lot de 5 t : même un tout petit besoin (le sel d'un village qui devient bourg) se commande
+    const lack = Math.max(5, ((need[r] ?? 0) + inputsOf(eco, r)) * 3) - (h.stock[r] ?? 0) - coming(r);
+    if (lack < 1) continue;
+    const sellers = (s.factions ?? []).filter(o => o !== f && o.eco && !o.dead && !(o.foes ?? []).includes(f.id) && !(f.foes ?? []).includes(o.id))
+      .map(o => ({ o, oh: hub(o.eco!) })).filter((x): x is { o: Faction; oh: Building } => !!x.oh)
+      .sort((a, z) => dist(a.oh, h) - dist(z.oh, h));
+    for (const { o, oh } of sellers) {
+      const own = demand(o.eco!), keep = ((own[r] ?? 0) + inputsOf(o.eco!, r)) * 4 + 5;
+      const spare = Math.floor((oh.stock[r] ?? 0) - keep);
+      if (spare < 1) continue;
+      const d = dist(oh, h), price = RES[r].price * 1.2 + d * TRADE_KM * RES[r].price / 4 + d * TRADE_KM;
+      const q = Math.min(Math.ceil(lack), spare, Math.floor(eco.money * 0.3 / price));
+      if (q < 1) continue;
+      oh.stock[r]! -= q; eco.money -= q * price; eco.stats.expenses += q * price;
+      o.eco!.money += q * price; o.money = o.eco!.money; o.eco!.stats.income += q * price;
+      (eco.inbound ??= []).push({ r, q, day: s.day + Math.max(3, d / VEH.charrette.speed), from: o.id });
+      break;
+    }
+  }
+}
+
 /** Un mois de décisions pour un rival */
 export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   const eco = f.eco; if (!eco) return;
   eco.techs = f.techs ?? []; eco.era = s.era; eco.money = f.money;
   const need = demand(eco);
+  rivalTrade(s, f, need);
   manageStock(f, need);
   manageLines(f);
   manageVehicles(f);

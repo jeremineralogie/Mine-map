@@ -44,13 +44,22 @@ export function initRivals(s: GameState, geo: Geo, px: number, py: number) {
   s.factions = [];
   const taken: [number, number][] = [[px, py]];
   const alts = ALT_HOMES.slice();
+  // ressources à portée d'une capitale : distance au bord du gisement le plus proche (km)
+  const reach = (x: number, y: number, res: ResId) => Math.min(...geo.deposits.filter(d => d.res === res).map(d => Math.max(0, Math.hypot(d.x - x, d.y - y) - Math.min(d.rx, d.ry))));
+  const LIMITS: [ResId, number][] = [['bois', 35], ['pierre', 35], ['cereales', 35], ['argile', 50], ['sel', 90], ['minerai_fer', 110], ['plomb', 150]];
+  // le minimum vital (forêt, pierre, terres, argile) à portée, puis le reste
+  const vital = (x: number, y: number) => LIMITS.slice(0, 4).every(([r, l]) => reach(x, y, r) <= l);
+  const wealth = (x: number, y: number) => LIMITS.reduce((a, [r, l]) => a + Math.max(0, 1 - reach(x, y, r) / (l * 2)), 0) + (vital(x, y) ? 10 : 0);
+  const spaced = (x: number, y: number) => !taken.some(([tx, ty]) => Math.hypot(tx - x, ty - y) < (tx === px && ty === py ? 160 : 140));
+  // un rival qui déménage ne s'installe pas sur la région historique d'un autre
+  const others = (r: typeof RIVALS[number]) => RIVALS.filter(o => o !== r && !(s.factions ?? []).some(f => f.id === o.id)).map(o => geo.proj(o.home[0], o.home[1]));
   for (const r of RIVALS) {
     let home = geo.proj(r.home[0], r.home[1]), capital = r.capital;
-    // trop près du joueur ou d'un autre rival : on s'installe dans une autre région historique
-    if (taken.some(([x, y]) => Math.hypot(x - home[0], y - home[1]) < (x === px && y === py ? 160 : 140))) {
-      alts.sort((a, z) => score(z) - score(a));
-      const alt = alts.shift();
-      if (alt) { home = geo.proj(alt.home[0], alt.home[1]); capital = alt.capital; }
+    // sa région historique si elle offre le nécessaire et n'est pas trop près d'un autre ; sinon la région historique la mieux pourvue
+    if (!spaced(...home) || !vital(...home)) {
+      const best = alts.map(a => ({ a, p: geo.proj(a.home[0], a.home[1]) })).filter(o => spaced(...o.p) && others(r).every(([hx, hy]) => Math.hypot(hx - o.p[0], hy - o.p[1]) >= 140))
+        .sort((u, v) => wealth(...v.p) - wealth(...u.p))[0];
+      if (best && (!spaced(...home) || wealth(...best.p) > wealth(...home))) { home = best.p; capital = best.a.capital; alts.splice(alts.indexOf(best.a), 1); }
     }
     taken.push(home);
     const f: Faction = { id: r.id, name: r.name, short: r.short, capital, color: r.color, character: r.character, frontier: r.frontier, money: 0, b: [], roads: [], drive: 1, techs: [] };
@@ -60,10 +69,6 @@ export function initRivals(s: GameState, geo: Geo, px: number, py: number) {
     s.factions.push(f);
     initPlacer(s, geo);
     foundHome(s, geo, f, home[0], home[1], capital);
-  }
-  function score(a: { home: [number, number] }) {
-    const [x, y] = geo.proj(a.home[0], a.home[1]);
-    return Math.min(...taken.map(([tx, ty]) => Math.hypot(tx - x, ty - y)));
   }
 }
 
@@ -82,13 +87,18 @@ function initPlacer(s: GameState, geo: Geo) {
         if (d.res !== res || RES[d.res].era > s.era || s.buildings.some(b => b.dep === d.id)) continue;
         const own = depOwner(s, d.id); if (own && own !== f) continue;
         if (f.b.filter(b => b.dep === d.id).length >= 3) continue;
-        for (let k = 0; k < 12; k++) {
-          const a = Math.random() * Math.PI * 2, r = Math.random() * 0.55;
+        // l'emplacement libre le plus proche de ses villes, n'importe où dans le gisement (une grande forêt a une lisière proche)
+        const cities = f.b.filter(b => b.type === 'village');
+        let best: { x: number; y: number; dd: number } | null = null;
+        for (let k = 0; k < 30; k++) {
+          const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 0.9;
           const x = d.x + Math.cos(a) * d.rx * r, y = d.y + Math.sin(a) * d.ry * r;
+          if (geo.richness(res, x, y).dep?.id !== d.id) continue;
           if (!free(f, x, y) || f.b.some(b => Math.hypot(b.x - x, b.y - y) < 3)) continue;
-          out.push({ x, y, dep: d.id, name: d.name });
-          break;
+          const dd = Math.min(Infinity, ...cities.map(c => Math.hypot(c.x - x, c.y - y)));
+          if (!best || dd < best.dd) best = { x, y, dd };
         }
+        if (best) out.push({ x: best.x, y: best.y, dep: d.id, name: d.name });
       }
       return out;
     },
