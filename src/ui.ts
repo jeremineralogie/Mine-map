@@ -1357,7 +1357,7 @@ export class Game {
       <button class="primary" data-act="new">Recommencer la partie</button>
       <button data-act="save">Sauvegarder maintenant</button>
       <button data-act="export">Exporter la sauvegarde (fichier)</button>
-      <button data-act="import">Importer une sauvegarde</button></div>
+      <button data-act="loadfile">Importer une sauvegarde</button></div>
       <h3>Commandes</h3><ul class="log">
       <li>Glisser : déplacer la carte · molette ou pincement : zoom</li>
       <li>Espace : pause · 1 à 4 : vitesse · Échap : annuler</li>
@@ -1467,8 +1467,7 @@ export class Game {
         a.download = `mine-map-${year(s)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         break;
       }
-      case 'importmer': { const b = getB(s, id)!; const err = buySea(s, b, t.dataset.p!, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? 'Cargaison livrée au port.', err ? 'bad' : 'good'); break; }
-      case 'import': {
+      case 'loadfile': {
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
         inp.onchange = async () => {
           try { const st = JSON.parse(await inp.files![0].text()) as GameState; if (!st.version || !st.buildings) throw new Error(); this.load(st); this.closePanel(); this.toast('Sauvegarde chargée.', 'good'); }

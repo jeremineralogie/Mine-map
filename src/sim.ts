@@ -92,8 +92,8 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
   const r: PlaceCheck = { ok: true, rich: 1 };
   if (d.deposit) {
     const { dep } = geo.richness(d.deposit, x, y);
-    // terres fertiles : plein rendement ; terres ordinaires : rendement réduit
-    if (d.deposit === 'cereales') { r.rich = dep ? 1 : 0.45; r.depName = dep?.name ?? 'Terres ordinaires'; }
+    // une ferme rend partout à 100 %, sur des terres fertiles comme ordinaires
+    if (d.deposit === 'cereales') { r.rich = 1; r.depName = dep?.name ?? 'Terres ordinaires'; }
     else if (!dep) return { ok: false, reason: `Il faut un gisement de ${RES[d.deposit].name.toLowerCase()} (calque Gisements).` };
     else if (depOwner(s, dep.id) && !depOwner(s, dep.id)!.alliance) return { ok: false, reason: `Ce gisement est déjà exploité par les ${depOwner(s, dep.id)!.name}.` };
     else { r.rich = 1; r.depName = dep.name; } // même rendement partout dans le gisement
@@ -157,7 +157,7 @@ export function place(s: GameState, geo: Geo, type: BType, x: number, y: number,
   if (!free) { const m = buildMoney(s, type); s.money -= m; s.stats.expenses += m; b.need = scaleStock(d.cost, costMult(s)); }
   if (d.deposit) {
     const { dep } = geo.richness(d.deposit, x, y);
-    b.rich = dep || d.deposit !== 'cereales' ? 1 : 0.45; b.dep = dep ? dep.id : null;
+    b.rich = 1; b.dep = dep ? dep.id : null;
   }
   if (free) { b.built = true; b.need = {}; }
   if (d.coast) b.sea = geo.seaOf(x, y);
@@ -553,8 +553,8 @@ export class Sim {
 
   // ----- Production -----
   depositFactor(b: Building) {
-    // pas d'épuisement et même rendement partout dans un gisement ; seules les terres ordinaires (hors gisement) rendent moins
-    if (b.dep === null) return b.rich;
+    // pas d'épuisement, même rendement partout (fermes comprises, sur toutes les terres)
+    if (b.dep === null) return 1;
     const exhaure = this.s.techs.includes('exhaure');
     return exhaure && BUILD[b.type].deposit !== 'cereales' && BUILD[b.type].deposit !== 'bois' ? 1.3 : 1;
   }

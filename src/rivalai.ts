@@ -193,7 +193,7 @@ function capacity(eco: GameState): Stock {
   const cap: Stock = {};
   for (const b of eco.buildings) {
     const rc = BUILD[b.type].recipe; if (!rc) continue;
-    for (const [r, q] of Object.entries(rc.out) as [ResId, number][]) cap[r] = (cap[r] ?? 0) + q * LEVEL_MULT[b.level] * (b.dep === null && BUILD[b.type].deposit ? b.rich : 1);
+    for (const [r, q] of Object.entries(rc.out) as [ResId, number][]) cap[r] = (cap[r] ?? 0) + q * LEVEL_MULT[b.level];
   }
   return cap;
 }
