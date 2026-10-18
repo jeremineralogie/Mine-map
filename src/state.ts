@@ -91,7 +91,7 @@ export interface Vehicle {
   income: number;        // recettes cumulées
 }
 
-/** Bâtiment d'un rival (simulation simplifiée, hors de l'économie du joueur) */
+/** Vue simplifiée d'un bâtiment rival (carte, territoire, diplomatie, guerre) */
 export interface RBuilding {
   id: number; type: BType; x: number; y: number; name: string; pop?: number; tier?: number; dep?: number | null;
   /** richesse du gisement exploité, jour de fin du chantier */
@@ -116,6 +116,8 @@ export interface Faction {
   war?: boolean; foes?: string[]; warSince?: number;
   /** plus aucune ville : soumis au joueur ou détruit */
   dead?: boolean;
+  /** économie complète du rival (bâtiments, routes, lignes, véhicules), simulée comme celle du joueur */
+  eco?: GameState;
 }
 /** Armée sur la carte (joueur : owner = 'player') */
 export interface Army {
@@ -157,6 +159,8 @@ export interface GameState {
   armies?: Army[];
   tributes?: { f: string; amount: number; until: number }[];
   hadCity?: boolean;
+  /** économie d'un rival (gérée par l'ordinateur) ; rival frontalier qui peut bâtir hors de Gaule */
+  ai?: boolean; abroad?: boolean;
 }
 
 export const SAVE_KEY = 'mine-map-save-v1';

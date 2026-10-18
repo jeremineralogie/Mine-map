@@ -3,6 +3,7 @@ import { BUILD, PLAYER_COLOR, type ResId } from './defs';
 import { changeRel, relLabel, relOf, takeFromStores, storeTotal } from './diplomacy';
 import type { Geo } from './geo';
 import { factionPop, territoryRadius } from './rivals';
+import { ecoBuilding, syncView, transfer } from './rivalai';
 import type { Army, Building, Faction, GameState, RBuilding } from './state';
 
 const YEAR = 365.25;
@@ -182,12 +183,19 @@ function siege(s: GameState, geo: Geo, a: Army, n: WarNotify, dt: number) {
   }
 }
 
+/** Une ville rivale perd une partie de ses habitants (pillage, conquête) */
+function shrink(s: GameState, f: Faction, c: RBuilding, k: number) {
+  const b = ecoBuilding(f, c.id); if (b?.city) b.city.pop *= k;
+  c.pop = (c.pop ?? 0) * k;
+  void s;
+}
+
 /** Le joueur (ou un rival allié) prend une ville rivale */
 function victory(s: GameState, geo: Geo, a: Army, f: Faction, c: RBuilding, n: WarNotify) {
   if (a.owner !== PLAYER) {
     // guerre entre rivaux : le vainqueur pille la ville
     const w = s.factions!.find(x => x.id === a.owner);
-    if (w) { const loot = Math.min(f.money, (c.pop ?? 0) * 1.5); f.money -= loot; w.money += loot; c.pop = (c.pop ?? 0) * 0.85; }
+    if (w) { const loot = Math.min(f.money, (c.pop ?? 0) * 1.5); f.money -= loot; w.money += loot; shrink(s, f, c, 0.85); }
     s.log.unshift({ day: s.day, text: `Les ${ownerName(s, a.owner)} pillent ${c.name} (${f.short}).` });
     return;
   }
@@ -195,28 +203,25 @@ function victory(s: GameState, geo: Geo, a: Army, f: Faction, c: RBuilding, n: W
   const tribute = Math.round(Math.max(60, factionPop(f) * 0.05));
   const conquer = () => {
     const r = territoryRadius(c);
-    const taken = f.b.filter(b => b === c || (b.type !== 'village' && Math.hypot(b.x - c.x, b.y - c.y) <= r));
-    for (const b of taken) {
-      f.b = f.b.filter(x => x !== b);
-      const nb: Building = { id: b.id, type: b.type, x: b.x, y: b.y, name: b.name, level: 1, built: true, need: {}, incoming: {}, work: 0, upgrading: false, stock: {}, acc: 0, staff: 0, rich: 1, dep: b.dep ?? null, node: null, produced: 0 };
-      if (b.type === 'village') { const pop = (b.pop ?? 100) * 0.85; nb.city = { pop, stock: { cereales: pop / 100 * 3 }, sat: 1, foodSat: 1, tier: Math.min(b.tier ?? 0, 3) }; }
-      if (BUILD[b.type].deposit === 'cereales' && b.dep == null) nb.rich = 0.45;
-      s.buildings.push(nb);
-    }
-    f.roads = f.roads.filter(([x1, y1, x2, y2]) => !taken.some(b => (b.x === x1 && b.y === y1) || (b.x === x2 && b.y === y2)));
+    // la ville et tout ce qui l'entoure (sauf les autres villes) passent au joueur, en état de marche :
+    // bâtiments, routes entre eux, lignes qui ne desservent qu'eux et leurs véhicules
+    const taken = f.b.filter(b => b.id === c.id || (b.type !== 'village' && Math.hypot(b.x - c.x, b.y - c.y) <= r));
+    shrink(s, f, c, 0.85);
+    if (f.eco) transfer(f.eco, s, new Set(taken.map(b => b.id)));
+    syncView(s, f);
     changeRel(f, -30); for (const o of s.factions ?? []) if (o !== f) changeRel(o, -8);
     s.log.unshift({ day: s.day, text: `Tu conquiers ${c.name} et ses environs (${taken.length} bâtiment(s)).` });
     n.toast(`${c.name} est à toi ! Relie-la par la route à ton réseau.`, 'good');
     if (!rivalCities(f).length) {
       // plus de ville : le rival se soumet, ses derniers bâtiments sont abandonnés
-      makePeace(s, f); f.dead = true; f.b = []; f.roads = []; f.trade = false; f.alliance = false;
+      makePeace(s, f); f.dead = true; f.b = []; f.roads = []; f.trade = false; f.alliance = false; f.eco = undefined;
       s.armies = armies(s).filter(x => x.owner !== f.id);
       for (const o of s.factions ?? []) o.foes = (o.foes ?? []).filter(id => id !== f.id);
       n.event(`Les ${f.name} se soumettent`, 'Ils n\'ont plus aucune ville : leurs terres sont désormais libres.');
     }
   };
   const pillage = () => {
-    s.money += loot; s.stats.income += loot; f.money = Math.max(0, f.money - loot); c.pop = (c.pop ?? 0) * 0.8;
+    s.money += loot; s.stats.income += loot; f.money = Math.max(0, f.money - loot); shrink(s, f, c, 0.8);
     changeRel(f, -20);
     s.log.unshift({ day: s.day, text: `Tu pilles ${c.name} : ${loot} sesterces.` });
   };
@@ -237,14 +242,10 @@ function defeat(s: GameState, geo: Geo, a: Army, c: Building, n: WarNotify) {
   const conquer = s.difficulty === 'ambitieux' || relLabel(f).label === 'Hostile';
   const r = 18 + 8 * c.city!.tier;
   if (conquer) {
-    const taken = s.buildings.filter(b => (b === c || Math.hypot(b.x - c.x, b.y - c.y) <= r) && !b.partner && b.type !== 'comptoir' && !BUILD[b.type].wonder);
-    for (const b of taken) {
-      s.buildings = s.buildings.filter(x => x !== b);
-      if (b.node !== null) { const nd = s.nodes.find(x => x.id === b.node); if (nd) delete nd.b; }
-      for (const l of s.lines) l.stops = l.stops.filter(st => st.bid !== b.id);
-      f.b.push({ id: b.id, type: b.type, x: b.x, y: b.y, name: b.name, pop: b.city?.pop, tier: b.city?.tier, dep: b.dep });
-    }
-    s.vehicles = s.vehicles.filter(v => !taken.some(b => b.id === v.at));
+    const taken = s.buildings.filter(b => (b === c || (!b.city && Math.hypot(b.x - c.x, b.y - c.y) <= r)) && !b.partner && b.type !== 'comptoir' && !BUILD[b.type].wonder);
+    // le rival récupère la ville et ses environs en état de marche (routes, lignes, véhicules)
+    if (f.eco) transfer(s, f.eco, new Set(taken.map(b => b.id)));
+    syncView(s, f);
     // défaite totale : la dernière ville vient de tomber
     if (!playerCities(s).length) { s.over = true; n.gameOver(`${c.name}, ta dernière ville, est tombée aux mains des ${f.name}. Tes rivaux se partagent la province.`); return; }
     n.event(`${c.name} est tombée !`, `Les ${f.name} ont pris la ville et ${taken.length - 1} bâtiment(s) autour. Lève une armée pour la reprendre.`);

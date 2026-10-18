@@ -1,6 +1,7 @@
 // Diplomatie avec les rivaux : relations, traités, cadeaux, espionnage, commerce par la taverne.
 import { BUILD, RES, TIERS, TIER_NEEDS_2, type ResId } from './defs';
 import { factionPop, territoryRadius } from './rivals';
+import { ecoAdd, ecoTake } from './rivalai';
 import type { Building, Faction, GameState } from './state';
 
 type Char = 'fidele' | 'commercant' | 'opportuniste' | 'guerrier';
@@ -140,7 +141,7 @@ export function buyFromRival(s: GameState, b: Building, r: ResId, qty: number): 
   const cost = rivalImportPrice(f, r) * qty;
   if (s.money < cost) return 'Pas assez d\'argent.';
   s.money -= cost; s.stats.expenses += cost; f.money += cost;
-  f.stock![r] = (f.stock![r] ?? 0) - qty;
+  ecoTake(f, r, qty);
   b.stock[r] = (b.stock[r] ?? 0) + qty;
   changeRel(f, qty * 0.03);
   return null;
@@ -158,7 +159,7 @@ export function tavernSell(s: GameState, b: Building, r: ResId, qty: number) {
   const gain = rivalPrice(f, r) * qty;
   s.money += gain; s.stats.income += gain; f.money = Math.max(0, f.money - gain);
   // la marchandise rejoint ses réserves
-  f.stock ??= {}; f.stock[r] = (f.stock[r] ?? 0) + qty;
+  ecoAdd(f, r, qty);
   const k = 'riv:' + f.id;
   s.stats.soldMonth[k] = (s.stats.soldMonth[k] ?? 0) + qty; s.stats.sold[k] = (s.stats.sold[k] ?? 0) + qty;
   changeRel(f, qty * 0.05 * (ch(f) === 'commercant' ? 1.5 : 1));

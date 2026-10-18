@@ -8,7 +8,7 @@ import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, DEP_COLOR, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
-import { rivalWorkRange } from './rivaleco';
+import { rivalWorkRange } from './rivalai';
 import { MERC, PLAYER, RECRUIT, declareWar, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
 import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction, linkedTraders, TRADE_LINK_KM } from './diplomacy';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';

@@ -45,18 +45,19 @@ export function removeEdge(s: GameState, id: number) {
 export function roadKm(s: GameState) { return s.edges.reduce((t, e) => t + e.len, 0); }
 
 // ---- Graphe et plus court chemin (en temps de trajet) ----
-let adjCache: Map<number, { to: number; e: Edge }[]> | null = null;
-let adjOwner: GameState | null = null;
-export function invalidate() { adjCache = null; }
+// un graphe par économie (joueur et chaque rival), reconstruit seulement après une modification du réseau
+let adjCache = new WeakMap<GameState, { n: number; m: Map<number, { to: number; e: Edge }[]> }>();
+export function invalidate() { adjCache = new WeakMap(); }
 function adj(s: GameState) {
-  if (adjCache && adjOwner === s) return adjCache;
+  const c = adjCache.get(s);
+  if (c && c.n === s.edges.length) return c.m;
   const m = new Map<number, { to: number; e: Edge }[]>();
   for (const e of s.edges) {
     if (!m.has(e.a)) m.set(e.a, []);
     if (!m.has(e.b)) m.set(e.b, []);
     m.get(e.a)!.push({ to: e.b, e }); m.get(e.b)!.push({ to: e.a, e });
   }
-  adjCache = m; adjOwner = s;
+  adjCache.set(s, { n: s.edges.length, m });
   return m;
 }
 

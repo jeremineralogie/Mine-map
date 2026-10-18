@@ -8,6 +8,7 @@ import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
 import { depOwner, monthlyRivals, rivalAt, rivalTooClose } from './rivals';
 import { monthlyWar, warStep } from './war';
+import { stepRivals } from './rivalai';
 import { monthlyDiplomacy, tavernAccepts, tavernSell, tradeFaction } from './diplomacy';
 import { addFlow, cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
 
@@ -77,7 +78,7 @@ export function hasWater(s: GameState, geo: Geo, x: number, y: number) {
 
 export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: number, free = false): PlaceCheck {
   const d = BUILD[type];
-  if (!geo.isFrance(x, y)) return { ok: false, reason: 'Il faut construire en France, sur la terre ferme.' };
+  if (!geo.isFrance(x, y) && !(s.abroad && geo.maskAt(x, y) === 2)) return { ok: false, reason: 'Il faut construire en France, sur la terre ferme.' };
   if (d.site) {
     const [sx, sy] = geo.proj(d.site[0], d.site[1]);
     if (Math.hypot(sx - x, sy - y) > 6) return { ok: false, reason: 'Ce monument doit être bâti sur son site historique (marqué sur la carte).' };
@@ -450,7 +451,7 @@ export class Sim {
     this.production(dtDays);
     this.consumption(dtDays);
     this.vehicles(dtDays);
-    warStep(s, this.geo, dtDays, this.notify);
+    if (!s.ai) { warStep(s, this.geo, dtDays, this.notify); stepRivals(s, this.geo, dtDays); }
     this.dispatchTimer -= dtDays;
     if (this.dispatchTimer <= 0) { this.dispatchTimer = 1; this.dispatchConvoys(); }
     if (Math.floor(s.day / MONTH) !== m0) this.monthly();
@@ -831,6 +832,8 @@ export class Sim {
     s.ledger.push({ month: Math.floor(s.day / MONTH), income: s.stats.income, expenses: s.stats.expenses });
     if (s.ledger.length > 120) s.ledger.shift();
 
+    // économie d'un rival : l'ordinateur décide depuis monthlyRivals, pas d'objectifs ni d'événements
+    if (s.ai) return;
     this.objectives();
     monthlyRivals(s, this.geo);
     monthlyDiplomacy(s, this.notify);
