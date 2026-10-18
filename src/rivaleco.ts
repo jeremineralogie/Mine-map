@@ -20,17 +20,10 @@ export function rivalStart(s: GameState, f: Faction) {
   f.money = Math.round(START_MONEY * diffMult(s));
   f.stock = { ...START_STOCK };
 }
-/** Repères du joueur : un rival ne le dépasse jamais de beaucoup (selon la difficulté) */
-const playerPop = (s: GameState) => s.buildings.reduce((a, b) => a + (b.city && b.built ? b.city.pop : 0), 0);
-const playerWorkshops = (s: GameState) => s.buildings.filter(b => !b.partner && BUILD[b.type].recipe).reduce((a, b) => a + b.level, 0);
-const playerCities = (s: GameState) => s.buildings.filter(b => b.city).length;
-/** Population maximale d'un rival : celle du joueur × difficulté, plus une petite avance */
-export const rivalPopCap = (s: GameState) => playerPop(s) * diffMult(s) + 300;
-/** Ateliers maximum (niveaux compris) : ceux du joueur × difficulté, plus deux */
-const rivalWorkshopCap = (s: GameState) => Math.floor(playerWorkshops(s) * diffMult(s)) + 2;
-const workshopCount = (f: Faction) => f.b.filter(b => BUILD[b.type].recipe).reduce((a, b) => a + (b.level ?? 1), 0);
 /** Comme le joueur : chaque atelier a son chariot (achat et entretien) et sa route (au kilomètre) */
 const CART = VEH.charrette;
+/** Ce que les marchands romains vendent aux rivaux */
+const ROME_SELLS: ResId[] = ['cereales', 'bois', 'pierre'];
 export const isReady = (s: GameState, b: RBuilding) => !b.ready || b.ready <= s.day;
 export const rivalCities = (f: Faction) => f.b.filter(b => b.type === 'village');
 const hubs = (f: Faction) => f.b.filter(b => b.type === 'village' || b.type === 'entrepot');
@@ -109,8 +102,6 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   // comme une ville du joueur : elle doit recevoir au moins ce qu'elle mange (production ou achats)
   const supplied = (made.cereales ?? 0) + (bought.cereales ?? 0) >= foodNeed * 0.98;
   const reserveOk = foodNeed <= 0 || (st.cereales ?? 0) / foodNeed >= RESERVE_TO_GROW;
-  // plafond : il ne dépasse pas le joueur de plus que sa difficulté ne le permet
-  const capped = cities.reduce((a, c) => a + (c.pop ?? 0), 0) >= rivalPopCap(s);
   cities.forEach((c, i) => {
     const n = needs[i]; let satSum = 0, k = 0;
     for (const [r, q] of Object.entries(n) as [ResId, number][]) {
@@ -119,17 +110,19 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
     }
     const foodSat = share.cereales ?? 1, sat = k ? satSum / k : 1;
     c.modern = s.era >= 2 && Object.keys(TIER_NEEDS_2[c.tier ?? 0] ?? {}).some(r => (share[r as ResId] ?? 0) > 0);
-    c.growing = foodSat >= 0.98 && supplied && reserveOk && !capped;
+    c.growing = foodSat >= 0.98 && supplied && reserveOk;
     c.short = (Object.keys(n) as ResId[]).filter(r => (share[r] ?? 1) < 0.98);
     if (c.growing) {
       let rate = (0.012 + 0.03 * sat) * growthMult;
       const tier = c.tier ?? 0, next = TIERS[tier + 1];
       if (next && (c.pop ?? 0) * (1 + rate) >= next.minPop) {
-        // passer au palier suivant demande d'avoir déjà ses nouveaux biens en réserve
+        // passer au palier suivant demande de recevoir déjà régulièrement ses nouveaux biens
+        // (au moins la moitié de ce que le palier demandera), produits ou achetés à un producteur
         const cur = tierGoods(s, tier), fresh = tierGoods(s, tier + 1).filter(r => !cur.includes(r));
-        const blocked = fresh.filter(r => (st[r] ?? 0) <= 0);
+        const nextNeed = (r: ResId) => ((next.needs[r] ?? 0) + (s.era >= 2 ? TIER_NEEDS_2[tier + 1]?.[r] ?? 0 : 0)) * (c.pop ?? 0) / 100;
+        const blocked = fresh.filter(r => (st[r] ?? 0) <= 0 || (made[r] ?? 0) + (bought[r] ?? 0) < nextNeed(r) * 0.5);
         const allowed = tier + 1 < 4 || (f.techs ?? []).includes('capitales');
-        if (!allowed || blocked.length) { rate = 0; c.pop = Math.min(c.pop ?? 0, next.minPop - 1); c.short = [...new Set([...c.short, ...blocked])]; }
+        if (!allowed || blocked.length) { rate = 0; c.growing = false; c.pop = Math.min(c.pop ?? 0, next.minPop - 1); c.short = [...new Set([...c.short, ...blocked])]; }
       }
       c.pop = (c.pop ?? 0) * (1 + rate);
     } else if (foodSat < 0.98) {
@@ -238,7 +231,14 @@ function tryBuild(s: GameState, geo: Geo, f: Faction, r: ResId, depth = 0): 'ok'
       }
     } else {
       // atelier de transformation : seulement s'il produit lui-même ses matières (pas d'atelier nourri d'importations)
-      if ((Object.keys(d.recipe!.in) as ResId[]).some(r => !f.b.some(b => BUILD[b.type].deposit && BUILD[b.type].recipe?.out[r]))) continue;
+      // (les biens de base — bois, pierre, céréales — peuvent s'acheter à Rome)
+      const missing = (Object.keys(d.recipe!.in) as ResId[]).find(r => !ROME_SELLS.includes(r) && !f.b.some(b => BUILD[b.type].recipe?.out[r]));
+      if (missing) {
+        // il commence par la matière première (l'argilière avant la tuilerie, la mine avant le fourneau)
+        const sub = depth < 2 ? tryBuild(s, geo, f, missing, depth + 1) : 'none';
+        if (sub === 'ok' || sub === 'wait') return sub;
+        continue;
+      }
       // près d'une ville, avec de l'eau s'il le faut
       const c = [...cities].sort((a, z) => (z.pop ?? 0) - (a.pop ?? 0))[0];
       const p = c && placer.spot(f, c, !!d.needsWater);
@@ -264,7 +264,7 @@ function tryBuild(s: GameState, geo: Geo, f: Faction, r: ResId, depth = 0): 'ok'
     if (ok === false) return 'wait';
     if (ok !== true) {
       // un matériau manque : il bâtit de quoi le produire, sinon il devra l'acheter
-      const sub = depth < 1 ? tryBuild(s, geo, f, ok, depth + 1) : 'none';
+      const sub = depth < 2 ? tryBuild(s, geo, f, ok, depth + 1) : 'none';
       return sub === 'ok' ? 'ok' : sub === 'wait' ? 'wait' : { lack: ok };
     }
     pay(f, t); f.money -= transport;
@@ -278,10 +278,10 @@ function tryBuild(s: GameState, geo: Geo, f: Faction, r: ResId, depth = 0): 'ok'
 }
 
 /** Ressource introuvable chez lui : il l'achète (aux autres rivaux, sinon à Rome) */
-function buy(s: GameState, f: Faction, r: ResId, total: Stock) {
+function buy(s: GameState, f: Faction, r: ResId, total: Stock): number {
   const flow = (total[r] ?? 0) * 1.05 + inputNeed(f, r) - (f.made?.[r] ?? 0);
   const want = Math.max(Math.max(2, (total[r] ?? 0) * 3 + inputNeed(f, r) * 2) - (f.stock?.[r] ?? 0), flow);
-  if (want <= 0) return;
+  if (want <= 0) return 1;
   let got = 0; f.bought ??= {};
   // un autre rival en a de trop : il le lui vend
   for (const o of s.factions ?? []) {
@@ -294,11 +294,14 @@ function buy(s: GameState, f: Faction, r: ResId, total: Stock) {
     if (q < 1) continue;
     o.stock![r]! -= q; f.stock![r] = (f.stock![r] ?? 0) + q; f.money -= q * price; o.money += q * price; got += q;
     f.bought![r] = (f.bought![r] ?? 0) + q;
-    if (got >= want) return;
+    if (got >= want) return got;
   }
-  // le reste chez les marchands romains, deux fois plus cher (comme le joueur)
+  // le reste chez les marchands romains, deux fois plus cher, mais seulement les biens de base :
+  // sel, tuiles, outils, plomb… doivent être produits (par lui ou par un autre)
+  if (!ROME_SELLS.includes(r)) return got;
   const price = RES[r].price * IMPORT_MULT, q = Math.min(want - got, Math.floor(f.money * 0.3 / price));
-  if (q >= 1) { f.stock![r] = (f.stock![r] ?? 0) + q; f.money -= q * price; f.bought![r] = (f.bought![r] ?? 0) + q; }
+  if (q >= 1) { f.stock![r] = (f.stock![r] ?? 0) + q; f.money -= q * price; f.bought![r] = (f.bought![r] ?? 0) + q; got += q; }
+  return got;
 }
 
 /** Premières décisions d'un rival qui s'installe */
@@ -308,8 +311,7 @@ export function rivalKickoff(s: GameState, geo: Geo, f: Faction) {
   decide(s, geo, f, total);
 }
 function decide(s: GameState, geo: Geo, f: Faction, total: Stock) {
-  // pas plus d'ateliers que le joueur (selon la difficulté) : au-delà, il achète ce qui manque
-  const builds = workshopCount(f) >= rivalWorkshopCap(s) ? 0 : s.difficulty === 'ambitieux' ? 2 : 1;
+  const builds = s.difficulty === 'ambitieux' ? 2 : 1;
   let done = 0;
   for (const r of shortages(s, f, total)) {
     // chantiers du mois épuisés : il comble au moins ce qui manque à ses villes en l'achetant
@@ -323,11 +325,16 @@ function decide(s: GameState, geo: Geo, f: Faction, total: Stock) {
       if (tryBuild(s, geo, f, r) === 'ok') done++;
       continue;
     }
-    // aucun gisement à portée : il achète, ou part s'installer près d'un gisement libre (selon son caractère)
-    const settler = f.character === 'guerrier' || f.character === 'opportuniste' || f.money < RES[r].price * IMPORT_MULT * 3;
+    // aucun gisement à portée : il achète (selon son caractère), et si personne ne lui en vend,
+    // il part s'installer près d'un gisement libre
+    const settler = f.character === 'guerrier' || f.character === 'opportuniste';
+    if (!settler && buy(s, f, r, total) > 0) continue;
     const capital = rivalCities(f)[0];
-    const dep = BUILD[producersOf(s, f, r)[0]]?.deposit;
-    if (settler && dep && placer && capital && (capital.pop ?? 0) >= 300 && f.money >= BUILD.village.money + 200 && rivalCities(f).length < Math.min(6, playerCities(s) + 1)) {
+    const prod = producersOf(s, f, r)[0];
+    // le gisement à rejoindre : celui de la ressource, ou de la matière qui lui manque pour la fabriquer
+    const dep = prod && (BUILD[prod].deposit ?? (Object.keys(BUILD[prod].recipe!.in) as ResId[])
+      .filter(i => !ROME_SELLS.includes(i) && !f.b.some(b => BUILD[b.type].recipe?.out[i])).map(i => BUILD[producersOf(s, f, i)[0]]?.deposit).find(Boolean));
+    if (dep && placer && capital && (capital.pop ?? 0) >= 300 && f.money >= BUILD.village.money + 200 && rivalCities(f).length < 6) {
       const target = placer.freeDeposits(f, dep, 220)[0];
       if (target && placer.foundCity(f, target)) { f.money -= BUILD.village.money; done++; continue; }
     }
@@ -335,7 +342,7 @@ function decide(s: GameState, geo: Geo, f: Faction, total: Stock) {
   }
   // nouvelles villes : quand les villes existantes sont prospères
   const cities = rivalCities(f), big = cities.reduce((a, c) => Math.max(a, c.pop ?? 0), 0);
-  if (placer && cities.length < Math.min(6, playerCities(s) + 1) && big >= 350 * cities.length && cities.every(c => c.growing) && f.money >= BUILD.village.money + 300 && Math.random() < 0.25) {
+  if (placer && cities.length < 6 && big >= 350 * cities.length && cities.every(c => c.growing) && f.money >= BUILD.village.money + 300 && Math.random() < 0.25) {
     if (placer.foundCity(f)) f.money -= BUILD.village.money;
   }
   // un entrepôt près de chaque ville d'au moins un bourg

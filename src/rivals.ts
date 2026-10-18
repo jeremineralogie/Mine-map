@@ -1,7 +1,7 @@
 // Rivaux : grandes familles et cités romaines gérées par l'ordinateur.
 // Simulation volontairement simplifiée : villes, ateliers sur les gisements, routes dessinées,
 // croissance réglée sur celle du joueur selon la difficulté.
-import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, RES, RIVALS, TECHS, WATER_RANGE, type BType, type ResId } from './defs';
+import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, RES, RIVALS, TECHS, TIERS, WATER_RANGE, type BType, type ResId } from './defs';
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState, RBuilding } from './state';
 import { ownerAt, territoryReady } from './territory';
@@ -145,6 +145,11 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
   const known = new Set(TECHS.map(t => t.id));
   const playerCount = s.techs.filter(t => known.has(t)).length;
   const cities = f.b.filter(b => b.type === 'village');
+  // biens des paliers à venir et leurs matières premières
+  const top = Math.min(TIERS.length - 1, Math.max(0, ...cities.map(c => c.tier ?? 0)) + 1), wanted = new Set<ResId>();
+  for (let t = 0; t <= top; t++) for (const r of Object.keys(TIERS[t].needs) as ResId[]) wanted.add(r);
+  for (const r of [...wanted]) for (const k of Object.keys(BUILD) as BType[]) if (BUILD[k].recipe?.out[r]) for (const i of Object.keys(BUILD[k].recipe!.in) as ResId[]) wanted.add(i);
+  for (const r of ['minerai_fer'] as ResId[]) if (wanted.has('fer')) wanted.add(r);
   let guard = 0;
   while (f.techs.length < playerCount && guard++ < 40) {
     const avail = TECHS.filter(t => t.era <= s.era && !f.techs!.includes(t.id) && t.req.every(r => f.techs!.includes(r)));
@@ -157,6 +162,11 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
         if (res && geo.deposits.some(d => d.res === res && cities.some(c => Math.hypot(c.x - d.x, c.y - d.y) < 90))) sc += 20;
         if (BUILD[b].river && cities.some(c => geo.nearestNav(c.x, c.y, 20))) sc += 8;
         if (BUILD[b].coast && cities.some(c => geo.nearSea(c.x, c.y, 25))) sc += 10;
+      }
+      // priorité aux technologies qui donnent ce que réclament ses villes pour passer le palier suivant
+      for (const b of (Object.keys(BUILD) as BType[]).filter(k => BUILD[k].tech === t.id)) {
+        const outs = Object.keys(BUILD[b].recipe?.out ?? {}) as ResId[];
+        if (outs.some(r => wanted.has(r))) sc += 25;
       }
       const bias: Record<string, string[]> = { commercant: ['negoce', 'monnaie', 'negoce_maritime', 'peche', 'phares'], guerrier: ['metallurgie', 'forge', 'remparts', 'relais', 'charronnerie'], fidele: ['aqueduc', 'urbanisme', 'voie_romaine', 'thermes', 'spectacles'], opportuniste: ['navigation', 'negoce_maritime', 'viticulture', 'batellerie'] };
       if (bias[f.character]?.includes(t.id)) sc += 10;
