@@ -50,8 +50,27 @@ export const rivalPrice = (f: Faction, r: ResId) => RES[r].price * 1.2 * (f.alli
 export const rivalImportPrice = (f: Faction, r: ResId) => Math.max(RES[r].price * (f.alliance ? 1.25 : 1.45), rivalPrice(f, r) * 1.15);
 export const rivalVolume = (f: Faction) => f.alliance ? 60 : 40;
 /** Rival avec qui commerce une taverne : celui choisi, sinon le plus proche ayant signé un accord */
+/** Distance maximale entre le bout de ta route et une ville du rival (km) */
+export const TRADE_LINK_KM = 10;
+/** La taverne est-elle reliée par tes routes à une ville de ce rival ? */
+export function tradeLinked(s: GameState, b: Building, f: Faction) {
+  if (b.node === null) return false;
+  const adj = new Map<number, number[]>();
+  for (const e of s.edges) { (adj.get(e.a) ?? adj.set(e.a, []).get(e.a)!).push(e.b); (adj.get(e.b) ?? adj.set(e.b, []).get(e.b)!).push(e.a); }
+  const pos = new Map(s.nodes.map(n => [n.id, n])), cities = f.b.filter(c => c.type === 'village' && (!c.ready || c.ready <= s.day));
+  const seen = new Set([b.node]), todo = [b.node];
+  while (todo.length) {
+    const id = todo.pop()!, n = pos.get(id);
+    if (n && cities.some(c => Math.hypot(c.x - n.x, c.y - n.y) <= TRADE_LINK_KM)) return true;
+    for (const k of adj.get(id) ?? []) if (!seen.has(k)) { seen.add(k); todo.push(k); }
+  }
+  return false;
+}
+/** Rivaux avec un accord commercial et reliés à cette taverne par une route */
+export const linkedTraders = (s: GameState, b: Building) => (s.factions ?? []).filter(f => f.trade && tradeLinked(s, b, f));
 export function tradeFaction(s: GameState, b: Building): Faction | null {
-  const fs = (s.factions ?? []).filter(f => f.trade);
+  // pas de commerce sans route : la taverne doit être reliée à une ville du rival
+  const fs = linkedTraders(s, b);
   return fs.find(f => f.id === b.tf) ?? fs.sort((a, z) => cityDist(a, b.x, b.y) - cityDist(z, b.x, b.y))[0] ?? null;
 }
 
@@ -88,7 +107,7 @@ export function propose(s: GameState, f: Faction, kind: 'trade' | 'pact' | 'alli
   const need = THRESHOLD[kind][ch(f)], r = relOf(f);
   if (kind === 'alliance' && !f.trade) return { ok: false, msg: 'Une alliance demande d\'abord un accord commercial.' };
   if (r < need) { changeRel(f, -2); return { ok: false, msg: `Refusé : il faut une relation d'au moins ${need} (actuellement ${Math.round(r)}).` }; }
-  if (kind === 'trade') { f.trade = true; changeRel(f, 4); return { ok: true, msg: `Accord commercial signé avec les ${f.name} : tes tavernes peuvent leur vendre et leur acheter.` }; }
+  if (kind === 'trade') { f.trade = true; changeRel(f, 4); return { ok: true, msg: `Accord commercial signé avec les ${f.name} : relie une taverne par une route à l'une de leurs villes pour commercer.` }; }
   if (kind === 'pact') { f.pact = s.day + 10 * 365.25; changeRel(f, 3); return { ok: true, msg: `Pacte de non-agression de 10 ans signé avec les ${f.name}.` }; }
   f.alliance = true; changeRel(f, 6);
   return { ok: true, msg: `Alliance conclue avec les ${f.name} : gisements et territoires partagés, défense commune.` };

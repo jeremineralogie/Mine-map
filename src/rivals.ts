@@ -180,9 +180,8 @@ export function monthlyRivals(s: GameState, geo: Geo) {
     const locked = f.b.filter(b => BUILD[b.type].tech && !(f.techs ?? []).includes(BUILD[b.type].tech!));
     if (locked.length) { f.b = f.b.filter(b => !locked.includes(b)); f.roads = f.roads.filter(([, , x, y]) => !locked.some(b => b.x === x && b.y === y)); }
     // ancienne partie : richesse des gisements déjà exploités
-    for (const b of f.b) if (b.rich === undefined && BUILD[b.type].deposit) {
-      const res = BUILD[b.type].deposit!; b.rich = res === 'cereales' ? Math.max(0.45, geo.richness(res, b.x, b.y).value) : geo.richness(res, b.x, b.y).value || 0.5;
-    }
+    // même rendement partout dans un gisement (terres ordinaires : rendement réduit)
+    for (const b of f.b) if (BUILD[b.type].deposit) b.rich = BUILD[b.type].deposit === 'cereales' && b.dep == null ? 0.45 : 1;
     rivalMonth(s, geo, f);
   }
 }

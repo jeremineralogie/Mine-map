@@ -200,7 +200,7 @@ function victory(s: GameState, geo: Geo, a: Army, f: Faction, c: RBuilding, n: W
       f.b = f.b.filter(x => x !== b);
       const nb: Building = { id: b.id, type: b.type, x: b.x, y: b.y, name: b.name, level: 1, built: true, need: {}, incoming: {}, work: 0, upgrading: false, stock: {}, acc: 0, staff: 0, rich: 1, dep: b.dep ?? null, node: null, produced: 0 };
       if (b.type === 'village') { const pop = (b.pop ?? 100) * 0.85; nb.city = { pop, stock: { cereales: pop / 100 * 3 }, sat: 1, foodSat: 1, tier: Math.min(b.tier ?? 0, 3) }; }
-      if (BUILD[b.type].deposit) { const rr = geo.richness(BUILD[b.type].deposit!, b.x, b.y); nb.rich = BUILD[b.type].deposit === 'cereales' ? Math.max(0.45, rr.value) : rr.value || 1; }
+      if (BUILD[b.type].deposit === 'cereales' && b.dep == null) nb.rich = 0.45;
       s.buildings.push(nb);
     }
     f.roads = f.roads.filter(([x1, y1, x2, y2]) => !taken.some(b => (b.x === x1 && b.y === y1) || (b.x === x2 && b.y === y2)));

@@ -10,7 +10,7 @@ import { Camera, DEP_COLOR, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
 import { rivalWorkRange } from './rivaleco';
 import { MERC, PLAYER, RECRUIT, declareWar, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
-import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction } from './diplomacy';
+import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction, linkedTraders, TRADE_LINK_KM } from './diplomacy';
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
@@ -737,10 +737,11 @@ export class Game {
         <h3>Tes armées (${mine.length})</h3>${mine.map(a => `<button class="row" data-act="selarmy" data-id="${a.id}"><span class="army-dot" style="background:${PLAYER_COLOR}"></span><span>${fmt(a.men)} hommes · ${Math.round(a.hp)} %</span><small class="muted">${{ idle: 'au repos', march: 'en marche', fight: 'au combat', siege: 'siège' }[a.state]}</small></button>`).join('') || '<p class="muted">Aucune.</p>'}`;
     }
     if (b.type === 'taverne' && b.built) {
-      const fs = (s.factions ?? []).filter(f => f.trade), f = tradeFaction(s, b);
+      const fs = linkedTraders(s, b), f = tradeFaction(s, b), unlinked = (s.factions ?? []).filter(o => o.trade && !fs.includes(o));
       h += `<div class="actions top"><button data-act="diplo">🤝 Diplomatie</button>${warAllowed(s) ? `<button data-act="mercs" data-id="${b.id}">⚔ Engager ${MERC.men} mercenaires (${fmt(MERC.money)})</button>` : ''}</div>`;
-      if (!f) h += `<p class="hint info">Aucun accord commercial pour l'instant. Ouvre la diplomatie pour en proposer un : la taverne pourra alors vendre et acheter aux villes du rival.</p>`;
-      else {
+      if (unlinked.length) h += `<p class="hint warn">Pas de route commerciale vers ${unlinked.map(o => 'les ' + esc(o.name)).join(', ')} : trace une route depuis cette taverne jusqu'à moins de ${TRADE_LINK_KM} km d'une de leurs villes pour commercer.</p>`;
+      if (!f && !unlinked.length) h += `<p class="hint info">Aucun accord commercial pour l'instant. Ouvre la diplomatie pour en proposer un, puis relie la taverne par une route à une ville du rival.</p>`;
+      if (f) {
         const sold = s.stats.soldMonth['riv:' + f.id] ?? 0, vol = rivalVolume(f);
         h += `<p>Commerce avec : <select data-field="tf" data-id="${b.id}">${fs.map(o => `<option value="${o.id}" ${o === f ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select></p>`;
         h += this.kpis([[`${fmt(sold)} / ${vol} t`, 'vendu ce mois'], [`${fmt(s.stats.sold['riv:' + f.id] ?? 0)} t`, 'vendu au total']]);
@@ -859,7 +860,6 @@ export class Game {
       const need = this.sim.workersNeeded(b), rate = this.sim.rate(b), cap = d.storage * b.level;
       const outR = Object.keys(d.recipe.out)[0] as ResId, real = b.flow ? b.flow.pin[outR] ?? 0 : undefined;
       const items: [string, string, string?][] = [[real === undefined ? '—' : `${fmt(real)} t`, 'produites le mois dernier (réel)', real === undefined ? undefined : real >= rate * 0.8 ? 'good' : real > 0 ? 'warn' : 'bad'], [`${rate.toFixed(1)} t`, 'par mois au maximum', rate > 0 ? 'good' : 'bad'], [`${b.staff} / ${need}`, b.staff > need ? `ouvriers (+${Math.round(50 * (b.staff - need) / need)} % de renfort)` : 'ouvriers', b.staff >= need ? 'good' : b.staff ? 'warn' : 'bad']];
-      if (d.deposit && b.dep !== null) items.push([`${Math.round(this.sim.depositFactor(b) / b.rich * 100)} %`, 'rendement du gisement']);
       const wb = wonderProdMult(s, b);
       if (wb > 1) items.push([`+${Math.round((wb - 1) * 100)} %`, 'bonus de merveille', 'good']);
       items.push([`${fmt(b.produced)} t`, 'produites au total']);
@@ -872,7 +872,7 @@ export class Game {
         <div class="gauge thin"><i style="width:${Math.min(100, b.acc * 100)}%"></i></div>`;
       if (d.deposit && b.dep !== null) {
         const dep = this.geo.deposits[b.dep];
-        h += `<p class="muted">Gisement : <b>${esc(dep.name)}</b> · richesse ${Math.round(b.rich * 100)} % · ${fmt(s.extracted[b.dep] ?? 0)} t extraites</p>`;
+        h += `<p class="muted">Gisement : <b>${esc(dep.name)}</b></p>`;
       }
       h += `<h3>Stock</h3>${this.stockRows(b, [...ins.map(([r]) => r), ...outs.map(([r]) => r)], () => cap)}`;
     }

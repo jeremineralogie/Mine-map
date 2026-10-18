@@ -90,11 +90,12 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
   if (!free && s.money < buildMoney(s, type)) return { ok: false, reason: `Pas assez d'argent (${fmt(buildMoney(s, type))} sesterces).` };
   const r: PlaceCheck = { ok: true, rich: 1 };
   if (d.deposit) {
-    const { value, dep } = geo.richness(d.deposit, x, y);
-    if (d.deposit === 'cereales') { r.rich = Math.max(0.45, value); r.depName = dep?.name ?? 'Terres ordinaires'; }
+    const { dep } = geo.richness(d.deposit, x, y);
+    // terres fertiles : plein rendement ; terres ordinaires : rendement réduit
+    if (d.deposit === 'cereales') { r.rich = dep ? 1 : 0.45; r.depName = dep?.name ?? 'Terres ordinaires'; }
     else if (!dep) return { ok: false, reason: `Il faut un gisement de ${RES[d.deposit].name.toLowerCase()} (calque Gisements).` };
     else if (depOwner(s, dep.id) && !depOwner(s, dep.id)!.alliance) return { ok: false, reason: `Ce gisement est déjà exploité par les ${depOwner(s, dep.id)!.name}.` };
-    else { r.rich = value; r.depName = dep.name; }
+    else { r.rich = 1; r.depName = dep.name; } // même rendement partout dans le gisement
   }
   if (type === 'taverne' && s.buildings.some(b => b.type === 'taverne' && Math.hypot(b.x - x, b.y - y) < 12))
     return { ok: false, reason: 'Une seule taverne par ville : il y en a déjà une tout près.' };
@@ -154,8 +155,8 @@ export function place(s: GameState, geo: Geo, type: BType, x: number, y: number,
   const b = makeBuilding(s, type, x, y, name);
   if (!free) { const m = buildMoney(s, type); s.money -= m; s.stats.expenses += m; b.need = scaleStock(d.cost, costMult(s)); }
   if (d.deposit) {
-    const { value, dep } = geo.richness(d.deposit, x, y);
-    b.rich = d.deposit === 'cereales' ? Math.max(0.45, value) : value; b.dep = dep ? dep.id : null;
+    const { dep } = geo.richness(d.deposit, x, y);
+    b.rich = dep || d.deposit !== 'cereales' ? 1 : 0.45; b.dep = dep ? dep.id : null;
   }
   if (free) { b.built = true; b.need = {}; }
   if (d.coast) b.sea = geo.seaOf(x, y);
@@ -551,13 +552,10 @@ export class Sim {
 
   // ----- Production -----
   depositFactor(b: Building) {
-    const s = this.s;
+    // pas d'épuisement et même rendement partout dans un gisement ; seules les terres ordinaires (hors gisement) rendent moins
     if (b.dep === null) return b.rich;
-    const ex = s.extracted[b.dep] ?? 0;
-    const dep = this.geo.deposits[b.dep];
-    const exhaure = s.techs.includes('exhaure');
-    const k = 600 * dep.rich * (exhaure ? 2 : 1);
-    return b.rich * (1 / (1 + ex / k)) * (exhaure && BUILD[b.type].deposit !== 'cereales' && BUILD[b.type].deposit !== 'bois' ? 1.3 : 1);
+    const exhaure = this.s.techs.includes('exhaure');
+    return exhaure && BUILD[b.type].deposit !== 'cereales' && BUILD[b.type].deposit !== 'bois' ? 1.3 : 1;
   }
   rate(b: Building) {
     const d = BUILD[b.type];
@@ -1070,7 +1068,9 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
   }
   if (b.type === 'taverne' && b.built && s.factions?.length) {
     const f = tradeFaction(s, b);
-    return f ? { label: `Commerce avec ${f.short}`, level: 'good' } : { label: 'Diplomatie ouverte', level: 'info', hint: 'Signe un accord commercial avec un rival pour commercer par cette taverne.' };
+    if (f) return { label: `Commerce avec ${f.short}`, level: 'good' };
+    if (s.factions.some(o => o.trade)) return { label: 'Sans route commerciale', level: 'warn', hint: 'Trace une route depuis cette taverne jusqu\'à une ville du rival avec qui tu as un accord.' };
+    return { label: 'Diplomatie ouverte', level: 'info', hint: 'Signe un accord commercial avec un rival pour commercer par cette taverne.' };
   }
   if (b.type === 'comptoir') {
     const p = SEA_PARTNERS.find(x => x.id === b.sp)!, sold = s.stats.soldMonth['mer:' + p.id] ?? 0;
