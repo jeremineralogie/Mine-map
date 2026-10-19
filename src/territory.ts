@@ -47,6 +47,7 @@ function shapes(s: GameState): Shape[][] {
     if (b.city && b.built !== false) mine.push({ kind: 'c', x: b.x, y: b.y, r: workRange(b, s), core: false });
   }
   for (const e of s.edges) {
+    if (e.ally) continue; // routes d'un allié : pas ton territoire
     const a = nodes.get(e.a), b = nodes.get(e.b);
     if (a && b) mine.push({ kind: 's', ax: a.x, ay: a.y, bx: b.x, by: b.y, r: ROAD_R });
   }

@@ -678,6 +678,7 @@ export class Game {
         ${l ? `<p>Recettes : <b>${fmt(v.income)}</b> sesterces</p><button data-act="sellv" data-id="${v.id}">Vendre (${fmt(VEH[v.type].price / 2)})</button> <button data-act="line" data-id="${l.id}">Voir la ligne</button>` : ''}`;
     }
     const e = s.edges.find(x => x.id === sel.id); if (!e) return '';
+    if (e.ally) { const f = s.factions?.find(x => x.id === e.ally); return `<h2>${ROADS[e.type].name}</h2><p>Route alliée des <b>${esc(f?.name ?? '?')}</b> : tes véhicules peuvent l'emprunter et tu peux y raccorder tes routes.</p><p class="muted">Elle disparaît de ton réseau si l'alliance est rompue.</p>`; }
     const up = e.type === 'chemin' && hasTech(s, 'voie_romaine');
     const upCost = Math.round(e.len * (ROADS.voie.perKm - ROADS.chemin.perKm) * 1.3);
     return `<h2>${ROADS[e.type].name}</h2><p>Longueur : <b>${e.len.toFixed(1)} km</b>${e.bridges ? ` · ${e.bridges} pont(s)` : ''}</p><p>Vitesse : ×${ROADS[e.type].speed}</p>
@@ -1379,7 +1380,7 @@ export class Game {
       case 'build': this.setMode({ kind: 'build', type: t.dataset.type as BType }); this.closePanel(); this.view.layers.deposits = true; break;
       case 'upgrade': { const b = getB(s, id)!; const err = upgrade(s, b); this.toast(err ?? 'Amélioration lancée : les matériaux vont être livrés.', err ? 'bad' : 'info'); break; }
       case 'demolish': this.askDemolish(getB(s, id)!); break;
-      case 'delroad': removeEdge(s, id); this.rerouteAll(); this.closePanel(); break;
+      case 'delroad': if (!s.edges.find(x => x.id === id)?.ally) { removeEdge(s, id); this.rerouteAll(); this.closePanel(); } break;
       case 'paveroad': {
         const e = s.edges.find(x => x.id === id), cost = Number(t.dataset.cost);
         if (e && s.money >= cost) { e.type = 'voie'; s.money -= cost; s.stats.expenses += cost; this.rerouteAll(); } else this.toast('Pas assez d\'argent.', 'bad');

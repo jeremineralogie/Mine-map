@@ -263,6 +263,14 @@ export class Renderer {
     const z = Math.min(1.6, Math.max(0.8, this.cam.scale / 2));
     for (const pass of [0, 1]) for (const e of s.edges) {
       const a = nodes.get(e.a), b = nodes.get(e.b); if (!a || !b) continue;
+      if (e.ally) {
+        // route d'un allié : déjà dessinée à ses couleurs ; un pointillé clair montre qu'elle est empruntable
+        if (pass === 1) {
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+          ctx.setLineDash([this.px(4), this.px(4)]); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = this.px(1.4 * z); ctx.stroke(); ctx.setLineDash([]);
+        }
+        continue;
+      }
       const sel = v.selected?.kind === 'edge' && v.selected.id === e.id, hov = v.hoverEdge === e.id;
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
       if (pass === 0) {

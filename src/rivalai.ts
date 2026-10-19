@@ -115,27 +115,45 @@ export function ecoAdd(f: Faction, r: ResId, q: number) {
 }
 
 // ---------- Transfert de territoire (conquête) ----------
-/** Fait passer des bâtiments d'une économie à l'autre, avec les routes entre eux, les lignes qui ne desservent qu'eux et leurs véhicules */
-export function transfer(from: GameState, to: GameState, ids: Set<number>) {
+/** Fait passer une zone d'une économie à l'autre : les bâtiments conquis, toutes les routes de la zone
+ *  (virages et carrefours compris), les lignes qui ne desservent qu'eux et leurs véhicules.
+ *  Une route qui traverse la nouvelle frontière est coupée à la frontière : chaque camp garde sa partie. */
+export function transfer(from: GameState, to: GameState, ids: Set<number>, area: { x: number; y: number; r: number }) {
   const moved = from.buildings.filter(b => ids.has(b.id));
   if (!moved.length) return 0;
   from.buildings = from.buildings.filter(b => !ids.has(b.id));
   to.buildings.push(...moved);
-  const nodeIds = new Set(moved.map(b => b.node).filter((n): n is number => n !== null));
-  // routes entre deux bâtiments conquis (ou carrefours reliés uniquement à eux) : elles changent de main
-  const edgesIn = from.edges.filter(e => nodeIds.has(e.a) && nodeIds.has(e.b));
-  from.edges = from.edges.filter(e => !(nodeIds.has(e.a) && nodeIds.has(e.b)));
-  // routes coupées par la nouvelle frontière : abandonnées
-  from.edges = from.edges.filter(e => !nodeIds.has(e.a) && !nodeIds.has(e.b));
-  to.nodes.push(...from.nodes.filter(n => nodeIds.has(n.id)));
-  from.nodes = from.nodes.filter(n => !nodeIds.has(n.id));
-  to.edges.push(...edgesIn);
+  // nœuds de la zone : ceux des bâtiments conquis et les virages ou carrefours dans le rayon (pas ceux d'un autre bâtiment ni d'un allié)
+  const inside = (n: { x: number; y: number }) => Math.hypot(n.x - area.x, n.y - area.y) <= area.r;
+  const keep = new Set(from.buildings.map(b => b.node).filter((n): n is number => n !== null));
+  const zone = new Set(from.nodes.filter(n => !n.ally && (moved.some(b => b.node === n.id) || (inside(n) && n.b === undefined && !keep.has(n.id)))).map(n => n.id));
+  const nodeOf = new Map(from.nodes.map(n => [n.id, n]));
+  const edgesIn: typeof from.edges = [], edgesOut: typeof from.edges = [];
+  for (const e of from.edges) {
+    if (e.ally) { edgesOut.push(e); continue; }
+    const ia = zone.has(e.a), ib = zone.has(e.b);
+    if (ia && ib) { edgesIn.push(e); continue; }
+    if (!ia && !ib) { edgesOut.push(e); continue; }
+    // tronçon coupé par la frontière : un point de coupure, chaque camp garde son bout
+    const A = nodeOf.get(ia ? e.a : e.b)!, B = nodeOf.get(ia ? e.b : e.a)!;
+    const dx = B.x - A.x, dy = B.y - A.y, fx = A.x - area.x, fy = A.y - area.y;
+    const qa = dx * dx + dy * dy, qb = 2 * (fx * dx + fy * dy), qc = fx * fx + fy * fy - area.r * area.r, disc = qb * qb - 4 * qa * qc;
+    const t = Math.min(0.95, Math.max(0.05, qa > 0 && disc >= 0 ? (-qb + Math.sqrt(disc)) / (2 * qa) : 0.5));
+    const cx = A.x + dx * t, cy = A.y + dy * t, L = Math.hypot(dx, dy);
+    const nIn = { id: to.nextId++, x: cx, y: cy }, nOut = { id: from.nextId++, x: cx, y: cy };
+    to.nodes.push(nIn); from.nodes.push(nOut);
+    edgesIn.push({ id: to.nextId++, a: A.id, b: nIn.id, type: e.type, len: L * t, bridges: 0 });
+    edgesOut.push({ id: from.nextId++, a: nOut.id, b: B.id, type: e.type, len: L * (1 - t), bridges: e.bridges });
+  }
+  from.edges = edgesOut; to.edges.push(...edgesIn);
+  to.nodes.push(...from.nodes.filter(n => zone.has(n.id)));
+  from.nodes = from.nodes.filter(n => !zone.has(n.id));
   for (const n of to.nodes) if (n.b !== undefined && !to.buildings.some(b => b.id === n.b)) delete n.b;
   // lignes : entièrement conquises → transférées avec leurs véhicules ; à cheval → les arrêts conquis sont retirés
   for (const l of [...from.lines]) {
-    const inside = l.stops.filter(st => ids.has(st.bid)).length;
-    if (!inside) continue;
-    if (inside === l.stops.length) {
+    const inL = l.stops.filter(st => ids.has(st.bid)).length;
+    if (!inL) continue;
+    if (inL === l.stops.length) {
       from.lines = from.lines.filter(x => x !== l); to.lines.push(l);
       const vs = from.vehicles.filter(v => v.line === l.id);
       from.vehicles = from.vehicles.filter(v => v.line !== l.id); to.vehicles.push(...vs);
@@ -145,10 +163,44 @@ export function transfer(from: GameState, to: GameState, ids: Set<number>) {
       if (l.stops.length < 2) { from.lines = from.lines.filter(x => x !== l); from.vehicles = from.vehicles.filter(v => v.line !== l.id); }
     }
   }
-  // convois de chantier vers les bâtiments perdus : annulés
+  // convois de chantier vers les bâtiments perdus : annulés ; véhicules restés de l'autre côté : nouvel itinéraire
   from.vehicles = from.vehicles.filter(v => !(v.line === -1 && (ids.has(v.target!) || ids.has(v.from!))));
+  for (const v of from.vehicles) if (v.state === 'go') { v.state = 'lost'; v.timer = 0; }
   invalidate();
   return moved.length;
+}
+
+// ---------- Routes des alliés ----------
+/** Tant que dure l'alliance, les routes d'un allié sont recopiées dans le réseau du joueur :
+ *  on peut s'y raccorder et les emprunter, pas les démolir. Elles disparaissent si l'alliance est rompue. */
+export function syncAllyRoads(s: GameState) {
+  let changed = false;
+  for (const f of s.factions ?? []) {
+    const allied = !!f.alliance && !f.dead && !!f.eco;
+    const mine = s.edges.filter(e => e.ally === f.id);
+    if (!allied) {
+      if (mine.length) { s.edges = s.edges.filter(e => e.ally !== f.id); changed = true; }
+      continue;
+    }
+    const eco = f.eco!, srcs = new Set(eco.edges.map(e => e.id)), have = new Set(mine.map(e => e.src));
+    // tronçons disparus chez l'allié
+    if (mine.some(e => !srcs.has(e.src!))) { s.edges = s.edges.filter(e => e.ally !== f.id || srcs.has(e.src!)); changed = true; }
+    const nodes = new Map(eco.nodes.map(n => [n.id, n])), known = new Set(s.nodes.map(n => n.id));
+    for (const e of eco.edges) {
+      if (have.has(e.id)) continue;
+      for (const id of [e.a, e.b]) if (!known.has(id)) { const n = nodes.get(id)!; s.nodes.push({ id, x: n.x, y: n.y, ally: f.id }); known.add(id); }
+      s.edges.push({ id: e.id, a: e.a, b: e.b, type: e.type, len: e.len, bridges: e.bridges, ally: f.id, src: e.id });
+      changed = true;
+    }
+  }
+  // nœuds alliés qui ne servent plus à rien
+  const used = new Set(s.edges.flatMap(e => [e.a, e.b]));
+  const before = s.nodes.length;
+  s.nodes = s.nodes.filter(n => !n.ally || used.has(n.id));
+  if (changed || s.nodes.length !== before) {
+    invalidate();
+    for (const v of s.vehicles) if (v.state === 'go') { v.state = 'lost'; v.timer = 0; }
+  }
 }
 
 // ---------- Décisions mensuelles de l'ordinateur ----------
@@ -339,6 +391,7 @@ function manageVehicles(f: Faction) {
   const fleetMax = 4 + eco.buildings.filter(b => b.built && (b.city || BUILD[b.type].recipe)).length * 2;
   let fleet = eco.vehicles.filter(v => v.line !== -1).length;
   for (const l of eco.lines) {
+    if (Math.random() < 0.35) continue; // il ne regarde pas toutes ses lignes chaque mois
     const vs = eco.vehicles.filter(v => v.line === l.id), first = eco.buildings.find(b => b.id === l.stops[0].bid);
     const target = eco.buildings.find(b => b.id === l.stops[1].bid);
     if (!first || !target) continue;
@@ -435,19 +488,24 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   rivalTrade(s, f, need);
   manageStock(f, need);
   manageLines(f);
-  manageVehicles(f);
+  // petites erreurs de gestion, comme un joueur : certains mois il est distrait (rien de neuf),
+  // il réagit en retard sur ses lignes, ou ne choisit pas toujours le chantier le plus urgent
+  const distracted = Math.random() < 0.2;
+  if (!distracted) manageVehicles(f);
   // chantiers : pas plus de deux à la fois (trois en mode ambitieux), comme un joueur prudent
   const sites = eco.buildings.filter(b => !b.built || b.upgrading).length;
   const maxSites = s.difficulty === 'ambitieux' ? 3 : 2;
   let started = 0;
-  if (sites < maxSites) for (const r of shortages(eco, need)) {
+  const todo = shortages(eco, need);
+  if (todo.length > 1 && Math.random() < 0.3) [todo[0], todo[1]] = [todo[1], todo[0]];
+  if (sites < maxSites && !distracted) for (const r of todo) {
     const res = tryBuild(s, f, geo, r);
     if (res === 'ok' && ++started + sites >= maxSites) break;
     if (res === 'wait') break;
   }
   // nouvelle ville quand les existantes prospèrent
   const cs = cities(eco), big = Math.max(0, ...cs.map(c => c.city!.pop));
-  if (started + sites < maxSites && cs.length < 6 && big >= 350 * cs.length && cs.every(c => c.city!.growing) && eco.money > 900 && Math.random() < 0.3) {
+  if (!distracted && started + sites < maxSites && cs.length < 6 && big >= 350 * cs.length && cs.every(c => c.city!.growing) && eco.money > 900 && Math.random() < 0.3) {
     const from = cs[Math.floor(Math.random() * cs.length)];
     for (let k = 0; k < 40; k++) {
       const a = Math.random() * 6.283, rr = 40 + Math.random() * 50, x = from.x + Math.cos(a) * rr, y = from.y + Math.sin(a) * rr;

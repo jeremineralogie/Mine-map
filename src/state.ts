@@ -3,8 +3,9 @@ import type { BType, Difficulty, ResId, RoadType, VType } from './defs';
 
 export type Stock = Partial<Record<ResId, number>>;
 
-export interface RNode { id: number; x: number; y: number; b?: number; }
-export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; }
+export interface RNode { id: number; x: number; y: number; b?: number; ally?: string; }
+/** `ally` : route d'un allié recopiée dans le réseau du joueur (empruntable, pas démolissable) ; `src` : tronçon d'origine */
+export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; ally?: string; src?: number; }
 
 export interface City {
   pop: number; stock: Stock; sat: number; foodSat: number; tier: number;
@@ -108,6 +109,8 @@ export interface Faction {
   drive: number;
   /** technologies du rival : il en découvre une chaque fois que le joueur en découvre une, selon sa situation */
   techs?: string[];
+  /** technologie que le rival vise (il économise ses points de recherche pour elle) */
+  goal?: string;
   /** relation avec le joueur (−100 hostile … +100 allié) et traités */
   rel?: number; trade?: boolean; pact?: number; alliance?: boolean; intel?: number; lastGift?: number;
   /** relations avec les autres rivaux */

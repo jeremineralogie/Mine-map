@@ -3,7 +3,7 @@ import { BUILD, PLAYER_COLOR, type ResId } from './defs';
 import { changeRel, relLabel, relOf, takeFromStores, storeTotal } from './diplomacy';
 import type { Geo } from './geo';
 import { factionPop, territoryRadius } from './rivals';
-import { ecoBuilding, syncView, transfer } from './rivalai';
+import { ecoBuilding, syncAllyRoads, syncView, transfer } from './rivalai';
 import type { Army, Building, Faction, GameState, RBuilding } from './state';
 
 const YEAR = 365.25;
@@ -89,7 +89,7 @@ export function targetPos(s: GameState, t: Army['target']): { x: number; y: numb
 export function declareWar(s: GameState, f: Faction): string {
   if (!warAllowed(s)) return 'La guerre n\'est possible qu\'à partir du chapitre II.';
   const broke = !!(f.pact && f.pact > s.day);
-  f.war = true; f.warSince = s.day; f.trade = false; f.alliance = false; f.pact = undefined;
+  f.war = true; f.warSince = s.day; f.trade = false; f.alliance = false; f.pact = undefined; syncAllyRoads(s);
   f.rel = Math.min(relOf(f), -70);
   for (const o of s.factions ?? []) if (o !== f) changeRel(o, broke ? -15 : -5);
   s.log.unshift({ day: s.day, text: `Tu déclares la guerre aux ${f.name}.` });
@@ -207,7 +207,8 @@ function victory(s: GameState, geo: Geo, a: Army, f: Faction, c: RBuilding, n: W
     // bâtiments, routes entre eux, lignes qui ne desservent qu'eux et leurs véhicules
     const taken = f.b.filter(b => b.id === c.id || (b.type !== 'village' && Math.hypot(b.x - c.x, b.y - c.y) <= r));
     shrink(s, f, c, 0.85);
-    if (f.eco) transfer(f.eco, s, new Set(taken.map(b => b.id)));
+    syncAllyRoads(s);
+    if (f.eco) transfer(f.eco, s, new Set(taken.map(b => b.id)), { x: c.x, y: c.y, r });
     syncView(s, f);
     changeRel(f, -30); for (const o of s.factions ?? []) if (o !== f) changeRel(o, -8);
     s.log.unshift({ day: s.day, text: `Tu conquiers ${c.name} et ses environs (${taken.length} bâtiment(s)).` });
@@ -244,7 +245,8 @@ function defeat(s: GameState, geo: Geo, a: Army, c: Building, n: WarNotify) {
   if (conquer) {
     const taken = s.buildings.filter(b => (b === c || (!b.city && Math.hypot(b.x - c.x, b.y - c.y) <= r)) && !b.partner && b.type !== 'comptoir' && !BUILD[b.type].wonder);
     // le rival récupère la ville et ses environs en état de marche (routes, lignes, véhicules)
-    if (f.eco) transfer(s, f.eco, new Set(taken.map(b => b.id)));
+    syncAllyRoads(s);
+    if (f.eco) transfer(s, f.eco, new Set(taken.map(b => b.id)), { x: c.x, y: c.y, r });
     syncView(s, f);
     // défaite totale : la dernière ville vient de tomber
     if (!playerCities(s).length) { s.over = true; n.gameOver(`${c.name}, ta dernière ville, est tombée aux mains des ${f.name}. Tes rivaux se partagent la province.`); return; }

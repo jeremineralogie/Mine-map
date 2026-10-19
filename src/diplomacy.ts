@@ -1,7 +1,7 @@
 // Diplomatie avec les rivaux : relations, traités, cadeaux, espionnage, commerce par la taverne.
 import { BUILD, RES, TIERS, TIER_NEEDS_2, type ResId } from './defs';
 import { factionPop, territoryRadius } from './rivals';
-import { ecoAdd, ecoTake } from './rivalai';
+import { ecoAdd, ecoTake, syncAllyRoads } from './rivalai';
 import type { Building, Faction, GameState } from './state';
 
 type Char = 'fidele' | 'commercant' | 'opportuniste' | 'guerrier';
@@ -110,12 +110,12 @@ export function propose(s: GameState, f: Faction, kind: 'trade' | 'pact' | 'alli
   if (r < need) { changeRel(f, -2); return { ok: false, msg: `Refusé : il faut une relation d'au moins ${need} (actuellement ${Math.round(r)}).` }; }
   if (kind === 'trade') { f.trade = true; changeRel(f, 4); return { ok: true, msg: `Accord commercial signé avec les ${f.name} : relie une taverne par une route à l'une de leurs villes pour commercer.` }; }
   if (kind === 'pact') { f.pact = s.day + 10 * 365.25; changeRel(f, 3); return { ok: true, msg: `Pacte de non-agression de 10 ans signé avec les ${f.name}.` }; }
-  f.alliance = true; changeRel(f, 6);
+  f.alliance = true; changeRel(f, 6); syncAllyRoads(s);
   return { ok: true, msg: `Alliance conclue avec les ${f.name} : gisements et territoires partagés, défense commune.` };
 }
 export function breakTreaty(s: GameState, f: Faction, kind: 'trade' | 'alliance'): string {
-  if (kind === 'trade') { f.trade = false; f.alliance = false; changeRel(f, -10); }
-  else { f.alliance = false; changeRel(f, -25 * (ch(f) === 'fidele' ? 1.5 : 1)); }
+  if (kind === 'trade') { f.trade = false; f.alliance = false; changeRel(f, -10); syncAllyRoads(s); }
+  else { f.alliance = false; changeRel(f, -25 * (ch(f) === 'fidele' ? 1.5 : 1)); syncAllyRoads(s); }
   // les autres rivaux jugent la parole donnée
   for (const o of s.factions ?? []) if (o !== f) changeRel(o, -3);
   return kind === 'trade' ? `Accord commercial rompu avec les ${f.name}.` : `Alliance rompue avec les ${f.name} : ils ne l'oublieront pas.`;
@@ -196,7 +196,7 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
     const touching = s.buildings.some(b => !b.partner && b.type !== 'comptoir' && f.b.some(r => Math.hypot(r.x - b.x, r.y - b.y) < territoryRadius(r) + (b.city ? 18 + 8 * b.city.tier : 6) + 8));
     if (touching && !f.alliance) changeRel(f, -0.4 * (ch(f) === 'guerrier' ? 2 : ch(f) === 'opportuniste' ? 1.5 : 1));
     // une alliance ne survit pas à une relation dégradée
-    if (f.alliance && relOf(f) < 20) { f.alliance = false; n.event(`Fin de l'alliance avec les ${f.name}`, 'Vos relations se sont trop dégradées : l\'alliance est dissoute.'); }
+    if (f.alliance && relOf(f) < 20) { f.alliance = false; syncAllyRoads(s); n.event(`Fin de l'alliance avec les ${f.name}`, 'Vos relations se sont trop dégradées : l\'alliance est dissoute.'); }
     if (f.pact && f.pact < s.day) { f.pact = undefined; s.log.unshift({ day: s.day, text: `Le pacte de non-agression avec les ${f.name} a expiré.` }); }
     const after = relLabel(f).label;
     if (after !== before) s.log.unshift({ day: s.day, text: `Relation avec les ${f.name} : ${after.toLowerCase()}.` });
@@ -206,7 +206,7 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
       if (!f.trade && r >= THRESHOLD.trade[ch(f)] + 15 && Math.random() < 0.05)
         n.ask(`Proposition des ${f.name}`, `Les ${f.name} te proposent un accord commercial : vos tavernes pourront échanger leurs marchandises.`, () => { f.trade = true; changeRel(f, 4); });
       else if (f.trade && !f.alliance && r >= THRESHOLD.alliance[ch(f)] + 10 && Math.random() < 0.03)
-        n.ask(`Proposition d'alliance`, `Les ${f.name} te proposent une alliance : gisements et territoires partagés, défense commune.`, () => { f.alliance = true; changeRel(f, 6); });
+        n.ask(`Proposition d'alliance`, `Les ${f.name} te proposent une alliance : gisements et territoires partagés, défense commune.`, () => { f.alliance = true; changeRel(f, 6); syncAllyRoads(s); });
     }
   }
   // relations entre rivaux (pour les alliances contre le joueur, à l'étape de la guerre)

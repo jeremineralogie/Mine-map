@@ -832,8 +832,18 @@ export class Sim {
     s.ledger.push({ month: Math.floor(s.day / MONTH), income: s.stats.income, expenses: s.stats.expenses });
     if (s.ledger.length > 120) s.ledger.shift();
 
-    // économie d'un rival : l'ordinateur décide depuis monthlyRivals, pas d'objectifs ni d'événements
-    if (s.ai) return;
+    // économie d'un rival : mêmes objectifs que le joueur (argent et points de recherche) et mêmes
+    // apports des événements historiques à la recherche ; l'ordinateur décide depuis monthlyRivals
+    if (s.ai) {
+      this.objectives();
+      const y = year(s);
+      EVENTS.forEach((e, i) => {
+        if (s.events.includes(i) || e.year > y) return;
+        s.events.push(i);
+        for (const f of e.effects) if (f.kind === 'rp') s.rp += f.amount;
+      });
+      return;
+    }
     this.objectives();
     monthlyRivals(s, this.geo);
     monthlyDiplomacy(s, this.notify);

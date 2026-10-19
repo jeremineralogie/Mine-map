@@ -42,7 +42,7 @@ export function removeEdge(s: GameState, id: number) {
   invalidate();
 }
 
-export function roadKm(s: GameState) { return s.edges.reduce((t, e) => t + e.len, 0); }
+export function roadKm(s: GameState) { return s.edges.reduce((t, e) => t + (e.ally ? 0 : e.len), 0); }
 
 // ---- Graphe et plus court chemin (en temps de trajet) ----
 // un graphe par économie (joueur et chaque rival), reconstruit seulement après une modification du réseau
@@ -140,7 +140,9 @@ export function splitEdge(s: GameState, geo: Geo, edgeId: number, x: number, y: 
   s.edges = s.edges.filter(x => x.id !== e.id);
   for (const [u, v] of [[e.a, n.id], [n.id, e.b]]) {
     const A = nodeById(s, u)!, B = nodeById(s, v)!;
-    s.edges.push({ id: s.nextId++, a: u, b: v, type: e.type, len: Math.hypot(B.x - A.x, B.y - A.y), bridges: geo.riverCrossings(A.x, A.y, B.x, B.y).n });
+    const half: Edge = { id: s.nextId++, a: u, b: v, type: e.type, len: Math.hypot(B.x - A.x, B.y - A.y), bridges: geo.riverCrossings(A.x, A.y, B.x, B.y).n };
+    if (e.ally) { half.ally = e.ally; half.src = e.src; }   // une route alliée coupée reste alliée
+    s.edges.push(half);
   }
   invalidate();
   return n;

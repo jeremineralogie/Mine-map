@@ -4,7 +4,7 @@ import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, RES, RIVALS, TECHS, TIERS, type
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState } from './state';
 import { ownerAt, territoryReady } from './territory';
-import { foundHome, newEco, rivalMonth, setPlacer } from './rivalai';
+import { foundHome, newEco, rivalMonth, setPlacer, syncAllyRoads } from './rivalai';
 
 /** Rayon de territoire d'un bâtiment (km) : les villes rayonnent selon leur palier */
 export const territoryRadius = (b: { tier?: number; pop?: number; type: BType }) => b.type === 'village' ? 18 + 8 * (b.tier ?? 0) : 6;
@@ -110,12 +110,12 @@ function initPlacer(s: GameState, geo: Geo) {
 export const playerPop = (s: GameState) => s.buildings.reduce((a, b) => a + (b.city?.pop ?? 0), 0);
 export const factionPop = (f: Faction) => f.b.reduce((a, b) => a + (b.pop ?? 0), 0);
 
-/** Le rival découvre autant de technologies que le joueur, mais choisit les siennes selon sa situation :
- *  gisements proches, fleuves ou côte, caractère. Pas de copie de l'arbre du joueur. */
+/** Recherche du rival : comme le joueur, il gagne des points avec ses villes et paie ses technologies.
+ *  Il se fixe un objectif selon sa situation (gisements proches, besoins de ses villes, caractère)
+ *  et économise jusqu'à pouvoir l'acheter. Il ne reçoit rien quand le joueur découvre une technologie. */
 function syncTechs(s: GameState, geo: Geo, f: Faction) {
   f.techs ??= [];
-  const known = new Set(TECHS.map(t => t.id));
-  const playerCount = s.techs.filter(t => known.has(t)).length;
+  const eco = f.eco; if (!eco) return;
   const cities = f.b.filter(b => b.type === 'village');
   // biens des paliers à venir et leurs matières premières
   const top = Math.min(TIERS.length - 1, Math.max(0, ...cities.map(c => c.tier ?? 0)) + 1), wanted = new Set<ResId>();
@@ -123,9 +123,12 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
   for (const r of [...wanted]) for (const k of Object.keys(BUILD) as BType[]) if (BUILD[k].recipe?.out[r]) for (const i of Object.keys(BUILD[k].recipe!.in) as ResId[]) wanted.add(i);
   for (const r of ['minerai_fer'] as ResId[]) if (wanted.has('fer')) wanted.add(r);
   let guard = 0;
-  while (f.techs.length < playerCount && guard++ < 40) {
+  while (guard++ < 5) {
     const avail = TECHS.filter(t => t.era <= s.era && !f.techs!.includes(t.id) && t.req.every(r => f.techs!.includes(r)));
     if (!avail.length) break;
+    // objectif déjà fixé : il économise pour lui
+    const goal = avail.find(t => t.id === f.goal);
+    if (goal) { if (eco.rp < goal.cost) break; eco.rp -= goal.cost; f.techs.push(goal.id); f.goal = undefined; s.log.unshift({ day: s.day, text: `Les ${f.name} découvrent : ${goal.name}.` }); continue; }
     const score = (t: typeof TECHS[number]) => {
       let sc = Math.random() * 12 - t.cost / 8;
       // ateliers débloqués : intéressants s'il y a des gisements près de ses villes
@@ -144,9 +147,7 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
       if (bias[f.character]?.includes(t.id)) sc += 10;
       return sc;
     };
-    const pick = avail.map(t => ({ t, sc: score(t) })).sort((a, z) => z.sc - a.sc)[0].t;
-    f.techs.push(pick.id);
-    s.log.unshift({ day: s.day, text: `Les ${f.name} découvrent : ${pick.name}.` });
+    f.goal = avail.map(t => ({ t, sc: score(t) })).sort((a, z) => z.sc - a.sc)[0].t.id;
   }
 }
 
@@ -159,4 +160,5 @@ export function monthlyRivals(s: GameState, geo: Geo) {
     syncTechs(s, geo, f);
     rivalMonth(s, geo, f);
   }
+  syncAllyRoads(s);
 }

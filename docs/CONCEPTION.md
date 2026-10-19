@@ -142,17 +142,25 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
   sinon la région de repli la mieux pourvue (jamais trop près du joueur ni d'un autre rival).
 - **Commerce** : Rome ne leur vend que bois, pierre et céréales ; le reste se produit ou s'achète à un
   autre rival (prix +20 % et transport, livré au bout du trajet). Ils exportent leur surplus.
-- **Technologies** : un rival en découvre une chaque fois que le joueur en découvre une, choisie selon
-  ses gisements, ses besoins et son caractère (pas une copie de l'arbre du joueur).
-- **Équilibre visé** (vérifié sur 15 ans) : chaque rival reste entre 70 % et 130 % de la moyenne des rivaux.
+- **Recherche** : comme le joueur, un rival gagne des points avec ses villes, ses objectifs (les mêmes que
+  le joueur) et les événements historiques, se fixe une technologie selon ses gisements, ses besoins et
+  son caractère, et l'achète au même prix. Il ne reçoit rien quand le joueur découvre une technologie.
+- **Petites erreurs de gestion** : certains mois il est distrait (pas de nouveau chantier ni de réglage
+  de ses lignes), il ne surveille pas toutes ses lignes chaque mois et ne choisit pas toujours le
+  chantier le plus urgent. Ses villes connaissent donc des creux et des pénuries, comme celles du joueur.
+- **Équilibre visé** (vérifié sur 15 ans) : chaque rival reste entre 70 % et 130 % de la moyenne des rivaux,
+  avec une croissance progressive (environ 3 000 à 4 500 habitants au bout de 15 ans).
 - **Territoires** : une seule zone par camp (rayon de main-d'œuvre des villes, bâtiments, routes) ;
   impossible de construire chez un rival ou d'exploiter ses gisements sans alliance.
+- **Routes des alliés** : tant que dure l'alliance, elles font partie du réseau du joueur (pointillés
+  clairs) : on peut s'y raccorder et les emprunter, pas les démolir. Rupture de l'alliance : elles disparaissent.
 - **Taverne et diplomatie** : relations, accord commercial, pacte de non-agression, alliance, cadeaux,
   espionnage. Commerce à la taverne seulement si une **route** la relie à moins de 10 km d'une ville du rival ;
   on n'achète que ce qu'il a en réserve.
 - **Guerre** : caserne (légionnaires, auxiliaires, mercenaires), armées visibles avec effectif et moral,
   sièges. Une ville rivale vaincue : **conquête** (la ville et ses environs passent au joueur en état de
-  marche, avec routes, lignes et véhicules), **pillage** ou **tribut**. Un rival peut aussi prendre
+  marche : bâtiments, toutes les routes de la zone avec virages et carrefours, lignes et véhicules ;
+  une route qui traverse la nouvelle frontière y est coupée, chaque camp garde sa partie), **pillage** ou **tribut**. Un rival peut aussi prendre
   ou piller une ville du joueur ; perdre la dernière ville = fin de partie.
 
 ## 11. Interface
