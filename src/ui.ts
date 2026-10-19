@@ -1234,6 +1234,11 @@ export class Game {
         <span class="tv-ic">${u[0]?.img ? `<img src="${u[0].img}" alt="">` : IC[t.branch]}</span>
         <span class="tv-txt"><b>${t.name}</b><small>${st === 'done' ? `${IC.check} Découverte` : st === 'locked' ? `${IC.lock} Verrouillée` : `${t.cost} pts`}</small></span></button>`;
     }).join('');
+    // téléphone : pas de panneau de détail, un petit bouton sous la compétence touchée
+    const pt = techs.find(t => t.id === this.treeSel), pp = pt && pos.get(pt.id), pst = pt && state(pt);
+    const pop = pt && pp ? `<div class="tv-pop" style="left:${pp.x}px;top:${pp.y + NH + 4}px;width:${NW}px">${pst === 'done' ? `<span class="pill good">Découverte</span>`
+      : pst === 'locked' ? `<small>Prérequis : ${pt.req.filter(r => !s.techs.includes(r)).map(r => TECHS.find(x => x.id === r)!.name).join(', ')}</small>`
+      : `<button class="primary" data-tv="research" data-id="${pt.id}" ${pst === 'ready' ? '' : 'disabled'}>Rechercher · ${pt.cost} pts</button>${pst === 'avail' ? `<small>Il manque ${Math.ceil(pt.cost - s.rp)} points</small>` : ''}`}</div>` : '';
     const done = techs.filter(t => s.techs.includes(t.id)).length;
     const sel = techs.find(t => t.id === this.treeSel) ?? techs.find(t => state(t) === 'ready') ?? techs.find(t => state(t) === 'avail') ?? techs[0];
     const sst = state(sel), su = unlocks(sel.id);
@@ -1250,7 +1255,7 @@ export class Game {
         ${s.chapterDone ? `<button class="primary" data-tv="next">Époque suivante →</button>` : done === techs.length && !s.chapterDone ? `<small class="muted">Arbre complet : voir les autres conditions dans Objectifs</small>` : ''}</div>
         <button class="tv-close" data-tv="close" title="Fermer">${IC.close}</button></header>
       <div class="tv-body"><div class="tv-scroll"><div class="tv-canvas" style="width:${W}px;height:${H}px">${laneHtml}
-        <svg class="tv-edges" width="${W}" height="${H}">${edges}</svg>${nodes}</div></div>
+        <svg class="tv-edges" width="${W}" height="${H}">${edges}</svg>${nodes}${pop}</div></div>
         <aside class="tv-detail">${detail}</aside></div>
       <footer class="tv-legend"><span class="lg done"></span>Découverte <span class="lg ready"></span>Disponible <span class="lg avail"></span>Points insuffisants <span class="lg locked"></span>Verrouillée
         <small class="muted">Choisis ton ordre de recherche ; l'époque suivante s'ouvre quand tout l'arbre est découvert${s.era >= 2 ? ', la merveille construite et la date atteinte' : ''}.</small></footer></div>`;

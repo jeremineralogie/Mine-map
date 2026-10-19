@@ -360,6 +360,10 @@ table.eco td.neg { color: #b42318; font-weight: 700; }
 .tv-node.avail { border-color: #e2b48f; }
 .tv-node.locked { background: #f4f0ea; filter: grayscale(.7); opacity: .75; }
 .tv-node.sel { outline: 3px solid #1971c2; outline-offset: 2px; }
+.tv-pop { display: none; position: absolute; z-index: 5; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px; background: #fff; border-radius: 12px; box-shadow: 0 6px 18px rgba(60,40,20,.25); font-size: 12.5px; text-align: center; }
+.tv-pop button { padding: 8px 10px; font-size: 14px; }
+.tv-pop button.primary { background: var(--accent); color: #fff; border: 0; font-weight: 700; }
+.tv-pop button:disabled { opacity: .55; }
 .tv-detail { border-left: 1px solid #e3d8c4; background: #fffdf9; padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
 .tv-d-head { display: flex; gap: 12px; align-items: center; }
 .tv-d-ic { width: 64px; height: 64px; border-radius: 14px; background: #f3ece0; display: grid; place-items: center; flex: none; }
@@ -389,8 +393,10 @@ table.eco td.neg { color: #b42318; font-weight: 700; }
   .tv-title h2 { font-size: 17px; }
   .tv-stats { order: 3; width: 100%; margin: 0; }
   .tv-close { margin-left: auto; }
-  .tv-body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  .tv-detail { border-left: 0; border-top: 1px solid #e3d8c4; max-height: 40vh; padding: 12px 14px; }
+  /* téléphone : pas de panneau de détail ; un bouton sous la compétence touchée */
+  .tv-body { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  .tv-detail { display: none; }
+  .tv-pop { display: flex; }
   .tv-legend { display: none; }  /* téléphone : pas de légende, plus de place pour naviguer dans l'arbre */
 }
 
