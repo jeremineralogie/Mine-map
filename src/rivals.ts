@@ -4,7 +4,7 @@ import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, RES, RIVALS, TECHS, TIERS, type
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState } from './state';
 import { ownerAt, territoryReady } from './territory';
-import { foundHome, newEco, rivalMonth, setPlacer, syncAllyRoads, syncLent } from './rivalai';
+import { alliedRivals, foundHome, newEco, rivalEra, rivalMonth, setPlacer, syncAllyRoads, syncLent } from './rivalai';
 
 /** Rayon de territoire d'un bâtiment (km) : les villes rayonnent selon leur palier */
 export const territoryRadius = (b: { tier?: number; pop?: number; type: BType }) => b.type === 'village' ? 18 + 8 * (b.tier ?? 0) : 6;
@@ -74,18 +74,27 @@ export function initRivals(s: GameState, geo: Geo, px: number, py: number) {
 
 /** Où un rival peut construire : hors du territoire du joueur et des autres rivaux, sur la terre ferme */
 function initPlacer(s: GameState, geo: Geo) {
+  // chez un allié (le joueur ou un autre rival), il peut construire et exploiter les gisements
   const free = (f: Faction, x: number, y: number) => {
-    if (!land(geo, f, x, y) || inPlayerLand(s, x, y, 2) || s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 4)) return false;
+    if (!land(geo, f, x, y) || (!f.alliance && inPlayerLand(s, x, y, 2)) || s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 4)) return false;
     if ((s.factions ?? []).some(o => o !== f && o.b.some(b => Math.hypot(b.x - x, b.y - y) < 4))) return false;
-    const o = rivalAt(s, x, y); return !o || o === f;
+    const o = rivalAt(s, x, y); return !o || o === f || alliedRivals(f, o);
+  };
+  /** Qui empêche ce rival d'exploiter ce gisement (null : personne) */
+  const blocker = (f: Faction, d: DepositKm): 'player' | Faction | null => {
+    if (!f.alliance && (s.buildings.some(b => b.dep === d.id) || inPlayerLand(s, d.x, d.y))) return 'player';
+    const own = depOwner(s, d.id); if (own && own !== f && !alliedRivals(f, own)) return own;
+    const o = rivalAt(s, d.x, d.y); if (o && o !== f && !alliedRivals(f, o)) return o;
+    return null;
   };
   setPlacer({
     free,
     freeDeposits(f, res: ResId) {
       const out: { x: number; y: number; dep: number; name: string }[] = [];
       for (const d of geo.deposits as DepositKm[]) {
-        if (d.res !== res || RES[d.res].era > s.era || s.buildings.some(b => b.dep === d.id)) continue;
-        const own = depOwner(s, d.id); if (own && own !== f) continue;
+        if (d.res !== res || RES[d.res].era > rivalEra(f)) continue;
+        if (!f.alliance && s.buildings.some(b => b.dep === d.id)) continue;
+        const own = depOwner(s, d.id); if (own && own !== f && !alliedRivals(f, own)) continue;
         if (f.b.filter(b => b.dep === d.id).length >= 3) continue;
         // l'emplacement libre le plus proche de ses villes, n'importe où dans le gisement (une grande forêt a une lisière proche)
         const cities = f.b.filter(b => b.type === 'village');
@@ -99,6 +108,14 @@ function initPlacer(s: GameState, geo: Geo) {
           if (!best || dd < best.dd) best = { x, y, dd };
         }
         if (best) out.push({ x: best.x, y: best.y, dep: d.id, name: d.name });
+      }
+      return out;
+    },
+    blockedDeposits(f, res: ResId) {
+      const out: { x: number; y: number; name: string; owner: 'player' | Faction }[] = [];
+      for (const d of geo.deposits as DepositKm[]) {
+        if (d.res !== res || RES[d.res].era > rivalEra(f)) continue;
+        const owner = blocker(f, d); if (owner) out.push({ x: d.x, y: d.y, name: d.name, owner });
       }
       return out;
     },
@@ -124,11 +141,18 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
   for (const r of ['minerai_fer'] as ResId[]) if (wanted.has('fer')) wanted.add(r);
   let guard = 0;
   while (guard++ < 5) {
-    const avail = TECHS.filter(t => t.era <= s.era && !f.techs!.includes(t.id) && t.req.every(r => f.techs!.includes(r)));
+    // comme le joueur : les technologies du chapitre suivant seulement une fois tout l'arbre du chapitre en cours découvert
+    const avail = TECHS.filter(t => t.era <= rivalEra(f) && !f.techs!.includes(t.id) && t.req.every(r => f.techs!.includes(r)));
     if (!avail.length) break;
     // objectif déjà fixé : il économise pour lui
     const goal = avail.find(t => t.id === f.goal);
-    if (goal) { if (eco.rp < goal.cost) break; eco.rp -= goal.cost; f.techs.push(goal.id); f.goal = undefined; s.log.unshift({ day: s.day, text: `Les ${f.name} découvrent : ${goal.name}.` }); continue; }
+    if (goal) {
+      if (eco.rp < goal.cost) break;
+      const era0 = rivalEra(f);
+      eco.rp -= goal.cost; f.techs.push(goal.id); f.goal = undefined; s.log.unshift({ day: s.day, text: `Les ${f.name} découvrent : ${goal.name}.` });
+      if (rivalEra(f) > era0) s.log.unshift({ day: s.day, text: `Les ${f.name} ont terminé l'arbre du chapitre ${['', 'I', 'II', 'III'][era0]} et entrent dans le chapitre ${['', 'I', 'II', 'III'][rivalEra(f)]}.` });
+      continue;
+    }
     const score = (t: typeof TECHS[number]) => {
       let sc = Math.random() * 12 - t.cost / 8;
       // ateliers débloqués : intéressants s'il y a des gisements près de ses villes

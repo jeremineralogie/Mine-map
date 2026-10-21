@@ -152,6 +152,14 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
 - **Recherche** : comme le joueur, un rival gagne des points avec ses villes, ses objectifs (les mêmes que
   le joueur) et les événements historiques, se fixe une technologie selon ses gisements, ses besoins et
   son caractère, et l'achète au même prix. Il ne reçoit rien quand le joueur découvre une technologie.
+  **Comme le joueur, il doit découvrir tout l'arbre du chapitre en cours avant de passer au chapitre suivant**
+  (chaque rival a sa propre époque, indépendante de celle du joueur).
+- **Gisements** : un rival va chercher lui-même les gisements dont il a besoin, proches ou lointains ; trop loin
+  de ses villes, il fonde d'abord un village à côté (dès qu'il a 1 500 sesterces). Si tous les gisements de
+  cette ressource sont déjà exploités ou sur le territoire d'un autre camp, il demande une alliance à celui
+  qui exploite le plus proche (une fois par an) : au joueur par une proposition à l'écran, à un autre rival
+  qui accepte si leurs relations ne sont pas mauvaises. Entre alliés, gisements et territoires sont partagés ;
+  une alliance entre rivaux se rompt avec la guerre ou une relation trop dégradée.
 - **Petites erreurs de gestion** : certains mois il est distrait (pas de nouveau chantier ni de réglage
   de ses lignes), il ne surveille pas toutes ses lignes chaque mois et ne choisit pas toujours le
   chantier le plus urgent. Ses villes connaissent donc des creux et des pénuries, comme celles du joueur.

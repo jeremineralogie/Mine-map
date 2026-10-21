@@ -2,7 +2,7 @@
 // (bâtiments, chantiers livrés par convois, routes, lignes, véhicules, ouvriers, besoins des villes,
 // croissance, salaires et entretien). L'ordinateur ne fait que donner les ordres d'un joueur :
 // construire, tracer une route, créer une ligne, acheter ou revendre un véhicule.
-import { BUILD, DIFFICULTY, IMPORT_MULT, LEVEL_MULT, RES, START_MONEY, START_STOCK, TIERS, VEH, WATER_RANGE, WORK_RANGES, type BType, type ResId, type VType } from './defs';
+import { BUILD, DIFFICULTY, IMPORT_MULT, LEVEL_MULT, RES, START_MONEY, START_STOCK, TECHS, TIERS, VEH, WATER_RANGE, WORK_RANGES, type BType, type ResId, type VType } from './defs';
 import type { Geo } from './geo';
 import { addEdge, components, dijkstra, invalidate, quoteSegment } from './roads';
 import {
@@ -23,6 +23,15 @@ const EXPORT = 0.9;
 export const diffMult = (s: GameState) => DIFFICULTY[s.difficulty ?? 'equilibre'].mult;
 export const rivalWorkRange = (f: Faction, c: RBuilding) => (WORK_RANGES[c.tier ?? 0] ?? WORK_RANGES[0]) + ((f.techs ?? []).includes('cite_prospere') ? 15 : 0);
 export const rivalCities = (f: Faction) => f.b.filter(b => b.type === 'village');
+/** Époque d'un rival : comme le joueur, il passe au chapitre suivant quand il a découvert tout l'arbre du chapitre en cours */
+const MAX_ERA = Math.max(...TECHS.map(t => t.era));
+export function rivalEra(f: Faction) {
+  let e = 1;
+  while (e < MAX_ERA && TECHS.filter(t => t.era === e).every(t => (f.techs ?? []).includes(t.id))) e++;
+  return e;
+}
+/** Deux rivaux sont-ils alliés ? */
+export const alliedRivals = (f: Faction, o: Faction) => (f.allies ?? []).includes(o.id);
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // ---------- Économie d'un rival ----------
@@ -59,7 +68,7 @@ const simOf = (eco: GameState, geo: Geo) => { let m = sims.get(eco); if (!m) { m
 export function stepRivals(s: GameState, geo: Geo, dt: number) {
   for (const f of s.factions ?? []) {
     const eco = f.eco; if (!eco || f.dead) continue;
-    eco.money = f.money; eco.era = s.era; eco.techs = f.techs ?? [];
+    eco.money = f.money; eco.era = rivalEra(f); eco.techs = f.techs ?? [];
     eco.day = s.day - dt;
     simOf(eco, geo).step(dt);
     f.money = eco.money;
@@ -285,6 +294,8 @@ export function syncAllyRoads(s: GameState) {
 export interface Placer {
   free(f: Faction, x: number, y: number): boolean;
   freeDeposits(f: Faction, res: ResId): { x: number; y: number; dep: number; name: string }[];
+  /** gisements de cette ressource qu'il ne peut pas exploiter : déjà exploités ou sur le territoire d'un autre camp (non allié) */
+  blockedDeposits(f: Faction, res: ResId): { x: number; y: number; name: string; owner: 'player' | Faction }[];
   cityName(x: number, y: number): string;
 }
 let placer: Placer | null = null;
@@ -308,7 +319,7 @@ function storeFor(eco: GameState, b: Building, linked: (a: Building, b: Building
   if (b.city) {
     const w = localStore(eco, b);
     // tant que son entrepôt est vide, la ville reste servie par l'entrepôt principal
-    return ok(w) && (w === h || cargoTotal(w!.stock) >= 10) ? w! : linked(h, b) ? h : undefined;
+    return ok(w) && (w === h || (w!.stock.cereales ?? 0) >= 2) ? w! : linked(h, b) ? h : undefined;
   }
   for (const c of cities(eco).sort((a, z) => dist(a, b) - dist(z, b))) {
     const w = localStore(eco, c);
@@ -404,6 +415,25 @@ function build(s: GameState, f: Faction, geo: Geo, t: BType, x: number, y: numbe
   return b;
 }
 
+/** Tous les gisements de r sont pris : il propose une alliance au camp qui exploite le plus proche (une fois par an et par camp).
+ *  Au joueur, la demande s'affiche à l'écran ; un autre rival accepte si leurs relations le permettent. */
+function askAlliance(s: GameState, f: Faction, r: ResId) {
+  const eco = f.eco!, asked = (f.asked ??= {});
+  const near = placer!.blockedDeposits(f, r).map(d => ({ d, dn: Math.min(...eco.nodes.map(n => dist(n, d))) })).sort((a, z) => a.dn - z.dn)[0]?.d;
+  if (!near) return;
+  const key = near.owner === 'player' ? 'player' : near.owner.id;
+  if ((asked[key] ?? -1e9) > s.day - 365) return;
+  asked[key] = s.day;
+  if (near.owner === 'player') { if (!f.war && !f.alliance) f.wantAlly = near.name; return; }
+  const o = near.owner;
+  if ((f.foes ?? []).includes(o.id) || (o.foes ?? []).includes(f.id) || (o.rels?.[f.id] ?? 0) < 0) {
+    s.log.unshift({ day: s.day, text: `Les ${o.name} refusent l'alliance que leur proposent les ${f.name}.` });
+    return;
+  }
+  (f.allies ??= []).push(o.id); (o.allies ??= []).push(f.id);
+  s.log.unshift({ day: s.day, text: `Les ${f.name} et les ${o.name} s'allient pour exploiter ensemble : ${near.name}.` });
+}
+
 /** Cherche où produire r : gisement libre le plus proche de son réseau (même loin : il y trace une route), sinon près d'une ville */
 function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok' | 'none' | 'wait' {
   const eco = f.eco!, cs = cities(eco);
@@ -422,15 +452,13 @@ function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok'
       }
       continue;
     }
-    // gisement : les plus proches de son réseau d'abord, même hors de son territoire
+    // gisement : les plus proches de son réseau d'abord, proches ou lointains
     const spots = d.deposit === 'cereales' ? [] : placer.freeDeposits(f, d.deposit)
-      .map(p => ({ p, dn: Math.min(...eco.nodes.map(n => dist(n, p))) })).filter(o => o.dn < 260).sort((a, z) => a.dn - z.dn).slice(0, 4);
+      .map(p => ({ p, dn: Math.min(...cs.map(c => dist(c, p))) })).sort((a, z) => a.dn - z.dn).slice(0, 4);
     for (const { p } of spots) {
-      // trop loin de ses villes pour y trouver des ouvriers : il y fonde d'abord un village,
-      // mais seulement quand sa capitale est assez grande pour fournir des colons et qu'il en a les moyens
+      // trop loin de ses villes pour y trouver des ouvriers : il fonde d'abord un village à côté, dès qu'il en a les moyens
       if (!cs.some(c => dist(c, p) <= workRange(c, eco) - 2)) {
-        // il préfère l'acheter à un rival qui en produit ; l'expédition lointaine, seulement s'il en a largement les moyens
-        if (Math.max(...cs.map(c => c.city!.pop)) < 300 || eco.money < 2500 || tradeable(s, f, r)) continue;
+        if (eco.money < 1500) return 'wait';
         for (let k = 0; k < 25; k++) {
           const a = Math.random() * 6.283, rr = 6 + Math.random() * 14, x = p.x + Math.cos(a) * rr, y = p.y + Math.sin(a) * rr;
           if (geo.waterDist(x, y) > WATER_RANGE || cs.some(c => dist(c, { x, y }) < 30)) continue;
@@ -440,6 +468,8 @@ function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok'
       }
       if (build(s, f, geo, t, p.x, p.y, `${d.name} — ${p.name}`)) return 'ok';
     }
+    // aucun gisement libre : il demande une alliance à celui qui l'exploite déjà
+    if (d.deposit !== 'cereales' && !spots.length) askAlliance(s, f, d.deposit);
     // céréales : terres fertiles proches, sinon terres ordinaires autour des villes
     if (d.deposit === 'cereales') {
       for (const p of placer.freeDeposits(f, 'cereales').filter(p => cs.some(c => dist(c, p) <= workRange(c, eco) - 2)).slice(0, 4))
@@ -594,11 +624,6 @@ function manageStock(f: Faction, need: Stock) {
 /** Commerce entre rivaux : il achète à un rival qui en a en trop ce qui manque à ses villes ou à ses ateliers.
  *  Prix de base +20 %, plus le transport au kilomètre ; livré par la route au bout du temps de trajet. */
 const TRADE_KM = 0.02;
-/** Un autre rival (en paix avec lui) produit-il cette ressource ? */
-function tradeable(s: GameState, f: Faction, r: ResId) {
-  return (s.factions ?? []).some(o => o !== f && o.eco && !o.dead && !(o.foes ?? []).includes(f.id) && !(f.foes ?? []).includes(o.id)
-    && o.eco.buildings.some(b => b.built && BUILD[b.type].recipe?.out[r]));
-}
 function rivalTrade(s: GameState, f: Faction, need: Stock) {
   const eco = f.eco!, h = hub(eco); if (!h) return;
   // arrivages
@@ -631,7 +656,7 @@ function rivalTrade(s: GameState, f: Faction, need: Stock) {
 /** Un mois de décisions pour un rival */
 export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   const eco = f.eco; if (!eco) return;
-  eco.techs = f.techs ?? []; eco.era = s.era; eco.money = f.money;
+  eco.techs = f.techs ?? []; eco.era = rivalEra(f); eco.money = f.money;
   const need = demand(eco);
   rivalTrade(s, f, need);
   manageStock(f, need);
@@ -651,6 +676,22 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
       const a = Math.random() * 6.283, rr = 2 + Math.random() * 5;
       if (build(s, f, geo, 'entrepot', c.x + Math.cos(a) * rr, c.y + Math.sin(a) * rr, `Entrepôt de ${c.name}`)) { started++; break; }
     }
+  }
+  // chaque ville se nourrit d'abord de ses propres fermes (un village lointain ne vit pas du blé de la capitale)
+  if (!distracted) for (const c of cities(eco)) {
+    if (sites + started >= maxSites) break;
+    const want = (cityNeeds(c).cereales ?? 0) * 1.2 + 0.3, range = workRange(c, eco) - 4;
+    const local = eco.buildings.filter(b => BUILD[b.type].recipe?.out.cereales && dist(b, c) <= range)
+      .reduce((a, b) => a + BUILD[b.type].recipe!.out.cereales! * LEVEL_MULT[b.level], 0);
+    if (local >= want) continue;
+    const t = producersOf(eco, 'cereales')[0]; if (!t) continue;
+    const fertile = placer?.freeDeposits(f, 'cereales').filter(p => dist(c, p) <= range) ?? [];
+    let ok = fertile.slice(0, 3).some(p => !!build(s, f, geo, t, p.x, p.y, `${BUILD[t].name} — ${p.name}`));
+    for (let k = 0; k < 20 && !ok; k++) {
+      const a = Math.random() * 6.283, rr = 3 + Math.random() * Math.max(4, range - 4);
+      ok = !!build(s, f, geo, t, c.x + Math.cos(a) * rr, c.y + Math.sin(a) * rr);
+    }
+    if (ok) started++;
   }
   const todo = shortages(eco, need);
   if (todo.length > 1 && Math.random() < 0.3) [todo[0], todo[1]] = [todo[1], todo[0]];

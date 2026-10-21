@@ -199,6 +199,11 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
     if (f.pact && f.pact < s.day) { f.pact = undefined; s.log.unshift({ day: s.day, text: `Le pacte de non-agression avec les ${f.name} a expiré.` }); }
     const after = relLabel(f).label;
     if (after !== before) s.log.unshift({ day: s.day, text: `Relation avec les ${f.name} : ${after.toLowerCase()}.` });
+    // un rival qui convoite un de tes gisements te demande une alliance pour l'exploiter avec toi
+    if (f.wantAlly) {
+      const dep = f.wantAlly; f.wantAlly = undefined;
+      if (n.ask && !f.alliance && !f.war) n.ask(`Les ${f.name} demandent une alliance`, `Ils veulent exploiter le gisement « ${dep} », que tu exploites déjà ou qui est sur ton territoire. Une alliance (avec un accord commercial) partage gisements et territoires : ils pourront y construire, et toi chez eux.`, () => { f.trade = true; f.alliance = true; changeRel(f, Math.max(6, 40 - relOf(f))); syncAllyRoads(s); });
+    }
     // propositions spontanées des rivaux
     if (n.ask && hasTavern(s)) {
       const r = relOf(f);
@@ -213,7 +218,14 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
     f.rels ??= {};
     for (const o of fs) if (o !== f && !o.dead && o.b.length) {
       const v = f.rels[o.id] ?? 0, near = Math.min(...f.b.map(a => Math.min(...o.b.map(b => Math.hypot(a.x - b.x, a.y - b.y)))));
-      f.rels[o.id] = Math.max(-100, Math.min(100, v * 0.97 + (Math.random() - 0.5) * 6 + (near < 60 ? -1.5 : 0.3)));
+      // deux alliés s'entendent mieux, deux voisins se frottent
+      const allied = (f.allies ?? []).includes(o.id);
+      f.rels[o.id] = Math.max(-100, Math.min(100, v * 0.97 + (Math.random() - 0.5) * 6 + (allied ? 0.5 : near < 60 ? -1.5 : 0.3)));
+      // une alliance entre rivaux ne survit pas à la guerre ni à une relation trop dégradée
+      if (allied && (f.rels[o.id] < -20 || (f.foes ?? []).includes(o.id))) {
+        f.allies = (f.allies ?? []).filter(id => id !== o.id); o.allies = (o.allies ?? []).filter(id => id !== f.id);
+        s.log.unshift({ day: s.day, text: `Fin de l'alliance entre les ${f.name} et les ${o.name}.` });
+      }
     }
   }
   void factionPop;

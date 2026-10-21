@@ -118,6 +118,9 @@ export interface Faction {
   rels?: Record<string, number>;
   /** guerre avec le joueur, ennemis parmi les rivaux, début de la guerre */
   war?: boolean; foes?: string[]; warSince?: number;
+  /** alliances avec d'autres rivaux (gisements et territoires partagés) ; demande d'alliance au joueur en attente
+   *  (nom du gisement convoité) ; dernières demandes, par camp */
+  allies?: string[]; wantAlly?: string; asked?: Record<string, number>;
   /** plus aucune ville : soumis au joueur ou détruit */
   dead?: boolean;
   /** économie complète du rival (bâtiments, routes, lignes, véhicules), simulée comme celle du joueur */
