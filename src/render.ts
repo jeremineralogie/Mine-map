@@ -411,7 +411,9 @@ export class Renderer {
     for (const a of list) {
       const p = targetPos(s, a.target ?? null);
       if (!p || (a.owner !== PLAYER && !(v.selected?.kind === 'army' && v.selected.id === a.id) && !hostile(s, a.owner, PLAYER))) continue;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(p.x, p.y);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y);
+      for (const q of a.state === 'march' && a.route ? a.route.slice(0, -1) : []) ctx.lineTo(q.x, q.y);
+      ctx.lineTo(p.x, p.y);
       ctx.setLineDash([this.px(6), this.px(5)]); ctx.strokeStyle = ownerColor(s, a.owner); ctx.lineWidth = this.px(2); ctx.globalAlpha = 0.8; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
     this.screen();

@@ -203,6 +203,7 @@ export class Game {
     $('money').textContent = fmt(s.money);
     $('money').parentElement!.classList.toggle('neg', s.money < 0);
     $('rp').textContent = fmt(Math.floor(s.rp));
+    $('pop').textContent = fmt(playerPop(s));
     document.querySelectorAll<HTMLButtonElement>('#speed button').forEach(b => b.classList.toggle('on', Number(b.dataset.s) === this.speed));
     $('speedCycle').textContent = `×${this.speed || 1}`; $('speedCycle').classList.toggle('on', this.speed > 0);
     if (!$('treeView').hidden) this.renderTree();
@@ -277,7 +278,7 @@ export class Game {
       case 'research': this.openTree(); break;
       case 'economy': this.openPanel(() => this.economyPanel()); break;
       case 'objectives': this.openPanel(() => this.objectivesPanel()); break;
-      case 'layers': this.openPanel(() => this.layersPanel()); break;
+      case 'trade': this.openPanel(() => this.tradePanel()); break;
     }
   }
   setMode(m: Mode) {
@@ -1100,24 +1101,6 @@ export class Game {
         <p class="legend"><span><i style="background:#2a78d6"></i>bénéfice</span><span><i style="background:#d4483b"></i>perte</span><small class="muted">touche une barre pour le détail</small></p>`;
     } else h += '<p class="muted">Le graphique des finances apparaîtra après deux mois de jeu.</p>';
 
-    // commerce extérieur
-    h += `<h3>Commerce extérieur</h3>${s.buildings.filter(b => b.partner).map(b => {
-      const p = PARTNERS.find(x => x.id === b.partner)!, st = buildingStatus(this.sim, b);
-      return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#7a1f2b"><span class="lc-head"><b>${esc(p.name)}</b><span class="pill ${st.level}">${st.label}</span></span>
-        <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
-        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
-    }).join('')}<p class="muted">Relie un poste-frontière par la route, puis livre-lui des marchandises avec une ligne, ou achète-lui des ressources depuis sa fiche.</p>`;
-    // partenaires d'outre-mer : ouverts avec le négoce maritime
-    const seaOpen = s.techs.includes('negoce_maritime');
-    h += `<h3>Routes maritimes ${seaOpen ? '' : '<small class="muted">— 🔒 Négoce maritime</small>'}</h3>`;
-    h += seaOpen ? s.buildings.filter(b => b.type === 'comptoir').map(b => {
-      const p = SEA_PARTNERS.find(x => x.id === b.sp)!, st = buildingStatus(this.sim, b);
-      return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#14406e"><span class="lc-head"><b>${esc(p.name)}</b><small class="muted">${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique'}</small><span class="pill ${st.level}">${st.label}</span></span>
-        <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
-        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
-    }).join('') + '<p class="muted">Construis un port de commerce sur la côte, puis envoie des navires marchands vers ces comptoirs.</p>'
-      : `<p class="muted">Recherche le négoce maritime pour ouvrir des routes vers ${SEA_PARTNERS.map(p => p.name.split(' (')[0]).join(', ')}.</p>`;
-
     // bilan des ressources
     const stock: Stock = {}, prod: Stock = {}, real: Stock = {}, use: Stock = {}, cityStock: Stock = {};
     const add = (o: Stock, r: ResId, q: number) => { o[r] = (o[r] ?? 0) + q; };
@@ -1304,8 +1287,8 @@ export class Game {
   /** Fenêtre de diplomatie : relations, traités et actions envers chaque rival */
   private diplomacyPanel(): string {
     const s = this.s, fs = s.factions ?? [], open = hasTavern(s);
-    let h = `<h2 class="ph">🤝 Diplomatie</h2>`;
-    if (!fs.length) return h + '<p class="muted">Pas de rivaux dans cette partie.</p>';
+    let h = '';
+    if (!fs.length) return '<p class="muted">Pas de rivaux dans cette partie.</p>';
     if (!open) h += `<p class="hint warn">Construis une <b>taverne</b> près d'une de tes villes pour ouvrir la diplomatie : cadeaux, accords, alliances, espionnage.</p>`;
     else h += `<p class="muted">${tavernes(s).length} taverne${tavernes(s).length > 1 ? 's' : ''} : chacune améliore un peu chaque mois tes relations, surtout avec les rivaux proches.</p>`;
     const top = (Object.keys(RES) as ResId[]).filter(r => RES[r].era <= s.era && storeTotal(s, r) >= 20).sort((a, z) => RES[z].price - RES[a].price).slice(0, 3);
@@ -1328,16 +1311,74 @@ export class Game {
           ${f.pact && f.pact > s.day ? '' : btn('treaty', `Non-agression <small>(≥ ${th('pact')})</small>`, 'data-k="pact"')}
           ${f.alliance ? btn('break', 'Rompre l\'alliance', 'data-k="alliance"') : btn('treaty', `Alliance <small>(≥ ${th('alliance')}, accord commercial)</small>`, 'data-k="alliance"', !f.trade)}
           ${btn('spy', `🕵 Espionner (${SPY_COST})`, '', s.money < SPY_COST)}
-        </div>${warAllowed(s) ? `<div class="dipl-act">${f.war ? `${btn('peace', 'Proposer la paix')}${btn('peace', 'Paix contre indemnité', 'data-pay="1"')}` : btn('war', '⚔ Déclarer la guerre', '', !!f.alliance)}</div>` : ''}</div>`;
+        </div></div>`;
     }
     return h;
   }
+
+  /** Onglet Commerce et diplomatie : lignes d'achat et de vente, partenaires, tavernes, rivaux, guerre et paix */
+  private tradeTab: 'commerce' | 'diplo' | 'war' = 'commerce';
+  private tradePanel(): string {
+    const s = this.s, tab = this.tradeTab;
+    const tabs = `<div class="tabs">${([['commerce', 'Commerce'], ['diplo', 'Diplomatie'], ['war', 'Guerre et paix']] as const).map(([k, n]) => `<button data-act="tradetab" data-k="${k}" class="${tab === k ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+    let h = `<h2 class="ph">${IC.trade}Commerce et diplomatie</h2>${tabs}`;
+    if (tab === 'diplo') return h + this.diplomacyPanel() + this.rivalsSummary(false);
+    if (tab === 'war') return h + this.warTab();
+    // lignes qui achètent ou vendent : postes-frontières, comptoirs d'outre-mer, tavernes
+    const trader = (id: number) => { const b = getB(s, id); return !!b && (!!b.partner || b.type === 'comptoir' || b.type === 'taverne'); };
+    const lines = s.lines.filter(l => l.stops.some(st => trader(st.bid)));
+    h += `<h3>Lignes d'achat et de vente (${lines.length})</h3>${lines.map(l => this.lineCard(l)).join('') || '<p class="muted">Aucune ligne ne livre ou ne charge chez un partenaire. Crée une ligne avec un arrêt à un poste-frontière, un comptoir ou une taverne.</p>'}`;
+    let ext = '';
+    // commerce extérieur
+    ext += `<h3>Partenaires étrangers</h3>${s.buildings.filter(b => b.partner).map(b => {
+      const p = PARTNERS.find(x => x.id === b.partner)!, st = buildingStatus(this.sim, b);
+      return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#7a1f2b"><span class="lc-head"><b>${esc(p.name)}</b><span class="pill ${st.level}">${st.label}</span></span>
+        <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
+        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
+    }).join('')}<p class="muted">Relie un poste-frontière par la route, puis livre-lui des marchandises avec une ligne, ou achète-lui des ressources depuis sa fiche.</p>`;
+    // partenaires d'outre-mer : ouverts avec le négoce maritime
+    const seaOpen = s.techs.includes('negoce_maritime');
+    ext += `<h3>Routes maritimes ${seaOpen ? '' : '<small class="muted">— 🔒 Négoce maritime</small>'}</h3>`;
+    ext += seaOpen ? s.buildings.filter(b => b.type === 'comptoir').map(b => {
+      const p = SEA_PARTNERS.find(x => x.id === b.sp)!, st = buildingStatus(this.sim, b);
+      return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#14406e"><span class="lc-head"><b>${esc(p.name)}</b><small class="muted">${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique'}</small><span class="pill ${st.level}">${st.label}</span></span>
+        <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
+        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
+    }).join('') + '<p class="muted">Construis un port de commerce sur la côte, puis envoie des navires marchands vers ces comptoirs.</p>'
+      : `<p class="muted">Recherche le négoce maritime pour ouvrir des routes vers ${SEA_PARTNERS.map(p => p.name.split(' (')[0]).join(', ')}.</p>`;
+
+    h += ext;
+    // tavernes : commerce avec les rivaux
+    const tvs = tavernes(s);
+    h += `<h3>Tavernes : commerce avec les rivaux</h3>${tvs.map(b => {
+      const f = tradeFaction(s, b), st = buildingStatus(this.sim, b);
+      return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:${f?.color ?? '#8a6d3b'}"><span class="lc-head"><b>${esc(b.name)}</b><span class="pill ${st.level}">${st.label}</span></span>
+        ${f ? `<span class="chips"><small class="muted">Avec les ${esc(f.name)} · achètent :</small> ${factionBuys(s, f).map(r => resChip(r)).join(' ')}</span><span class="chips"><small class="muted">Vendent :</small> ${factionSells(f).map(r => resChip(r)).join(' ')}</span>` : '<small class="muted">Aucun rival relié par la route avec un accord commercial.</small>'}</button>`;
+    }).join('') || '<p class="muted">Aucune taverne. Construis-en une près d\'une de tes villes pour commercer avec tes rivaux.</p>'}`;
+    return h;
+  }
+  /** Guerre et paix : état de chaque rival, tes armées, tes casernes, les armées ennemies */
+  private warTab(): string {
+    const s = this.s, fs = (s.factions ?? []).filter(f => !f.dead);
+    if (!warAllowed(s)) return '<p class="muted">La guerre devient possible au chapitre II (Gaule romaine) : casernes, légionnaires, sièges et conquêtes.</p>';
+    const state = { idle: 'au repos', march: 'en marche', fight: 'au combat', siege: 'siège' };
+    let h = '<h3>Rivaux</h3>';
+    h += fs.map(f => `<div class="dipl" style="--fc:${f.color}"><div class="dipl-h"><i></i><b>${esc(f.name)}</b>${f.war ? '<span class="pill bad">⚔ Guerre</span>' : f.pact && f.pact > s.day ? `<span class="pill info">Non-agression jusqu'en ${yearOf(f.pact)}</span>` : f.alliance ? '<span class="pill good">Alliance</span>' : '<span class="pill info">Paix</span>'}</div>
+      <small class="muted">${f.b.filter(b => b.type === 'village').length} ville(s) · ${fmt(factionPop(f))} hab.</small>
+      <div class="dipl-act">${f.war ? `<button data-act="peace" data-f="${f.id}">Proposer la paix</button><button data-act="peace" data-f="${f.id}" data-pay="1">Paix contre indemnité</button>` : `<button data-act="war" data-f="${f.id}" ${f.alliance ? 'disabled' : ''}>⚔ Déclarer la guerre</button>`}</div></div>`).join('') || '<p class="muted">Aucun rival.</p>';
+    const mine = (s.armies ?? []).filter(a => a.owner === PLAYER), foes = (s.armies ?? []).filter(a => a.owner !== PLAYER && hostile(s, PLAYER, a.owner));
+    h += `<h3>Tes armées (${mine.length})</h3>${mine.map(a => `<button class="row" data-act="selarmy" data-id="${a.id}"><span class="army-dot" style="background:${PLAYER_COLOR}"></span><span>${a.merc ? 'Mercenaires · ' : ''}${fmt(a.men)} hommes · ${Math.round(a.hp)} %</span><small class="muted">${state[a.state]}</small></button>`).join('') || '<p class="muted">Aucune. Recrute dans une caserne.</p>'}`;
+    const cas = s.buildings.filter(b => b.type === 'caserne');
+    h += `<h3>Casernes (${cas.length})</h3>${cas.map(b => `<button class="row" data-act="goto" data-id="${b.id}"><img class="vic" src="${bIconUrl(b.type)}" alt=""><span class="grow"><b>${esc(b.name)}</b></span><small class="muted">${b.built ? 'recruter' : 'en construction'}</small></button>`).join('') || '<p class="muted">Aucune caserne.</p>'}`;
+    h += `<h3>Armées ennemies (${foes.length})</h3>${foes.map(a => `<button class="row" data-act="selarmy" data-id="${a.id}"><span class="army-dot" style="background:${ownerColor(s, a.owner)}"></span><span>${esc(ownerName(s, a.owner))} · ${fmt(a.men)} hommes</span><small class="muted">${state[a.state]}</small></button>`).join('') || '<p class="muted">Aucune armée ennemie en campagne.</p>'}`;
+    return h;
+  }
   /** Comparaison avec les rivaux */
-  private rivalsSummary(): string {
+  private rivalsSummary(button = true): string {
     const s = this.s; if (!s.factions?.length) return '';
     const me = playerPop(s), rows = [{ name: 'Toi', color: PLAYER_COLOR, pop: me, cities: s.buildings.filter(b => b.city).length }, ...s.factions.map(f => ({ name: f.name, color: f.color, pop: factionPop(f), cities: f.b.filter(b => b.type === 'village').length }))];
     const max = Math.max(1, ...rows.map(r => r.pop));
-    return `<h3>Rivaux <small class="muted">— difficulté ${DIFFICULTY[s.difficulty ?? 'equilibre'].name.toLowerCase()}</small></h3><div class="actions top"><button class="primary" data-act="diplo">🤝 Diplomatie</button></div><div class="rivals">${rows.map(r => `<div class="rv"><span class="rv-n"><i style="background:${r.color}"></i>${esc(r.name)}</span><span class="gauge"><i style="width:${r.pop / max * 100}%;background:${r.color}"></i></span><small>${fmt(r.pop)} hab. · ${r.cities} ville${r.cities > 1 ? 's' : ''}</small></div>`).join('')}</div>`;
+    return `<h3>Comparaison <small class="muted">— difficulté ${DIFFICULTY[s.difficulty ?? 'equilibre'].name.toLowerCase()}</small></h3>${button ? '<div class="actions top"><button class="primary" data-act="diplo">🤝 Diplomatie</button></div>' : ''}<div class="rivals">${rows.map(r => `<div class="rv"><span class="rv-n"><i style="background:${r.color}"></i>${esc(r.name)}</span><span class="gauge"><i style="width:${r.pop / max * 100}%;background:${r.color}"></i></span><small>${fmt(r.pop)} hab. · ${r.cities} ville${r.cities > 1 ? 's' : ''}</small></div>`).join('')}</div>`;
   }
   private layersPanel(): string {
     const L = this.view.layers, s = this.s;
@@ -1345,7 +1386,7 @@ export class Game {
     const resList = [...new Set(this.geo.deposits.map(d => d.res))].filter(r => RES[r].era <= s.era);
     const opts = `<option value="all">Toutes les ressources (sauf terres fertiles)</option>` + resList.map(r => `<option value="${r}" ${this.view.depositFilter === r ? 'selected' : ''}>${RES[r].name}</option>`).join('');
     const legend = resList.filter(r => r !== 'cereales').map(r => `<span class="res"><i class="sw" style="background:${DEP_COLOR[r] ?? RES[r].color}"></i>${RES[r].name}</span>`).join(' ');
-    return `<h2 class="ph">${IC.layers}Calques</h2>
+    return `<h3>Calques</h3>
       <label class="tog"><input type="checkbox" data-layer="deposits" ${L.deposits ? 'checked' : ''}> Gisements</label>
       <label class="tog"><input type="checkbox" data-layer="depLabels" ${L.depLabels !== false ? 'checked' : ''}> Noms des gisements (ressource et lieu)</label>
       <p><select data-field="depfilter">${opts}</select></p>
@@ -1365,6 +1406,7 @@ export class Game {
       <button data-act="save">Sauvegarder maintenant</button>
       <button data-act="export">Exporter la sauvegarde (fichier)</button>
       <button data-act="loadfile">Importer une sauvegarde</button></div>
+      ${this.layersPanel()}
       <h3>Commandes</h3><ul class="log">
       <li>Glisser : déplacer la carte · molette ou pincement : zoom</li>
       <li>Espace : pause · 1 à 4 : vitesse · Échap : annuler</li>
@@ -1427,7 +1469,8 @@ export class Game {
       }
       case 'research': this.sim.research(t.dataset.id!); break;
       case 'nextera': this.chapterModal(); break;
-      case 'diplo': this.openPanel(() => this.diplomacyPanel()); return;
+      case 'diplo': this.tradeTab = 'diplo'; this.openPanel(() => this.tradePanel()); return;
+      case 'tradetab': this.tradeTab = t.dataset.k as 'commerce' | 'diplo' | 'war'; $('panelBody').scrollTop = 0; break;
       case 'gift': case 'giftres': case 'treaty': case 'break': case 'spy': {
         const f = s.factions?.find(x => x.id === t.dataset.f); if (!f) break;
         if (!hasTavern(s)) { this.toast('Construis d\'abord une taverne près d\'une de tes villes.', 'bad'); break; }

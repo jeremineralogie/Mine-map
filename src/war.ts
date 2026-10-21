@@ -141,10 +141,7 @@ export function warStep(s: GameState, geo: Geo, dt: number, n: WarNotify) {
     const d = Math.hypot(p.x - a.x, p.y - a.y);
     if (a.target!.kind === 'army' || d > 3) {
       a.state = 'march';
-      const step = Math.min(d, speedOf(a) * dt);
-      const nx = a.x + (p.x - a.x) / d * step, ny = a.y + (p.y - a.y) / d * step;
-      // les armées contournent la mer : elles s'arrêtent sur la côte
-      if (geo.maskAt(nx, ny) !== 0 || d < 3) { a.x = nx; a.y = ny; }
+      march(s, geo, a, p, dt);
       continue;
     }
     // siège d'une ville
@@ -158,6 +155,25 @@ export function warStep(s: GameState, geo: Geo, dt: number, n: WarNotify) {
     a.men = 0;
   }
   s.armies = list.filter(a => a.men > 0);
+}
+
+/** Marche par la terre : l'armée suit son itinéraire (lacs, mer et montagnes raides contournés),
+ *  recalculé quand sa cible s'est déplacée */
+function march(s: GameState, geo: Geo, a: Army, p: { x: number; y: number }, dt: number) {
+  const k = `${a.target!.kind}${a.target!.id}`;
+  const moved = !a.routeTo || Math.hypot(a.routeTo.x - p.x, a.routeTo.y - p.y) > 6;
+  if (!a.route || a.routeTo?.k !== k || (moved && s.day - (a.routeDay ?? -99) >= 1)) {
+    a.route = geo.landPath(a.x, a.y, p.x, p.y) ?? [{ x: p.x, y: p.y }];
+    a.routeTo = { x: p.x, y: p.y, k }; a.routeDay = s.day;
+  }
+  // la cible bouge un peu : le dernier point la suit
+  if (a.route.length) a.route[a.route.length - 1] = { x: p.x, y: p.y };
+  let step = speedOf(a) * dt;
+  while (step > 0 && a.route.length) {
+    const q = a.route[0], d = Math.hypot(q.x - a.x, q.y - a.y);
+    if (d <= step) { a.x = q.x; a.y = q.y; step -= d; if (a.route.length > 1) a.route.shift(); else break; }
+    else { a.x += (q.x - a.x) / d * step; a.y += (q.y - a.y) / d * step; step = 0; }
+  }
 }
 
 function siege(s: GameState, geo: Geo, a: Army, n: WarNotify, dt: number) {

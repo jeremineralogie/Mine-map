@@ -35,7 +35,7 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
 - France métropolitaine + Corse, projection en kilomètres réels.
 - Carte moderne épurée : relief ombré, fleuves et principales rivières.
 - Les pays voisins sont des **partenaires commerciaux** (postes-frontières, puis ports).
-- **Calques** : gisements, eau, zones d'export, couverture (eau, électricité).
+- **Calques** (dans le menu) : gisements, eau, zones d'export, couverture (eau, électricité).
 - Données : Natural Earth (domaine public), altitudes Terrarium (AWS Open Data),
   générées par `tools/build-data.mjs` et versionnées dans `public/data`.
 
@@ -161,6 +161,7 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
   espionnage. Commerce à la taverne seulement si une **route** la relie à moins de 10 km d'une ville du rival ;
   on n'achète que ce qu'il a en réserve.
 - **Guerre** : caserne (légionnaires, auxiliaires, mercenaires), armées visibles avec effectif et moral,
+  qui marchent par la terre en contournant la mer, les lacs et les montagnes trop raides,
   sièges. Une ville rivale vaincue : **conquête**, **pillage** ou **tribut**. Un rival peut aussi prendre
   ou piller une ville du joueur ; perdre la dernière ville = fin de partie.
 - **Conquête en état de marche** (dans les deux sens) : on prend la ville, son entrepôt, toutes les
@@ -173,6 +174,10 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
   propriétaire, et deviennent les tiennes s'il disparaît. Aucune route ne disparaît.
 
 ## 11. Interface
+- Onglets : Sélection, Construire, Route, Lignes, Économie, Recherche, Objectifs, **Commerce et diplomatie**
+  (lignes d'achat et de vente, partenaires étrangers et d'outre-mer, tavernes ; relations et traités avec
+  les rivaux ; guerre et paix, armées, casernes, armées ennemies), Démolir, Menu (avec les calques).
+- Barre du haut : date, argent, population totale, points de recherche, vitesse.
 - Ordinateur, tablette et téléphone (souris et tactile).
 - Sauvegarde automatique dans le navigateur + export / import de fichier.
 - Sur téléphone, l'arbre de recherche n'affiche pas de légende (plus de place pour naviguer).

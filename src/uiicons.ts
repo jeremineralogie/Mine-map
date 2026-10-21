@@ -23,10 +23,12 @@ export const IC: Record<string, string> = {
   cite: svg('<path d="M3 21h18"/><path d="M4 10h16"/><path d="M12 3l8 4H4z"/><path d="M6 10v8M10 10v8M14 10v8M18 10v8"/>'),
   commerce: svg('<path d="M12 4v16"/><path d="M7 20h10"/><path d="M4 8h16"/><path d="M6 8l-3 6a3 3 0 0 0 6 0z"/><path d="M18 8l-3 6a3 3 0 0 0 6 0z"/>'),
   culture: svg('<path d="M4 20h16"/><path d="M6 20v-6a6 6 0 0 1 12 0v6"/><path d="M12 3v5M9.5 5.5h5"/><path d="M10 20v-4h4v4"/>'),
+  trade: svg('<path d="M12 4v16"/><path d="M7 20h10"/><path d="M4 8h16"/><path d="M6 8l-3 6a3 3 0 0 0 6 0z"/><path d="M18 8l-3 6a3 3 0 0 0 6 0z"/>'),
+  people: svg('<circle cx="9" cy="8" r="3.2"/><path d="M3.5 20v-1.5A5.5 5.5 0 0 1 9 13h0a5.5 5.5 0 0 1 5.5 5.5V20"/><circle cx="17" cy="9" r="2.6"/><path d="M16 13.2a4.5 4.5 0 0 1 5 4.5V20"/>'),
   map: svg('<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>'),
 };
 
 export const LABELS: Record<string, string> = {
   select: 'Sélection', build: 'Construire', road: 'Route', lines: 'Lignes', economy: 'Économie',
-  research: 'Recherche', objectives: 'Objectifs', layers: 'Calques', demolish: 'Démolir', menu: 'Menu',
+  research: 'Recherche', objectives: 'Objectifs', trade: 'Commerce et diplomatie', layers: 'Calques', demolish: 'Démolir', menu: 'Menu',
 };

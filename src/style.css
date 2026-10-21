@@ -291,7 +291,7 @@ table.eco td.neg { color: #b42318; font-weight: 700; }
 #tools { gap: 4px; background: rgba(43,33,24,.92); padding: 6px; border-radius: 16px; width: auto; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
 #tools button { width: 74px; background: transparent; border: 1px solid transparent; color: #eadfcd; box-shadow: none; padding: 8px 2px 6px; gap: 4px; border-radius: 11px; }
 #tools button .uic { width: 24px; height: 24px; }
-#tools button .lbl { font-size: 11px; font-weight: 600; letter-spacing: .1px; }
+#tools button .lbl { font-size: 11px; font-weight: 600; letter-spacing: .1px; text-align: center; line-height: 1.15; }
 #tools button:hover { background: rgba(255,255,255,.08); }
 #tools button.on { background: var(--accent2); border-color: var(--accent2); color: #fff; }
 

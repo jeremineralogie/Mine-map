@@ -132,6 +132,8 @@ export interface Army {
   target?: { kind: 'b' | 'rb' | 'army'; id: number } | null;
   siege?: number;                // garnison restante de la ville assiégée
   state: 'idle' | 'march' | 'fight' | 'siege';
+  /** itinéraire par la terre (virages restants), point visé quand il a été calculé, jour du calcul */
+  route?: { x: number; y: number }[]; routeTo?: { x: number; y: number; k?: string }; routeDay?: number;
 }
 export interface GameState {
   version: number;

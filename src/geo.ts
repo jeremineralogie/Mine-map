@@ -219,6 +219,89 @@ export class Geo {
     return { pts, len };
   }
 
+  // ---------- Marche des armées ----------
+  /** Grille de marche (cases de 4 km) : terre ferme (pas la mer ni les lacs) et coût selon la pente */
+  private landG: { w: number; h: number; c: number; cost: Float32Array } | null = null;
+  private landCache = new Map<string, { x: number; y: number }[] | null>();
+  private landGrid() {
+    if (this.landG) return this.landG;
+    const c = 4, e = this.data.extent, w = Math.ceil((e.x1 - e.x0) / c), h = Math.ceil((e.y1 - e.y0) / c), cost = new Float32Array(w * h);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const x = e.x0 + (i + 0.5) * c, y = e.y0 + (j + 0.5) * c, m = this.maskAt(x, y);
+      if (m === 0 || m === 3) continue; // mer, lac : infranchissable
+      // relief : la pente locale ralentit la marche, les crêtes très raides se contournent
+      const z = this.elevAt(x, y), g = Math.max(Math.abs(this.elevAt(x + c, y) - z), Math.abs(this.elevAt(x, y + c) - z), Math.abs(this.elevAt(x - c, y) - z), Math.abs(this.elevAt(x, y - c) - z)) / c;
+      cost[j * w + i] = 1 + Math.max(0, g - 15) / 12 + Math.max(0, z - 1200) / 600;
+    }
+    return (this.landG = { w, h, c, cost });
+  }
+  private landCellOf(x: number, y: number) {
+    const g = this.landGrid(), e = this.data.extent;
+    const ci = Math.floor((x - e.x0) / g.c), cj = Math.floor((y - e.y0) / g.c);
+    let best = -1, bd = Infinity;
+    for (let dj = -4; dj <= 4; dj++) for (let di = -4; di <= 4; di++) {
+      const i = ci + di, j = cj + dj; if (i < 0 || j < 0 || i >= g.w || j >= g.h || !g.cost[j * g.w + i]) continue;
+      const d = di * di + dj * dj; if (d < bd) { bd = d; best = j * g.w + i; }
+    }
+    return best;
+  }
+  /** Ligne droite praticable (ni eau, ni crête bien plus coûteuse que le chemin trouvé) */
+  private landClear(ax: number, ay: number, bx: number, by: number) {
+    const g = this.landGrid(), e = this.data.extent, n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 1.5));
+    for (let k = 1; k < n; k++) {
+      const x = ax + (bx - ax) * k / n, y = ay + (by - ay) * k / n, m = this.maskAt(x, y);
+      if (m === 0 || m === 3) return false;
+      const i = Math.floor((x - e.x0) / g.c), j = Math.floor((y - e.y0) / g.c), c = g.cost[j * g.w + i];
+      if (!c || c > 2.5) return false;
+    }
+    return true;
+  }
+  /** Itinéraire d'une armée par la terre : contourne la mer, les lacs et les montagnes trop raides */
+  landPath(ax: number, ay: number, bx: number, by: number): { x: number; y: number }[] | null {
+    if (this.landClear(ax, ay, bx, by)) return [{ x: bx, y: by }];
+    const g = this.landGrid(), e = this.data.extent;
+    const a = this.landCellOf(ax, ay), b = this.landCellOf(bx, by);
+    if (a < 0 || b < 0) return null;
+    const key = a + ':' + b;
+    if (!this.landCache.has(key)) {
+      if (this.landCache.size > 300) this.landCache.clear();
+      const dist = new Float64Array(g.w * g.h).fill(Infinity), prev = new Int32Array(g.w * g.h).fill(-1), heap: [number, number][] = [[0, a]];
+      dist[a] = 0;
+      const bxC = b % g.w, byC = Math.floor(b / g.w);
+      while (heap.length) {
+        const [, n] = heapPop(heap);
+        if (n === b) break;
+        const ni = n % g.w, nj = Math.floor(n / g.w);
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          if (!di && !dj) continue;
+          const i = ni + di, j = nj + dj; if (i < 0 || j < 0 || i >= g.w || j >= g.h) continue;
+          const m = j * g.w + i, cm = g.cost[m]; if (!cm) continue;
+          const nd = dist[n] + (di && dj ? Math.SQRT2 : 1) * (cm + g.cost[n]) / 2;
+          if (nd < dist[m]) { dist[m] = nd; prev[m] = n; heapPush(heap, [nd + Math.hypot(i - bxC, j - byC), m]); }
+        }
+      }
+      if (!isFinite(dist[b])) this.landCache.set(key, null);
+      else {
+        const cells = [b]; while (cells[0] !== a) cells.unshift(prev[cells[0]]);
+        const pts = cells.map(k => ({ x: e.x0 + ((k % g.w) + 0.5) * g.c, y: e.y0 + (Math.floor(k / g.w) + 0.5) * g.c }));
+        // tracé allégé : on ne garde que les virages nécessaires (ligne droite praticable entre deux points)
+        const out: { x: number; y: number }[] = [];
+        let cur = pts[0];
+        for (let k = 1; k < pts.length; k++) {
+          if (k === pts.length - 1 || !this.landClear(cur.x, cur.y, pts[k + 1].x, pts[k + 1].y)) { out.push(pts[k]); cur = pts[k]; }
+        }
+        this.landCache.set(key, out);
+      }
+    }
+    const p = this.landCache.get(key);
+    if (!p) return null;
+    const pts = [...p];
+    // départ : on rejoint directement le premier virage visible
+    while (pts.length > 1 && this.landClear(ax, ay, pts[1].x, pts[1].y)) pts.shift();
+    pts[pts.length - 1] = { x: bx, y: by };
+    return pts;
+  }
+
   /** Le point est-il à moins de `km` de la mer ? */
   nearSea(x: number, y: number, km = 3) {
     for (let r = 1; r <= km; r += 1) for (let a = 0; a < 16; a++) {
