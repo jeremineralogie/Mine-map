@@ -190,7 +190,7 @@ export type BType =
   // Gaule romaine (chapitre II)
   | 'vignoble' | 'oliveraie' | 'potier' | 'verrerie' | 'four_chaux' | 'carriere_marbre' | 'pecherie' | 'saloir'
   | 'bergerie' | 'tissage' | 'mine_cuivre' | 'mine_etain' | 'fonderie'
-  | 'thermes' | 'amphitheatre' | 'remparts' | 'basilique' | 'villa' | 'relais' | 'phare' | 'arenes'
+  | 'thermes' | 'amphitheatre' | 'remparts' | 'basilique' | 'relais' | 'phare' | 'arenes'
   // Rivaux : diplomatie et guerre
   | 'taverne' | 'caserne';
 
@@ -217,6 +217,8 @@ export interface BDef {
   river?: boolean;           // doit être au bord d'un fleuve navigable
   coast?: boolean;           // doit être sur la côte (port de commerce maritime)
   upgrade?: Partial<Record<ResId, number>>;  // matériaux d'amélioration au niveau 2 (×1,5 au niveau 3)
+  /** niveaux supplémentaires débloqués par une technologie (au-delà du niveau 3), avec leur nom et leurs matériaux */
+  levels?: Record<number, { tech: string; name: string; cost: Partial<Record<ResId, number>> }>;
   /** merveille : effets permanents autour d'elle une fois construite */
   wonder?: { range: number; needMult: number; prodRange: number; prodMult: number; prodTypes: BType[]; growth?: number; rp?: number; games?: number };
   /** bâtiment de ville : doit être construit à moins de CITY_BUILD_RANGE km d'une ville */
@@ -230,7 +232,8 @@ export const BUILD: Record<BType, BDef> = {
   village: { name: 'Village', desc: 'Fournit la main-d\'œuvre et achète ce dont ses habitants ont besoin. Grandit s\'il est bien approvisionné.', era: 1, cost: {}, money: 150, days: 25, workers: 0, needsWater: true, storage: 0, maxLevel: 1 },
   bucheron: { name: 'Camp de bûcherons', desc: 'Abat le bois d\'une forêt.', era: 1, cost: { bois: 8 }, money: 50, days: 10, workers: 4, deposit: 'bois', recipe: { in: {}, out: { bois: 8 } }, storage: 60, maxLevel: 3, upgrade: { bois: 14 } },
   carriere: { name: 'Carrière de pierre', desc: 'Extrait la pierre de taille d\'un banc de calcaire.', era: 1, cost: { bois: 15 }, money: 80, days: 15, workers: 6, deposit: 'pierre', recipe: { in: {}, out: { pierre: 5 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 20 } },
-  ferme: { name: 'Villa agricole', desc: 'Cultive des céréales, sur n\'importe quelles terres.', era: 1, cost: { bois: 15, pierre: 5 }, money: 60, days: 12, workers: 5, deposit: 'cereales', recipe: { in: {}, out: { cereales: 10 } }, storage: 80, maxLevel: 3, upgrade: { bois: 18 } },
+  ferme: { name: 'Villa agricole', desc: 'Cultive des céréales, sur n\'importe quelles terres. Au chapitre II, la technologie Grands domaines permet de l\'améliorer au niveau 4 : le grand domaine.', era: 1, cost: { bois: 15, pierre: 5 }, money: 60, days: 12, workers: 5, deposit: 'cereales', recipe: { in: {}, out: { cereales: 10 } }, storage: 80, maxLevel: 4, upgrade: { bois: 18 },
+    levels: { 4: { tech: 'villae', name: 'Grand domaine', cost: { pierre: 20, briques: 15, bois: 10 } } } },
   argiliere: { name: 'Argilière', desc: 'Extrait l\'argile.', era: 1, tech: 'terre_cuite', cost: { bois: 10 }, money: 60, days: 10, workers: 4, deposit: 'argile', recipe: { in: {}, out: { argile: 6 } }, storage: 60, maxLevel: 3, upgrade: { bois: 12 } },
   briqueterie: { name: 'Tuilerie-briqueterie', desc: 'Cuit l\'argile au feu de bois pour faire briques et tuiles. A besoin d\'eau.', era: 1, tech: 'terre_cuite', cost: { bois: 20, pierre: 15 }, money: 150, days: 20, workers: 5, needsWater: true, recipe: { in: { argile: 4, bois: 2 }, out: { briques: 3 } }, storage: 40, maxLevel: 3, upgrade: { pierre: 12, briques: 10 } },
   mine_fer: { name: 'Mine de fer', desc: 'Extrait le minerai de fer.', era: 1, tech: 'metallurgie', cost: { bois: 25, pierre: 15 }, money: 150, days: 20, workers: 8, deposit: 'minerai_fer', recipe: { in: {}, out: { minerai_fer: 4 } }, storage: 60, maxLevel: 3, upgrade: { fer: 4, pierre: 15 } },
@@ -263,7 +266,6 @@ export const BUILD: Record<BType, BDef> = {
   amphitheatre: { name: 'Amphithéâtre', desc: 'Jeux et spectacles : les villes à moins de 40 km grandissent 20 % plus vite.', era: 2, tech: 'spectacles', cost: { pierre: 80, chaux: 20 }, money: 700, days: 60, workers: 4, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.2, range: 40 } },
   remparts: { name: 'Remparts', desc: 'Murailles de la cité : protègent des invasions tous les bâtiments à moins de 20 km.', era: 2, tech: 'remparts', cost: { pierre: 60, chaux: 15 }, money: 500, days: 50, workers: 0, storage: 0, maxLevel: 1, city: true, effect: { protect: 20 } },
   basilique: { name: 'Basilique', desc: 'Lieu de culte et de savoir : +0,3 point de recherche par mois.', era: 2, tech: 'christianisme', cost: { pierre: 40, marbre: 5, chaux: 10 }, money: 400, days: 40, workers: 2, storage: 0, maxLevel: 1, city: true, effect: { rp: 0.3 } },
-  villa: { name: 'Villa (grand domaine)', desc: 'Grand domaine agricole : bien plus productif qu\'une simple ferme.', era: 2, tech: 'villae', cost: { pierre: 20, briques: 15, bois: 10 }, money: 250, days: 25, workers: 8, deposit: 'cereales', recipe: { in: {}, out: { cereales: 18 } }, storage: 120, maxLevel: 3, upgrade: { pierre: 15, briques: 10 } },
   relais: { name: 'Relais routier (mutatio)', desc: 'Chevaux frais : les véhicules roulent 25 % plus vite à moins de 30 km.', era: 2, tech: 'relais', cost: { pierre: 15, bois: 10 }, money: 120, days: 12, workers: 2, storage: 0, maxLevel: 1, effect: { speed: 1.25, range: 30 } },
   phare: { name: 'Phare', desc: 'Guide les navires : volume du commerce maritime +25 % (jusqu\'à deux phares).', era: 2, tech: 'phares', cost: { pierre: 40, chaux: 10 }, money: 350, days: 30, workers: 2, coast: true, storage: 0, maxLevel: 1, effect: { seaVolume: 0.25 } },
   arenes: { name: 'Arènes de Nîmes', desc: 'Le grand amphithéâtre de Nemausus, symbole de l\'âge d\'or de la Gaule romaine. Merveille du chapitre II, nécessaire pour le terminer. Une fois construites : +30 % de croissance pour les villes à moins de 60 km, +1 point de recherche par mois et un revenu des jeux.', era: 2, tech: 'spectacles', cost: { pierre: 300, chaux: 40, marbre: 15 }, money: 2500, days: 120, workers: 0, storage: 0, maxLevel: 1, unique: true, site: [4.359, 43.835],
@@ -273,10 +275,10 @@ export const BUILD: Record<BType, BDef> = {
   caserne: { name: 'Caserne', desc: 'Recrute légionnaires et auxiliaires parmi les habitants de la ville voisine. Les armées se déplacent sur la carte.', era: 2, cost: { pierre: 30, bois: 20 }, money: 400, days: 30, workers: 0, storage: 0, maxLevel: 1, city: true },
 };
 
-export const LEVEL_MULT = [0, 1, 1.6, 2.3];            // production par niveau
-export const LEVEL_COST = [0, 1, 1.6, 2.4];            // matériaux d'amélioration (en fraction du coût initial)
-export const LEVEL_MONEY = [0, 1, 2, 3];               // argent d'amélioration (en fraction du prix initial)
-export const LEVEL_DAYS = [0, 1, 2, 3.5];              // durée d'amélioration (en fraction de la durée initiale)
+export const LEVEL_MULT = [0, 1, 1.6, 2.3, 3.2];            // production par niveau
+export const LEVEL_COST = [0, 1, 1.6, 2.4, 3.2];            // matériaux d'amélioration (en fraction du coût initial)
+export const LEVEL_MONEY = [0, 1, 2, 3, 4];               // argent d'amélioration (en fraction du prix initial)
+export const LEVEL_DAYS = [0, 1, 2, 3.5, 4];              // durée d'amélioration (en fraction de la durée initiale)
 
 // ---- Villes ----
 export interface Tier { name: string; minPop: number; needs: Partial<Record<ResId, number>>; }
@@ -429,7 +431,7 @@ export const TECHS: Tech[] = [
   { id: 'sigillee', name: 'Céramique sigillée', desc: 'Ateliers de potier : la poterie rouge de La Graufesenque, exportée dans tout l\'Empire.', era: 2, cost: 50, req: [], branch: 'production' },
   { id: 'verrerie', name: 'Verrerie', desc: 'Verreries sur les gisements de sable.', era: 2, cost: 65, req: ['sigillee'], branch: 'production' },
   { id: 'bronze', name: 'Bronze', desc: 'Mines de cuivre et d\'étain, fonderies de bronze.', era: 2, cost: 80, req: ['verrerie'], branch: 'production' },
-  { id: 'villae', name: 'Grands domaines', desc: 'Villas agricoles : 18 t de céréales par mois au lieu de 10.', era: 2, cost: 55, req: [], branch: 'cite' },
+  { id: 'villae', name: 'Grands domaines', desc: 'Les villas agricoles peuvent passer au niveau 4 : le grand domaine (32 t de céréales par mois au lieu de 23 au niveau 3).', era: 2, cost: 55, req: [], branch: 'cite' },
   { id: 'mortier', name: 'Mortier de chaux', desc: 'Fours à chaux sur les gisements de calcaire : la chaux des grands monuments.', era: 2, cost: 50, req: [], branch: 'cite' },
   { id: 'remparts', name: 'Remparts', desc: 'Murailles qui protègent des invasions les bâtiments à moins de 20 km.', era: 2, cost: 70, req: ['mortier'], branch: 'cite' },
   { id: 'capitales', name: 'Capitales provinciales', desc: 'Les plus grandes villes peuvent devenir des capitales (15 000 habitants) : rayon de main-d\'œuvre de 90 km.', era: 2, cost: 95, req: ['remparts', 'villae'], branch: 'cite' },

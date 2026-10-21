@@ -178,13 +178,21 @@ export function upgrade(s: GameState, b: Building) {
 /** Matériaux nécessaires pour passer au niveau suivant */
 export function upgradeCost(b: Building): Stock {
   const d = BUILD[b.type], next = b.level + 1, out: Stock = {};
-  if (d.upgrade) for (const [r, q] of Object.entries(d.upgrade)) out[r as ResId] = Math.ceil(q! * (next >= 3 ? 1.5 : 1));
+  if (d.levels?.[next]) for (const [r, q] of Object.entries(d.levels[next].cost)) out[r as ResId] = q!;
+  else if (d.upgrade) for (const [r, q] of Object.entries(d.upgrade)) out[r as ResId] = Math.ceil(q! * (next >= 3 ? 1.5 : 1));
   else for (const [r, q] of Object.entries(d.cost)) out[r as ResId] = Math.ceil(q! * LEVEL_COST[next]);
   return out;
 }
 /** Rayon de main-d'œuvre d'une ville (il grandit avec elle) */
 export const workRange = (c: Building, s?: GameState) => (WORK_RANGES[c.city?.tier ?? 0] ?? WORK_RANGE) + (s?.techs.includes('cite_prospere') ? 15 : 0);
 export function maxLevelAllowed(s: GameState) { return s.techs.includes('urbanisme') ? 3 : s.techs.includes('metallurgie') ? 2 : 1; }
+/** Un bâtiment peut-il passer au niveau suivant (technologies des niveaux 2-3, ou celle d'un niveau supplémentaire) */
+export function levelAllowed(s: GameState, b: Building) {
+  const next = b.level + 1, d = BUILD[b.type];
+  if (next > d.maxLevel) return false;
+  const extra = d.levels?.[next];
+  return extra ? s.techs.includes(extra.tech) : next <= maxLevelAllowed(s);
+}
 
 export function demolish(s: GameState, b: Building) {
   if (b.type === 'poste' || b.type === 'comptoir') return;
@@ -495,7 +503,7 @@ export class Sim {
       const total = b.repair ? d.days * 0.5 : b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
       if (b.work >= total) {
         if (b.repair) { b.repair = false; b.upgrading = false; b.damaged = false; this.notify.toast(`${b.name} est réparé.`, 'good'); }
-        else if (b.upgrading) { b.upgrading = false; b.level++; this.notify.toast(`${b.name} passe au niveau ${b.level}.`, 'good'); }
+        else if (b.upgrading) { b.upgrading = false; b.level++; const ln = BUILD[b.type].levels?.[b.level]?.name; this.notify.toast(`${b.name} passe au niveau ${b.level}${ln ? ` : ${ln.toLowerCase()}` : ''}.`, 'good'); }
         else { b.built = true; this.notify.toast(`Construction terminée : ${b.name}.`, 'good'); }
         b.work = 0;
       }

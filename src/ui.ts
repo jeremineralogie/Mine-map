@@ -14,7 +14,7 @@ import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSel
 import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
-  hasTech, maxLevelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
+  hasTech, levelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type Edge, type GameState, type Line, type RNode, type Stock } from './state';
 
@@ -707,7 +707,7 @@ export class Game {
   private buildingPanel(b: Building): string {
     const s = this.s, d = BUILD[b.type];
     const st = buildingStatus(this.sim, b);
-    const sub = b.city ? `${TIERS[b.city.tier].name}` : b.partner ? 'Partenaire commercial' : `${d.name}${d.maxLevel > 1 ? ` · niveau ${b.level}` : ''}`;
+    const sub = b.city ? `${TIERS[b.city.tier].name}` : b.partner ? 'Partenaire commercial' : `${d.name}${d.maxLevel > 1 ? ` · niveau ${b.level}${d.levels?.[b.level] ? ` (${d.levels[b.level].name.toLowerCase()})` : ''}` : ''}`;
     let h = `<div class="bhead"><img class="bic" src="${bIconUrl(b.type)}"><div class="bt">
       <input class="name" data-field="name" data-id="${b.id}" value="${esc(b.name)}"><small class="muted">${sub}</small>
       <span class="pill ${st.level}">${st.label}</span></div></div>
@@ -723,9 +723,9 @@ export class Game {
         top += `<button class="primary" data-act="repair" data-id="${b.id}">🔨 Réparer (${fmt(rc.money)} + ${costList(rc.need)})</button>`;
       }
     if (b.built && !b.upgrading && !b.damaged && b.level < d.maxLevel) {
-      const allowed = b.level < maxLevelAllowed(s);
+      const allowed = levelAllowed(s, b), extra = d.levels?.[b.level + 1];
       const km = costMult(s), cost = Math.round(d.money * LEVEL_MONEY[b.level + 1] * km);
-      h += `<button class="up" data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1}${km < 1 ? ` (remise −${Math.round((1 - km) * 100)} %)` : ''} (${fmt(cost)} + ${costList(scaleStock(upgradeCost(b), km))})${allowed ? '' : ' — technologie requise'}</button>`;
+      h += `<button class="up" data-act="upgrade" data-id="${b.id}" ${allowed ? '' : 'disabled'}>Améliorer niv. ${b.level + 1}${extra ? ` (${extra.name.toLowerCase()})` : ''}${km < 1 ? ` (remise −${Math.round((1 - km) * 100)} %)` : ''} (${fmt(cost)} + ${costList(scaleStock(upgradeCost(b), km))})${allowed ? '' : ` — technologie requise${extra ? ` : ${TECHS.find(t => t.id === extra.tech)?.name ?? ''}` : ''}`}</button>`;
     }
       top += h; h = hh;
       if (b.upgrading) top += `<span class="pill info">${b.repair ? 'Réparation en cours' : `Amélioration vers le niveau ${b.level + 1} en cours`}</span>`;
@@ -1228,6 +1228,7 @@ export class Game {
     const state = (t: typeof techs[number]) => s.techs.includes(t.id) ? 'done' : !t.req.every(r => s.techs.includes(r)) ? 'locked' : s.rp >= t.cost ? 'ready' : 'avail';
     const unlocks = (id: string) => [
       ...(Object.keys(BUILD) as BType[]).filter(b => BUILD[b].tech === id).map(b => ({ name: BUILD[b].name, img: bIconUrl(b), res: Object.keys(BUILD[b].recipe?.out ?? {}) as ResId[] })),
+      ...(Object.keys(BUILD) as BType[]).flatMap(b => Object.entries(BUILD[b].levels ?? {}).filter(([, l]) => l.tech === id).map(([n, l]) => ({ name: `${BUILD[b].name} niveau ${n} : ${l.name.toLowerCase()}`, img: bIconUrl(b), res: Object.keys(BUILD[b].recipe?.out ?? {}) as ResId[] }))),
       ...(Object.keys(VEH) as VType[]).filter(v => VEH[v].tech === id).map(v => ({ name: VEH[v].name, img: vIconUrl(v), res: [] as ResId[] })),
       ...(Object.keys(ROADS) as RoadType[]).filter(r => ROADS[r].tech === id).map(r => ({ name: ROADS[r].name, img: '', res: [] as ResId[] }))];
     // liens à angle droit : de la droite de la carte au couloir juste avant la carte visée, puis à l'horizontale

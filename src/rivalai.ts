@@ -6,7 +6,7 @@ import { BUILD, DIFFICULTY, IMPORT_MULT, LEVEL_MULT, RES, START_MONEY, START_STO
 import type { Geo } from './geo';
 import { addEdge, components, dijkstra, invalidate, quoteSegment } from './roads';
 import {
-  Sim, attachNode, buildMoney, buyVehicle, checkPlace, cities, cityNeeds, demolish, isStore, maxLevelAllowed, place, sellVehicle, tierGoods, upgrade, workRange,
+  Sim, attachNode, buildMoney, buyVehicle, checkPlace, cities, cityNeeds, demolish, isStore, levelAllowed, place, sellVehicle, tierGoods, upgrade, workRange,
   type Notifier,
 } from './sim';
 import { cargoTotal, type Building, type Edge, type Faction, type GameState, type Line, type RBuilding, type Stock } from './state';
@@ -480,7 +480,7 @@ function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok'
       }
     }
     // plus de place : il améliore un atelier existant, comme le joueur
-    const up = eco.buildings.filter(b => b.type === t && b.built && !b.upgrading && b.level < Math.min(BUILD[t].maxLevel, maxLevelAllowed(eco)))[0];
+    const up = eco.buildings.filter(b => b.type === t && b.built && !b.upgrading && levelAllowed(eco, b))[0];
     if (up && !upgrade(eco, up)) return 'ok';
   }
   return 'none';
@@ -618,7 +618,7 @@ function manageStock(f: Faction, need: Stock) {
     if (q > 5) { h.stock[r]! -= q; const g = q * RES[r].price * EXPORT; eco.money += g; eco.stats.income += g; }
   }
   // entrepôt presque plein : il l'agrandit
-  if (room() < BUILD[h.type].storage * h.level * 0.2 && h.level < Math.min(BUILD[h.type].maxLevel, maxLevelAllowed(eco)) && !h.upgrading) upgrade(eco, h);
+  if (room() < BUILD[h.type].storage * h.level * 0.2 && levelAllowed(eco, h) && !h.upgrading) upgrade(eco, h);
 }
 
 /** Commerce entre rivaux : il achète à un rival qui en a en trop ce qui manque à ses villes ou à ses ateliers.
