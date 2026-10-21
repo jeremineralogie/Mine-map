@@ -1,7 +1,7 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
 import { BUILD, PLAYER_COLOR, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
 import { depositShape, type DepositKm, type Geo } from './geo';
-import { bIcon, cityIcon, VICON } from './icons';
+import { bIcon, cityIcon, vIcon } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
 import { territories } from './territory';
@@ -541,7 +541,7 @@ export class Renderer {
       if (x < -S || y < -S || x > this.cam.w + S || y > this.cam.h + S) continue;
       ctx.save(); ctx.translate(x, y); ctx.rotate(veh.angle);
       if (v.selected?.kind === 'vehicle' && v.selected.id === veh.id) { ctx.beginPath(); ctx.arc(0, 0, S * 0.7, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.6)'; ctx.fill(); }
-      ctx.drawImage(VICON[veh.type], -S / 2, -S / 2, S, S);
+      const vi = vIcon(veh.type); ctx.drawImage(vi.img, -S / 2, -S * vi.h / 2, S, S * vi.h);
       ctx.restore();
       // pastilles de chargement : une par matériau transporté
       const load = (Object.entries(veh.cargo) as [ResId, number][]).filter(([, q]) => q > 0);

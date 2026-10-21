@@ -187,7 +187,7 @@ a[data-act] { color: var(--accent); cursor: pointer; text-decoration: underline;
 .chips.sel { margin: 6px 0 4px; }
 .reschip { background: var(--paper2); border: 1px solid var(--line); border-radius: 14px; padding: 3px 8px; font-size: 12.5px; }
 .reschip:hover { border-color: var(--bad); }
-.vic { width: 30px; height: 30px; }
+.vic { width: 30px; height: 30px; object-fit: contain; }
 .row .chips { margin-left: auto; }
 
 /* ---- Pictogrammes de ressources ---- */

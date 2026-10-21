@@ -155,7 +155,15 @@ const artOf = (t: BType, level = 1) => { const l = ART[t]; return l?.[Math.max(0
 export const bIcon = (t: BType, level?: number) => { const a = artOf(t, level); return a && a.complete && a.naturalWidth ? a : BICON[t]; };
 /** URL d'icône pour l'interface HTML */
 export const bIconUrl = (t: BType, level?: number) => artOf(t, level)?.src ?? BICON[t].src;
-export const vIconUrl = (t: VType) => VICON[t].src;
+/** Illustrations des véhicules, vues de dessus, tournées vers la droite (remplacent le pictogramme une fois chargées) */
+const VART: Partial<Record<VType, HTMLImageElement>> = {};
+for (const t of ['charrette', 'chariot', 'barge'] as VType[]) { const img = new Image(); img.src = `${import.meta.env.BASE_URL}icones/v_${t}.png`; VART[t] = img; }
+/** Image d'un véhicule pour la carte, et sa hauteur relative (largeur = 1) */
+export const vIcon = (t: VType): { img: HTMLImageElement; h: number } => {
+  const a = VART[t];
+  return a && a.complete && a.naturalWidth ? { img: a, h: a.naturalHeight / a.naturalWidth } : { img: VICON[t], h: 1 };
+};
+export const vIconUrl = (t: VType) => VART[t]?.src ?? VICON[t].src;
 
 // ---- Icônes de ressources (24×24) ----
 const RSVG: Partial<Record<ResId, string>> = {
