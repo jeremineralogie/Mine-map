@@ -447,7 +447,7 @@ export class Renderer {
     for (const f of s.factions) for (const b of f.b) {
       const [x, y] = this.cam.toScreen(b.x, b.y);
       if (x < -60 || y < -60 || x > this.cam.w + 60 || y > this.cam.h + 60) continue;
-      const city = b.type === 'village', size = city ? S * (1.25 + Math.min(0.75, (b.tier ?? 0) * 0.15)) : S;
+      const city = b.type === 'village', size = city ? S * (1 + Math.min(0.6, (b.tier ?? 0) * 0.2)) : S;
       const sel = v.selected?.kind === 'rival' && v.selected.id === b.id;
       if (city) {
         // ville rivale : son médaillon, cerclé de la couleur du rival
@@ -477,7 +477,7 @@ export class Renderer {
     for (const b of s.buildings) {
       const [x, y] = this.cam.toScreen(b.x, b.y);
       if (x < -S || y < -S || x > this.cam.w + S || y > this.cam.h + S) continue;
-      const size = b.city ? S * (1.25 + Math.min(0.75, b.city.tier * 0.15)) : b.type === 'pont_du_gard' ? S * 1.3 : S;
+      const size = b.city ? S * (1 + Math.min(0.6, b.city.tier * 0.2)) : b.type === 'pont_du_gard' ? S * 1.3 : S;
       const sel = v.selected?.kind === 'building' && v.selected.id === b.id;
       if (sel) { ctx.beginPath(); ctx.arc(x, y, size * 0.72, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.45)'; ctx.fill(); }
       ctx.globalAlpha = (b.built ? 1 : 0.5) * (b.paused ? 0.65 : 1);
