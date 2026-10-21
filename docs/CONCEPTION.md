@@ -192,7 +192,9 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
 - Barre du haut : date, argent, population totale, points de recherche, vitesse.
 - Ordinateur, tablette et téléphone (souris et tactile).
 - Sauvegarde automatique dans le navigateur + export / import de fichier.
-- Sur téléphone, l'arbre de recherche n'affiche pas de légende (plus de place pour naviguer).
+- Arbre de recherche : une bande par branche (ordonnées pour que les liens restent courts), un rang par colonne,
+  liens à angle droit. Sur téléphone, toucher une technologie ouvre une petite bulle fermable au-dessus d'elle
+  (ce qu'elle débloque : bâtiments et ressources produites, bouton Rechercher) ; la vue ne bouge pas.
 - Bâtiments et véhicules détaillés mais lisibles vus du dessus. Pas de musique pour l'instant.
 
 ## 12. Feuille de route

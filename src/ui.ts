@@ -1169,6 +1169,7 @@ export class Game {
     const a = t.dataset.tv;
     if (a === 'close') this.closeTree();
     else if (a === 'node') this.treeSel = t.dataset.id!;
+    else if (a === 'unsel') this.treeSel = null;
     else if (a === 'research') this.sim.research(t.dataset.id!);
     else if (a === 'next') { this.closeTree(); this.chapterModal(); }
     this.treeKey = ''; this.renderTree(); this.refresh();
@@ -1178,61 +1179,91 @@ export class Game {
     const key = `${s.techs.join(',')}|${Math.floor(s.rp)}|${this.treeSel}|${s.era}`;
     if (key === this.treeKey) return;
     this.treeKey = key;
-    // ---- disposition : colonnes = rang dans l'arbre, couloirs = branches ----
+    // ---- disposition : colonnes = rang dans l'arbre, bandes = branches ----
     const depth = (id: string): number => { const t = TECHS.find(x => x.id === id)!; return t.req.length ? 1 + Math.max(...t.req.map(depth)) : 0; };
-    const NW = 168, NH = 74, CW = 192, RH = 90, LH = 36, PAD = 14;
+    const NW = 156, NH = 58, CW = 176, RH = 68, PAD = 10, X0 = 134, BP = 8;
+    const branchOf = new Map(techs.map(t => [t.id, t.branch]));
+    // ordre des branches : celles qui partagent des liens côte à côte, pour qu'aucun trait ne traverse tout l'arbre
+    const brs = BRANCHES.filter(b => techs.some(t => t.branch === b.id));
+    const cross: [string, string][] = techs.flatMap(t => t.req.filter(r => branchOf.has(r) && branchOf.get(r) !== t.branch).map(r => [branchOf.get(r)!, t.branch] as [string, string]));
+    const perms = (l: typeof brs): (typeof brs)[] => l.length <= 1 ? [l] : l.flatMap((x, i) => perms([...l.slice(0, i), ...l.slice(i + 1)]).map(p => [x, ...p]));
+    const cost = (o: typeof brs) => { const ix = new Map(o.map((b, i) => [b.id as string, i])); return cross.reduce((a, [u, v]) => a + Math.abs(ix.get(u)! - ix.get(v)!), 0) * 100 + o.reduce((a, b, i) => a + Math.abs(i - brs.indexOf(b)), 0); };
+    const order = perms(brs).reduce((best, o) => cost(o) < cost(best) ? o : best, brs);
+    const band = new Map(order.map((b, i) => [b.id as string, i]));
+    // dans une branche : une technologie liée à la branche du dessus monte, à celle du dessous descend
+    const kids = (id: string) => techs.filter(t => t.req.includes(id));
+    const pullMemo = new Map<string, number>();
+    const pull = (id: string): number => {
+      if (pullMemo.has(id)) return pullMemo.get(id)!;
+      const t = techs.find(x => x.id === id)!, me = band.get(t.branch)!;
+      const others = [...t.req.filter(r => branchOf.has(r)), ...kids(id).map(k => k.id)].filter(o => branchOf.get(o) !== t.branch);
+      let v = others.reduce((a, o) => a + Math.sign(band.get(branchOf.get(o)!)! - me), 0);
+      const same = kids(id).filter(k => k.branch === t.branch);
+      if (same.length) v += 0.5 * same.reduce((a, k) => a + pull(k.id), 0) / same.length;
+      pullMemo.set(id, v); return v;
+    };
     const pos = new Map<string, { x: number; y: number }>();
     let y0 = PAD; const lanes: { br: typeof BRANCHES[number]; y: number; h: number; n: number; d: number }[] = [];
-    for (const br of BRANCHES) {
+    for (const br of order) {
       const list = techs.filter(t => t.branch === br.id);
-      if (!list.length) continue;
       const cols = new Map<number, typeof list>();
       for (const t of list) { const d = depth(t.id); if (!cols.has(d)) cols.set(d, []); cols.get(d)!.push(t); }
-      const rowOf = new Map<string, number>(); let rows = 1;
+      const rows = Math.max(...[...cols.values()].map(c => c.length));
+      const rowOf = new Map<string, number>();
       for (const d of [...cols.keys()].sort((a, z) => a - z)) {
-        // range les nœuds près de leur parent pour limiter les croisements
-        const col = cols.get(d)!.sort((a, z) => avgRow(a) - avgRow(z));
+        const want = (t: typeof list[number]) => { const p = pull(t.id); if (p > 0.01) return rows - 1; if (p < -0.01) return 0;
+          const rs = t.req.map(r => rowOf.get(r)).filter((v): v is number => v !== undefined); return rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0; };
         const used = new Set<number>();
-        for (const t of col) { let r = Math.max(0, Math.round(avgRow(t))); while (used.has(r)) r++; used.add(r); rowOf.set(t.id, r); rows = Math.max(rows, r + 1); }
+        for (const t of [...cols.get(d)!].sort((a, z) => Math.abs(pull(z.id)) - Math.abs(pull(a.id)))) {
+          const w = want(t); let r = 0, bd = Infinity;
+          for (let k = 0; k < rows; k++) if (!used.has(k) && Math.abs(k - w) < bd) { bd = Math.abs(k - w); r = k; }
+          used.add(r); rowOf.set(t.id, r);
+        }
       }
-      function avgRow(t: typeof list[number]) { const rs = t.req.map(r => rowOf.get(r)).filter((v): v is number => v !== undefined); return rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : 0; }
-      for (const t of list) pos.set(t.id, { x: PAD + 22 + depth(t.id) * CW, y: y0 + LH + rowOf.get(t.id)! * RH });
-      lanes.push({ br, y: y0, h: LH + rows * RH, n: list.length, d: list.filter(t => s.techs.includes(t.id)).length });
-      y0 += LH + rows * RH + 14;
+      for (const t of list) pos.set(t.id, { x: X0 + depth(t.id) * CW, y: y0 + BP + rowOf.get(t.id)! * RH });
+      lanes.push({ br, y: y0, h: rows * RH - (RH - NH) + BP * 2, n: list.length, d: list.filter(t => s.techs.includes(t.id)).length });
+      y0 += rows * RH - (RH - NH) + BP * 2 + 8;
     }
-    const W = PAD + 22 + (Math.max(...techs.map(t => depth(t.id))) + 1) * CW, H = y0;
+    const W = X0 + (Math.max(...techs.map(t => depth(t.id))) + 1) * CW, H = y0 + PAD;
     const state = (t: typeof techs[number]) => s.techs.includes(t.id) ? 'done' : !t.req.every(r => s.techs.includes(r)) ? 'locked' : s.rp >= t.cost ? 'ready' : 'avail';
     const unlocks = (id: string) => [
-      ...(Object.keys(BUILD) as BType[]).filter(b => BUILD[b].tech === id).map(b => ({ name: BUILD[b].name, img: bIconUrl(b) })),
-      ...(Object.keys(VEH) as VType[]).filter(v => VEH[v].tech === id).map(v => ({ name: VEH[v].name, img: vIconUrl(v) })),
-      ...(Object.keys(ROADS) as RoadType[]).filter(r => ROADS[r].tech === id).map(r => ({ name: ROADS[r].name, img: '' }))];
-    // traits de dépendance
+      ...(Object.keys(BUILD) as BType[]).filter(b => BUILD[b].tech === id).map(b => ({ name: BUILD[b].name, img: bIconUrl(b), res: Object.keys(BUILD[b].recipe?.out ?? {}) as ResId[] })),
+      ...(Object.keys(VEH) as VType[]).filter(v => VEH[v].tech === id).map(v => ({ name: VEH[v].name, img: vIconUrl(v), res: [] as ResId[] })),
+      ...(Object.keys(ROADS) as RoadType[]).filter(r => ROADS[r].tech === id).map(r => ({ name: ROADS[r].name, img: '', res: [] as ResId[] }))];
+    // liens à angle droit : de la droite de la carte au couloir juste avant la carte visée, puis à l'horizontale
     const edges = techs.flatMap(t => t.req.filter(r => pos.has(r)).map(r => {
-      const a = pos.get(r)!, b = pos.get(t.id)!, x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, mx = (x1 + x2) / 2;
+      const a = pos.get(r)!, b = pos.get(t.id)!, x1 = a.x + NW, y1 = a.y + NH / 2, x2 = b.x, y2 = b.y + NH / 2, gx = x2 - (CW - NW) / 2, k = 7;
       const cls = s.techs.includes(t.id) ? 'done' : s.techs.includes(r) ? 'open' : '';
-      return `<path class="${cls}" d="M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/><circle class="${cls}" cx="${x2}" cy="${y2}" r="3.5"/>`;
+      const sg = Math.sign(y2 - y1);
+      const d = Math.abs(y2 - y1) < 1 ? `M${x1} ${y1}H${x2}` : `M${x1} ${y1}H${gx - k}Q${gx} ${y1} ${gx} ${y1 + sg * k}V${y2 - sg * k}Q${gx} ${y2} ${gx + k} ${y2}H${x2}`;
+      return `<path class="${cls}" d="${d}"/>`;
     })).join('');
     const laneHtml = lanes.map(l => `<div class="tv-lane" style="top:${l.y}px;height:${l.h}px;width:${W - PAD}px"><div class="tv-lane-h">${IC[l.br.id]}<b>${l.br.name}</b><small>${l.d} / ${l.n}</small></div></div>`).join('');
     const nodes = techs.map(t => {
       const p = pos.get(t.id)!, st = state(t), u = unlocks(t.id);
       return `<button class="tv-node ${st} ${this.treeSel === t.id ? 'sel' : ''}" data-tv="node" data-id="${t.id}" style="left:${p.x}px;top:${p.y}px;width:${NW}px;height:${NH}px">
         <span class="tv-ic">${u[0]?.img ? `<img src="${u[0].img}" alt="">` : IC[t.branch]}</span>
-        <span class="tv-txt"><b>${t.name}</b><small>${st === 'done' ? `${IC.check} Découverte` : st === 'locked' ? `${IC.lock} Verrouillée` : `${t.cost} pts`}</small></span></button>`;
+        <span class="tv-txt"><b>${t.name}</b><small>${st === 'done' ? `${IC.check} Découverte` : st === 'locked' ? `${IC.lock} ${t.cost} pts` : `${t.cost} pts`}</small></span></button>`;
     }).join('');
-    // téléphone : pas de panneau de détail, un petit bouton sous la compétence touchée
+    // téléphone : petite bulle au-dessus de la technologie touchée (ce qu'elle débloque, bouton Rechercher), fermable
     const pt = techs.find(t => t.id === this.treeSel), pp = pt && pos.get(pt.id), pst = pt && state(pt);
-    const pop = pt && pp ? `<div class="tv-pop" style="left:${pp.x}px;top:${pp.y + NH + 4}px;width:${NW}px">${pst === 'done' ? `<span class="pill good">Découverte</span>`
-      : pst === 'locked' ? `<small>Prérequis : ${pt.req.filter(r => !s.techs.includes(r)).map(r => TECHS.find(x => x.id === r)!.name).join(', ')}</small>`
-      : `<button class="primary" data-tv="research" data-id="${pt.id}" ${pst === 'ready' ? '' : 'disabled'}>Rechercher · ${pt.cost} pts</button>${pst === 'avail' ? `<small>Il manque ${Math.ceil(pt.cost - s.rp)} points</small>` : ''}`}</div>` : '';
+    const PW = 236, below = !!pp && pp.y < 190;
+    const pop = pt && pp ? `<div class="tv-pop ${below ? 'below' : ''}" style="left:${Math.max(4, Math.min(W - PW - 4, pp.x + NW / 2 - PW / 2))}px;top:${below ? pp.y + NH + 8 : pp.y - 8}px;width:${PW}px">
+      <div class="tv-pop-h"><b>${pt.name}</b><button class="tv-pop-x" data-tv="unsel" title="Fermer">${IC.close}</button></div>
+      ${unlocks(pt.id).map(x => `<div class="tv-pop-u">${x.img ? `<img src="${x.img}" alt="">` : IC.road}<span>${x.name}${x.res.length ? `<small>→ ${x.res.map(r => resChip(r)).join(' ')}</small>` : ''}</span></div>`).join('') || `<small class="muted">${esc(pt.desc)}</small>`}
+      ${pst === 'done' ? `<span class="pill good">Découverte</span>`
+        : pst === 'locked' ? `<small>Prérequis : ${pt.req.filter(r => !s.techs.includes(r)).map(r => TECHS.find(x => x.id === r)!.name).join(', ')}</small>`
+        : `<button class="primary" data-tv="research" data-id="${pt.id}" ${pst === 'ready' ? '' : 'disabled'}>Rechercher · ${pt.cost} pts</button>${pst === 'avail' ? `<small>Il manque ${Math.ceil(pt.cost - s.rp)} points</small>` : ''}`}</div>` : '';
     const done = techs.filter(t => s.techs.includes(t.id)).length;
     const sel = techs.find(t => t.id === this.treeSel) ?? techs.find(t => state(t) === 'ready') ?? techs.find(t => state(t) === 'avail') ?? techs[0];
     const sst = state(sel), su = unlocks(sel.id);
     const detail = `<div class="tv-d-head"><span class="tv-d-ic">${su[0]?.img ? `<img src="${su[0].img}" alt="">` : IC[sel.branch]}</span><div><small>${BRANCHES.find(b => b.id === sel.branch)!.name}</small><h3>${sel.name}</h3></div></div>
       <p>${esc(sel.desc)}</p>
-      ${su.length ? `<div class="tv-unl">${su.map(x => `<span>${x.img ? `<img src="${x.img}" alt="">` : IC.road}${x.name}</span>`).join('')}</div>` : ''}
+      ${su.length ? `<div class="tv-unl">${su.map(x => `<span>${x.img ? `<img src="${x.img}" alt="">` : IC.road}<em>${x.name}${x.res.length ? `<small>→ ${x.res.map(r => resChip(r)).join(' ')}</small>` : ''}</em></span>`).join('')}</div>` : ''}
       ${sel.req.length ? `<p class="tv-req">Prérequis : ${sel.req.map(r => `<span class="${s.techs.includes(r) ? 'ok' : ''}">${s.techs.includes(r) ? IC.check : IC.lock}${TECHS.find(x => x.id === r)!.name}</span>`).join('')}</p>` : ''}
       <div class="tv-act">${sst === 'done' ? `<span class="pill good">Découverte</span>` : sst === 'locked' ? `<span class="pill info">Débloque d'abord les prérequis</span>`
         : `<button class="primary" data-tv="research" data-id="${sel.id}" ${sst === 'ready' ? '' : 'disabled'}>Rechercher · ${sel.cost} pts</button>${sst === 'avail' ? `<small class="muted">Il manque ${Math.ceil(sel.cost - s.rp)} points</small>` : ''}`}</div>`;
+    const sc0 = $('treeView').querySelector<HTMLElement>('.tv-scroll'), keep = sc0 ? [sc0.scrollLeft, sc0.scrollTop] : null;
     $('treeView').innerHTML = `<div class="tv-box">
       <header class="tv-head"><div class="tv-title">${IC.research}<div><h2>Arbre de recherche</h2><small>${ERAS[s.era]}</small></div></div>
         <div class="tv-stats"><span class="tv-rp">${IC.scroll}<b>${fmt(Math.floor(s.rp))}</b> pts</span>
@@ -1242,8 +1273,17 @@ export class Game {
       <div class="tv-body"><div class="tv-scroll"><div class="tv-canvas" style="width:${W}px;height:${H}px">${laneHtml}
         <svg class="tv-edges" width="${W}" height="${H}">${edges}</svg>${nodes}${pop}</div></div>
         <aside class="tv-detail">${detail}</aside></div>
-      <footer class="tv-legend"><span class="lg done"></span>Découverte <span class="lg ready"></span>Disponible <span class="lg avail"></span>Points insuffisants <span class="lg locked"></span>Verrouillée
+      <footer class="tv-legend"><span class="lg done"></span>Découverte <span class="lg ready"></span>Disponible <span class="lg avail"></span>Points insuffisants <span class="lg locked"></span>Verrouillée <span class="lg sel"></span>Sélectionnée
         <small class="muted">Choisis ton ordre de recherche ; l'époque suivante s'ouvre quand tout l'arbre est découvert${s.era >= 2 ? ', la merveille construite et la date atteinte' : ''}.</small></footer></div>`;
+    // la vue ne bouge pas quand l'arbre se met à jour (touche, points gagnés)
+    const sc = $('treeView').querySelector<HTMLElement>('.tv-scroll');
+    if (sc && keep) { sc.scrollLeft = keep[0]; sc.scrollTop = keep[1]; }
+    // la bulle reste dans la partie visible de l'arbre
+    const pe = $('treeView').querySelector<HTMLElement>('.tv-pop');
+    if (sc && pe && pe.offsetWidth) {
+      const l = Math.max(sc.scrollLeft + 6, Math.min(sc.scrollLeft + sc.clientWidth - pe.offsetWidth - 6, pe.offsetLeft));
+      pe.style.left = `${l}px`;
+    }
   }
 
   /** Effets des événements historiques encore actifs */
