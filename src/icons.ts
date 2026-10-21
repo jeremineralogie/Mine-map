@@ -128,12 +128,17 @@ const tierIx = (tier = 0) => Math.max(0, Math.min(CITY_URLS.length - 1, tier));
 export const cityIcon = (tier?: number) => { const img = CITY_IMG[tierIx(tier)]; return img.complete && img.naturalWidth ? img : BICON.village; };
 export const cityIconUrl = (tier?: number) => CITY_URLS[tierIx(tier)];
 /** Médaillons illustrés de certains bâtiments (remplacent le pictogramme une fois chargés) */
-const ART: Partial<Record<BType, HTMLImageElement>> = {};
-for (const t of ['thermes', 'amphitheatre', 'remparts', 'basilique', 'caserne'] as BType[]) { const img = new Image(); img.src = `${import.meta.env.BASE_URL}icones/${t}.png`; ART[t] = img; }
-/** Image d'un bâtiment pour la carte : son médaillon illustré s'il en a un, sinon son pictogramme */
-export const bIcon = (t: BType) => { const a = ART[t]; return a && a.complete && a.naturalWidth ? a : BICON[t]; };
+// un fichier par niveau quand le bâtiment change d'aspect en s'améliorant
+const ART_FILES: Partial<Record<BType, string[]>> = {
+  thermes: ['thermes'], amphitheatre: ['amphitheatre'], remparts: ['remparts'], basilique: ['basilique'], caserne: ['caserne'],
+  entrepot: ['entrepot_1', 'entrepot_2', 'entrepot_3'], port: ['port_1', 'port_2', 'port_3'], relais: ['relais'],
+};
+const ART = Object.fromEntries(Object.entries(ART_FILES).map(([t, fs]) => [t, fs.map(f => { const img = new Image(); img.src = `${import.meta.env.BASE_URL}icones/${f}.png`; return img; })])) as Partial<Record<BType, HTMLImageElement[]>>;
+const artOf = (t: BType, level = 1) => { const l = ART[t]; return l?.[Math.max(0, Math.min(l.length, level) - 1)]; };
+/** Image d'un bâtiment pour la carte (selon son niveau) : son médaillon illustré s'il en a un, sinon son pictogramme */
+export const bIcon = (t: BType, level?: number) => { const a = artOf(t, level); return a && a.complete && a.naturalWidth ? a : BICON[t]; };
 /** URL d'icône pour l'interface HTML */
-export const bIconUrl = (t: BType) => ART[t]?.src ?? BICON[t].src;
+export const bIconUrl = (t: BType, level?: number) => artOf(t, level)?.src ?? BICON[t].src;
 export const vIconUrl = (t: VType) => VICON[t].src;
 
 // ---- Icônes de ressources (24×24) ----

@@ -641,7 +641,7 @@ export class Game {
   private rivalPanel(id: number): string {
     const s = this.s, r = findRival(s, id); if (!r) return '';
     const { f, b } = r, cities = f.b.filter(x => x.type === 'village'), pop = factionPop(f);
-    let h = `<div class="bhead"><img class="bic" src="${b.type === 'village' ? cityIconUrl(b.tier) : bIconUrl(b.type)}" style="background:${f.color};border-radius:50%"><div class="bt"><b class="name">${esc(b.name)}</b>
+    let h = `<div class="bhead"><img class="bic" src="${b.type === 'village' ? cityIconUrl(b.tier) : bIconUrl(b.type, b.level)}" style="background:${f.color};border-radius:50%"><div class="bt"><b class="name">${esc(b.name)}</b>
       <small class="muted">${b.type === 'village' ? TIERS[b.tier ?? 0].name : BUILD[b.type].name}</small><span class="pill" style="background:${f.color};color:#fff">${esc(f.name)}</span></div></div>`;
     if (b.ready && b.ready > s.day) h += `<p class="hint info">Chantier en cours : terminé ${dateLabel({ ...s, day: b.ready })}.</p>`;
     if (b.type === 'village') {
@@ -708,7 +708,7 @@ export class Game {
     const s = this.s, d = BUILD[b.type];
     const st = buildingStatus(this.sim, b);
     const sub = b.city ? `${TIERS[b.city.tier].name}` : b.partner ? 'Partenaire commercial' : `${d.name}${d.maxLevel > 1 ? ` · niveau ${b.level}${d.levels?.[b.level] ? ` (${d.levels[b.level].name.toLowerCase()})` : ''}` : ''}`;
-    let h = `<div class="bhead"><img class="bic" src="${b.city ? cityIconUrl(b.city.tier) : bIconUrl(b.type)}"><div class="bt">
+    let h = `<div class="bhead"><img class="bic" src="${b.city ? cityIconUrl(b.city.tier) : bIconUrl(b.type, b.level)}"><div class="bt">
       <input class="name" data-field="name" data-id="${b.id}" value="${esc(b.name)}"><small class="muted">${sub}</small>
       <span class="pill ${st.level}">${st.label}</span></div></div>
       ${st.hint ? `<p class="hint ${st.level}">${esc(st.hint)}</p>` : ''}<p class="muted desc">${esc(d.desc)}</p>`;
@@ -1137,7 +1137,7 @@ export class Game {
     let h = `<div class="res-head">${resIcon(r, 'ri huge')}<div><h3>${RES[r].name}</h3><small class="muted">Prix de base ${RES[r].price} sesterces la tonne</small></div></div>`;
     h += this.kpis([[`${fmt(stock[r] ?? 0)} t`, 'en stock'], [`${fmt(real[r] ?? 0)} t`, 'produit le mois dernier (réel)'], [`${(prod[r] ?? 0).toFixed(1)} t`, 'produit / mois au maximum'], [`${(use[r] ?? 0).toFixed(1)} t`, 'consommé / mois'],
       [`${bal >= 0 ? '+' : '−'}${Math.abs(bal).toFixed(1)} t`, 'bilan / mois', bal > 0.05 ? 'good' : bal < -0.05 ? 'bad' : '']]);
-    const row = (b: Building, main: string, sub: string) => `<button class="row" data-act="goto" data-id="${b.id}"><img class="vic" src="${bIconUrl(b.type)}" alt=""><span class="grow"><b>${esc(b.name.split(' — ')[0])}</b><br><small class="muted">${sub}</small></span><b class="num">${main}</b></button>`;
+    const row = (b: Building, main: string, sub: string) => `<button class="row" data-act="goto" data-id="${b.id}"><img class="vic" src="${bIconUrl(b.type, b.level)}" alt=""><span class="grow"><b>${esc(b.name.split(' — ')[0])}</b><br><small class="muted">${sub}</small></span><b class="num">${main}</b></button>`;
     const producers = s.buildings.filter(b => b.built && BUILD[b.type].recipe?.out[r]);
     h += `<h3>Production</h3>${producers.map(b => { const d = BUILD[b.type], rate = this.sim.rate(b) * d.recipe!.out[r]! / Object.values(d.recipe!.out)[0]!; const real = b.flow ? b.flow.pin[r] ?? 0 : undefined; return row(b, `${real === undefined ? '—' : fmt(real)} t <small class="muted">/ ${rate.toFixed(1)} max</small>`, `réel le mois dernier / maximum théorique · ${buildingStatus(this.sim, b).label} · stock ${fmt(b.stock[r] ?? 0)} t`); }).join('') || '<p class="muted">Aucun bâtiment ne produit cette ressource.</p>'}`;
     const cityUsers = s.buildings.filter(b => b.city && b.built && cityNeeds(b)[r]);

@@ -459,7 +459,7 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(x, y, size * 0.56, 0, Math.PI * 2); ctx.fillStyle = f.color; ctx.globalAlpha = sel ? 0.9 : 0.75; ctx.fill(); ctx.globalAlpha = 1;
         if (sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd43b'; ctx.stroke(); }
         if (b.ready && b.ready > s.day) ctx.globalAlpha = 0.45; // chantier en cours
-        ctx.drawImage(bIcon(b.type), x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
+        ctx.drawImage(bIcon(b.type, b.level), x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
         ctx.globalAlpha = 1;
       }
       // vue d'ensemble : seulement les capitales ; en zoomant, toutes les villes puis les ateliers
@@ -481,7 +481,7 @@ export class Renderer {
       const sel = v.selected?.kind === 'building' && v.selected.id === b.id;
       if (sel) { ctx.beginPath(); ctx.arc(x, y, size * 0.72, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.45)'; ctx.fill(); }
       ctx.globalAlpha = (b.built ? 1 : 0.5) * (b.paused ? 0.65 : 1);
-      ctx.drawImage(b.city ? cityIcon(b.city.tier) : bIcon(b.type), x - size / 2, y - size / 2, size, size);
+      ctx.drawImage(b.city ? cityIcon(b.city.tier) : bIcon(b.type, b.level), x - size / 2, y - size / 2, size, size);
       ctx.globalAlpha = 1;
       if (!b.built || b.upgrading) {
         const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
