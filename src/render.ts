@@ -1,7 +1,7 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
 import { BUILD, PLAYER_COLOR, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
 import { depositShape, type DepositKm, type Geo } from './geo';
-import { BICON, VICON } from './icons';
+import { BICON, cityIcon, VICON } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
 import { territories } from './territory';
@@ -447,13 +447,21 @@ export class Renderer {
     for (const f of s.factions) for (const b of f.b) {
       const [x, y] = this.cam.toScreen(b.x, b.y);
       if (x < -60 || y < -60 || x > this.cam.w + 60 || y > this.cam.h + 60) continue;
-      const size = b.type === 'village' ? S * (1 + Math.min(0.6, (b.tier ?? 0) * 0.2)) : S;
+      const city = b.type === 'village', size = city ? S * (1.25 + Math.min(0.75, (b.tier ?? 0) * 0.15)) : S;
       const sel = v.selected?.kind === 'rival' && v.selected.id === b.id;
-      ctx.beginPath(); ctx.arc(x, y, size * 0.56, 0, Math.PI * 2); ctx.fillStyle = f.color; ctx.globalAlpha = sel ? 0.9 : 0.75; ctx.fill(); ctx.globalAlpha = 1;
-      if (sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd43b'; ctx.stroke(); }
-      if (b.ready && b.ready > s.day) ctx.globalAlpha = 0.45; // chantier en cours
-      ctx.drawImage(BICON[b.type], x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
-      ctx.globalAlpha = 1;
+      if (city) {
+        // ville rivale : son médaillon, cerclé de la couleur du rival
+        if (b.ready && b.ready > s.day) ctx.globalAlpha = 0.45;
+        ctx.drawImage(cityIcon(b.tier), x - size / 2, y - size / 2, size, size);
+        ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.arc(x, y, size * 0.52, 0, Math.PI * 2); ctx.lineWidth = sel ? 5 : 3.5; ctx.strokeStyle = sel ? '#ffd43b' : f.color; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(x, y, size * 0.56, 0, Math.PI * 2); ctx.fillStyle = f.color; ctx.globalAlpha = sel ? 0.9 : 0.75; ctx.fill(); ctx.globalAlpha = 1;
+        if (sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd43b'; ctx.stroke(); }
+        if (b.ready && b.ready > s.day) ctx.globalAlpha = 0.45; // chantier en cours
+        ctx.drawImage(BICON[b.type], x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
+        ctx.globalAlpha = 1;
+      }
       // vue d'ensemble : seulement les capitales ; en zoomant, toutes les villes puis les ateliers
       const capital = b === f.b[0], far = this.cam.scale < 1.1;
       const label = b.type === 'village' ? (far ? (capital ? `${b.name} (${f.short})` : '') : `${b.name} · ${Math.round(b.pop ?? 0)} hab.`) : this.cam.scale > 2.5 ? b.name : '';
@@ -469,11 +477,11 @@ export class Renderer {
     for (const b of s.buildings) {
       const [x, y] = this.cam.toScreen(b.x, b.y);
       if (x < -S || y < -S || x > this.cam.w + S || y > this.cam.h + S) continue;
-      const size = b.city ? S * (1 + Math.min(0.6, (b.city.tier) * 0.2)) : b.type === 'pont_du_gard' ? S * 1.3 : S;
+      const size = b.city ? S * (1.25 + Math.min(0.75, b.city.tier * 0.15)) : b.type === 'pont_du_gard' ? S * 1.3 : S;
       const sel = v.selected?.kind === 'building' && v.selected.id === b.id;
       if (sel) { ctx.beginPath(); ctx.arc(x, y, size * 0.72, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.45)'; ctx.fill(); }
       ctx.globalAlpha = (b.built ? 1 : 0.5) * (b.paused ? 0.65 : 1);
-      ctx.drawImage(BICON[b.type], x - size / 2, y - size / 2, size, size);
+      ctx.drawImage(b.city ? cityIcon(b.city.tier) : BICON[b.type], x - size / 2, y - size / 2, size, size);
       ctx.globalAlpha = 1;
       if (!b.built || b.upgrading) {
         const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);

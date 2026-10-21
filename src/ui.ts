@@ -4,7 +4,7 @@ import { CHARACTERS, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
-import { BCAT, CATEGORY, bIconUrl, resImg, vIconUrl } from './icons';
+import { BCAT, CATEGORY, bIconUrl, cityIconUrl, resImg, vIconUrl } from './icons';
 import { IC, LABELS } from './uiicons';
 import { Camera, DEP_COLOR, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
@@ -641,7 +641,7 @@ export class Game {
   private rivalPanel(id: number): string {
     const s = this.s, r = findRival(s, id); if (!r) return '';
     const { f, b } = r, cities = f.b.filter(x => x.type === 'village'), pop = factionPop(f);
-    let h = `<div class="bhead"><img class="bic" src="${bIconUrl(b.type)}" style="background:${f.color};border-radius:50%"><div class="bt"><b class="name">${esc(b.name)}</b>
+    let h = `<div class="bhead"><img class="bic" src="${b.type === 'village' ? cityIconUrl(b.tier) : bIconUrl(b.type)}" style="background:${f.color};border-radius:50%"><div class="bt"><b class="name">${esc(b.name)}</b>
       <small class="muted">${b.type === 'village' ? TIERS[b.tier ?? 0].name : BUILD[b.type].name}</small><span class="pill" style="background:${f.color};color:#fff">${esc(f.name)}</span></div></div>`;
     if (b.ready && b.ready > s.day) h += `<p class="hint info">Chantier en cours : terminé ${dateLabel({ ...s, day: b.ready })}.</p>`;
     if (b.type === 'village') {
@@ -708,7 +708,7 @@ export class Game {
     const s = this.s, d = BUILD[b.type];
     const st = buildingStatus(this.sim, b);
     const sub = b.city ? `${TIERS[b.city.tier].name}` : b.partner ? 'Partenaire commercial' : `${d.name}${d.maxLevel > 1 ? ` · niveau ${b.level}${d.levels?.[b.level] ? ` (${d.levels[b.level].name.toLowerCase()})` : ''}` : ''}`;
-    let h = `<div class="bhead"><img class="bic" src="${bIconUrl(b.type)}"><div class="bt">
+    let h = `<div class="bhead"><img class="bic" src="${b.city ? cityIconUrl(b.city.tier) : bIconUrl(b.type)}"><div class="bt">
       <input class="name" data-field="name" data-id="${b.id}" value="${esc(b.name)}"><small class="muted">${sub}</small>
       <span class="pill ${st.level}">${st.label}</span></div></div>
       ${st.hint ? `<p class="hint ${st.level}">${esc(st.hint)}</p>` : ''}<p class="muted desc">${esc(d.desc)}</p>`;
@@ -925,7 +925,7 @@ export class Game {
       const d = BUILD[t], ok = hasTech(s, d.tech);
       const tech = d.tech ? TECHS.find(x => x.id === d.tech)! : null;
       return `<button class="card" data-act="build" data-type="${t}" ${ok ? '' : 'disabled'}>
-        <img src="${bIconUrl(t)}"><span><b>${d.name}${km < 1 && ok ? ` <span class="pill good">−${Math.round((1 - km) * 100)} %</span>` : ''}</b><small>${ok ? `${fmt(buildMoney(s, t))} sesterces${Object.keys(d.cost).length ? ` · ${costList(scaleStock(d.cost, km))}` : ' · sans matériaux'}` : `🔒 ${tech!.name}`}</small>
+        <img src="${t === 'village' ? cityIconUrl(0) : bIconUrl(t)}"><span><b>${d.name}${km < 1 && ok ? ` <span class="pill good">−${Math.round((1 - km) * 100)} %</span>` : ''}</b><small>${ok ? `${fmt(buildMoney(s, t))} sesterces${Object.keys(d.cost).length ? ` · ${costList(scaleStock(d.cost, km))}` : ' · sans matériaux'}` : `🔒 ${tech!.name}`}</small>
         <small class="muted">${d.recipe ? (Object.keys(d.recipe.in).length ? (Object.keys(d.recipe.in) as ResId[]).map(r => RES[r].name).join(' + ') + ' → ' : '') + (Object.keys(d.recipe.out) as ResId[]).map(r => RES[r].name).join(', ') : esc(d.desc)}</small></span></button>`;
     };
     // regroupement par catégorie, avec la couleur des pictogrammes
