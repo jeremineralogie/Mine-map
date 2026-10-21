@@ -127,8 +127,13 @@ const tierIx = (tier = 0) => Math.max(0, Math.min(CITY_URLS.length - 1, tier));
 /** Image d'une ville selon son palier (l'icône dessinée tant que l'image n'est pas chargée) */
 export const cityIcon = (tier?: number) => { const img = CITY_IMG[tierIx(tier)]; return img.complete && img.naturalWidth ? img : BICON.village; };
 export const cityIconUrl = (tier?: number) => CITY_URLS[tierIx(tier)];
+/** Médaillons illustrés de certains bâtiments (remplacent le pictogramme une fois chargés) */
+const ART: Partial<Record<BType, HTMLImageElement>> = {};
+for (const t of ['thermes', 'amphitheatre', 'remparts', 'basilique', 'caserne'] as BType[]) { const img = new Image(); img.src = `${import.meta.env.BASE_URL}icones/${t}.png`; ART[t] = img; }
+/** Image d'un bâtiment pour la carte : son médaillon illustré s'il en a un, sinon son pictogramme */
+export const bIcon = (t: BType) => { const a = ART[t]; return a && a.complete && a.naturalWidth ? a : BICON[t]; };
 /** URL d'icône pour l'interface HTML */
-export const bIconUrl = (t: BType) => BICON[t].src;
+export const bIconUrl = (t: BType) => ART[t]?.src ?? BICON[t].src;
 export const vIconUrl = (t: VType) => VICON[t].src;
 
 // ---- Icônes de ressources (24×24) ----

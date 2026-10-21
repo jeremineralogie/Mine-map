@@ -1,7 +1,7 @@
 // Rendu de la carte sur un canvas (coordonnées monde en km).
 import { BUILD, PLAYER_COLOR, RES, ROADS, VEH, WATER_RANGE, type BType, type ResId } from './defs';
 import { depositShape, type DepositKm, type Geo } from './geo';
-import { BICON, cityIcon, VICON } from './icons';
+import { bIcon, cityIcon, VICON } from './icons';
 import { findPath } from './roads';
 import { workRange } from './sim';
 import { territories } from './territory';
@@ -459,7 +459,7 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(x, y, size * 0.56, 0, Math.PI * 2); ctx.fillStyle = f.color; ctx.globalAlpha = sel ? 0.9 : 0.75; ctx.fill(); ctx.globalAlpha = 1;
         if (sel) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd43b'; ctx.stroke(); }
         if (b.ready && b.ready > s.day) ctx.globalAlpha = 0.45; // chantier en cours
-        ctx.drawImage(BICON[b.type], x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
+        ctx.drawImage(bIcon(b.type), x - size * 0.45, y - size * 0.45, size * 0.9, size * 0.9);
         ctx.globalAlpha = 1;
       }
       // vue d'ensemble : seulement les capitales ; en zoomant, toutes les villes puis les ateliers
@@ -481,7 +481,7 @@ export class Renderer {
       const sel = v.selected?.kind === 'building' && v.selected.id === b.id;
       if (sel) { ctx.beginPath(); ctx.arc(x, y, size * 0.72, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,200,0,.45)'; ctx.fill(); }
       ctx.globalAlpha = (b.built ? 1 : 0.5) * (b.paused ? 0.65 : 1);
-      ctx.drawImage(b.city ? cityIcon(b.city.tier) : BICON[b.type], x - size / 2, y - size / 2, size, size);
+      ctx.drawImage(b.city ? cityIcon(b.city.tier) : bIcon(b.type), x - size / 2, y - size / 2, size, size);
       ctx.globalAlpha = 1;
       if (!b.built || b.upgrading) {
         const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
@@ -587,7 +587,7 @@ export class Renderer {
       ctx.beginPath(); ctx.arc(x, y, workRange({ city: { tier: 0 } } as Building, s) * this.cam.scale, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(214,120,40,.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(190,100,30,.6)'; ctx.stroke();
     }
-    ctx.globalAlpha = 0.75; ctx.drawImage(BICON[g.type], x - S / 2, y - S / 2, S, S); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.75; ctx.drawImage(bIcon(g.type), x - S / 2, y - S / 2, S, S); ctx.globalAlpha = 1;
     ctx.beginPath(); ctx.arc(x, y, S * 0.65, 0, Math.PI * 2); ctx.strokeStyle = g.ok ? '#2f9e44' : '#e03131'; ctx.lineWidth = 3; ctx.stroke();
     void s; this.world();
   }
