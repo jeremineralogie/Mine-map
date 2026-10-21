@@ -678,6 +678,7 @@ export class Game {
         ${l ? `<p>Recettes : <b>${fmt(v.income)}</b> sesterces</p><button data-act="sellv" data-id="${v.id}">Vendre (${fmt(VEH[v.type].price / 2)})</button> <button data-act="line" data-id="${l.id}">Voir la ligne</button>` : ''}`;
     }
     const e = s.edges.find(x => x.id === sel.id); if (!e) return '';
+    if (e.lent) { const f = s.factions?.find(x => x.id === e.ally); return `<h2>${ROADS[e.type].name}</h2><p>Route des <b>${esc(f?.name ?? '?')}</b> empruntée par tes lignes depuis ta conquête : tes véhicules peuvent y circuler et tu peux y raccorder tes routes, même en guerre.</p><p class="muted">Elle reste à son propriétaire : elle disparaît s'il la démolit.</p>`; }
     if (e.ally) { const f = s.factions?.find(x => x.id === e.ally); return `<h2>${ROADS[e.type].name}</h2><p>Route alliée des <b>${esc(f?.name ?? '?')}</b> : tes véhicules peuvent l'emprunter et tu peux y raccorder tes routes.</p><p class="muted">Elle disparaît de ton réseau si l'alliance est rompue.</p>`; }
     const up = e.type === 'chemin' && hasTech(s, 'voie_romaine');
     const upCost = Math.round(e.len * (ROADS.voie.perKm - ROADS.chemin.perKm) * 1.3);

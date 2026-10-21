@@ -4,12 +4,12 @@
 // construire, tracer une route, créer une ligne, acheter ou revendre un véhicule.
 import { BUILD, DIFFICULTY, IMPORT_MULT, LEVEL_MULT, RES, START_MONEY, START_STOCK, TIERS, TIER_NEEDS_2, VEH, WATER_RANGE, WORK_RANGES, type BType, type ResId, type VType } from './defs';
 import type { Geo } from './geo';
-import { addEdge, components, invalidate, quoteSegment } from './roads';
+import { addEdge, components, dijkstra, invalidate, quoteSegment } from './roads';
 import {
   Sim, attachNode, buildMoney, buyVehicle, checkPlace, cities, cityNeeds, demolish, isStore, maxLevelAllowed, place, sellVehicle, tierGoods, upgrade, workRange,
   type Notifier,
 } from './sim';
-import { cargoTotal, type Building, type Faction, type GameState, type Line, type RBuilding, type Stock } from './state';
+import { cargoTotal, type Building, type Edge, type Faction, type GameState, type Line, type RBuilding, type Stock } from './state';
 
 const SILENT: Notifier = { toast() {}, event() {}, chapter() {}, gameOver() {} };
 /** Ce que les marchands romains vendent aux rivaux (livré à leur entrepôt, au double du prix) */
@@ -88,7 +88,7 @@ export function syncView(s: GameState, f: Faction) {
     }
     return r;
   });
-  f.roads = eco.edges.map(e => { const a = nodes.get(e.a)!, b = nodes.get(e.b)!; return [a.x, a.y, b.x, b.y] as [number, number, number, number]; }).filter(r => r.every(Number.isFinite));
+  f.roads = eco.edges.filter(e => !e.ally).map(e => { const a = nodes.get(e.a)!, b = nodes.get(e.b)!; return [a.x, a.y, b.x, b.y] as [number, number, number, number]; }).filter(r => r.every(Number.isFinite));
   const st: Stock = {};
   for (const b of eco.buildings) if (isStore(b) && b.built) for (const [r, q] of Object.entries(b.stock) as [ResId, number][]) st[r] = (st[r] ?? 0) + q;
   f.stock = st;
@@ -115,59 +115,137 @@ export function ecoAdd(f: Faction, r: ResId, q: number) {
 }
 
 // ---------- Transfert de territoire (conquête) ----------
-/** Fait passer une zone d'une économie à l'autre : les bâtiments conquis, toutes les routes de la zone
- *  (virages et carrefours compris), les lignes qui ne desservent qu'eux et leurs véhicules.
- *  Une route qui traverse la nouvelle frontière est coupée à la frontière : chaque camp garde sa partie. */
-export function transfer(from: GameState, to: GameState, ids: Set<number>, area: { x: number; y: number; r: number }) {
+/** Ce qui tombe avec une ville : son entrepôt, toutes les exploitations et ateliers que desservent
+ *  les lignes de la ville et de cet entrepôt (même loin), et les autres bâtiments de ses environs (pas les autres villes) */
+export function cityDomain(eco: GameState, c: Building, r: number): Set<number> {
+  const ids = new Set([c.id]);
+  const ok = (b: Building) => !b.partner && b.type !== 'comptoir' && b.type !== 'poste' && !BUILD[b.type].wonder && b.type !== 'village';
+  for (const b of eco.buildings) if (isStore(b) && ok(b) && dist(b, c) <= STORE_R && nearestCity(eco, b) === c) ids.add(b.id);
+  const hubs = new Set(ids);
+  for (const l of eco.lines) if (l.stops.some(st => hubs.has(st.bid))) for (const st of l.stops) {
+    const b = eco.buildings.find(x => x.id === st.bid);
+    if (b && ok(b) && !isStore(b)) ids.add(b.id);
+  }
+  for (const b of eco.buildings) if (ok(b) && !isStore(b) && dist(b, c) <= r) ids.add(b.id);
+  return ids;
+}
+
+/** Fait passer des bâtiments d'une économie à l'autre (conquête), en état de marche :
+ *  les routes de la zone (virages et carrefours compris), les lignes et leurs véhicules.
+ *  Une route qui traverse la nouvelle frontière est partagée en deux au point de passage, sans coupure.
+ *  Les routes de l'autre camp qu'empruntent les lignes de chacun restent utilisables (routes empruntées).
+ *  `fromTag`/`toTag` : identifiant de chaque camp ('player' ou celui du rival). */
+export function transfer(from: GameState, to: GameState, ids: Set<number>, area: { x: number; y: number; r: number }, fromTag: string, toTag: string) {
   const moved = from.buildings.filter(b => ids.has(b.id));
   if (!moved.length) return 0;
   from.buildings = from.buildings.filter(b => !ids.has(b.id));
   to.buildings.push(...moved);
-  // nœuds de la zone : ceux des bâtiments conquis et les virages ou carrefours dans le rayon (pas ceux d'un autre bâtiment ni d'un allié)
+  // nœuds de la zone : ceux des bâtiments conquis et les virages ou carrefours dans le rayon (pas ceux d'un autre bâtiment)
   const inside = (n: { x: number; y: number }) => Math.hypot(n.x - area.x, n.y - area.y) <= area.r;
   const keep = new Set(from.buildings.map(b => b.node).filter((n): n is number => n !== null));
   const zone = new Set(from.nodes.filter(n => !n.ally && (moved.some(b => b.node === n.id) || (inside(n) && n.b === undefined && !keep.has(n.id)))).map(n => n.id));
   const nodeOf = new Map(from.nodes.map(n => [n.id, n]));
-  const edgesIn: typeof from.edges = [], edgesOut: typeof from.edges = [];
+  const edgesIn: Edge[] = [], edgesOut: Edge[] = [];
   for (const e of from.edges) {
     if (e.ally) { edgesOut.push(e); continue; }
     const ia = zone.has(e.a), ib = zone.has(e.b);
     if (ia && ib) { edgesIn.push(e); continue; }
     if (!ia && !ib) { edgesOut.push(e); continue; }
-    // tronçon coupé par la frontière : un point de coupure, chaque camp garde son bout
+    // tronçon à cheval sur la frontière : chaque camp garde son bout, les deux bouts se rejoignent au même carrefour
     const A = nodeOf.get(ia ? e.a : e.b)!, B = nodeOf.get(ia ? e.b : e.a)!;
     const dx = B.x - A.x, dy = B.y - A.y, fx = A.x - area.x, fy = A.y - area.y;
     const qa = dx * dx + dy * dy, qb = 2 * (fx * dx + fy * dy), qc = fx * fx + fy * fy - area.r * area.r, disc = qb * qb - 4 * qa * qc;
-    const t = Math.min(0.95, Math.max(0.05, qa > 0 && disc >= 0 ? (-qb + Math.sqrt(disc)) / (2 * qa) : 0.5));
-    const cx = A.x + dx * t, cy = A.y + dy * t, L = Math.hypot(dx, dy);
-    const nIn = { id: to.nextId++, x: cx, y: cy }, nOut = { id: from.nextId++, x: cx, y: cy };
-    to.nodes.push(nIn); from.nodes.push(nOut);
-    edgesIn.push({ id: to.nextId++, a: A.id, b: nIn.id, type: e.type, len: L * t, bridges: 0 });
-    edgesOut.push({ id: from.nextId++, a: nOut.id, b: B.id, type: e.type, len: L * (1 - t), bridges: e.bridges });
+    const t0 = qa > 0 && disc >= 0 ? (-qb + Math.sqrt(disc)) / (2 * qa) : 0.5;
+    const t = Math.min(0.95, Math.max(0.05, t0 > 0 && t0 < 1 ? t0 : 0.5));
+    const L = Math.hypot(dx, dy), id = to.nextId++;
+    from.nodes.push({ id, x: A.x + dx * t, y: A.y + dy * t });
+    edgesIn.push({ id: to.nextId++, a: A.id, b: id, type: e.type, len: L * t, bridges: 0 });
+    edgesOut.push({ id: from.nextId++, a: id, b: B.id, type: e.type, len: L * (1 - t), bridges: e.bridges });
+    zone.add(id); keep.add(id);
   }
-  from.edges = edgesOut; to.edges.push(...edgesIn);
-  to.nodes.push(...from.nodes.filter(n => zone.has(n.id)));
-  from.nodes = from.nodes.filter(n => !zone.has(n.id));
+  // le carrefour de frontière existe des deux côtés
+  for (const n of from.nodes) if (zone.has(n.id) && keep.has(n.id)) to.nodes.push({ ...n });
+  const inIds = new Set(edgesIn.map(e => e.id)), outIds = new Set(edgesOut.map(e => e.id));
+  // les copies d'une route qui change de camp ne servent plus
+  from.edges = edgesOut.filter(e => !(e.lent && e.ally === toTag && outIds.has(e.src!)));
+  to.edges = [...to.edges.filter(e => !(e.lent && e.ally === fromTag && inIds.has(e.src!))), ...edgesIn];
+  to.nodes.push(...from.nodes.filter(n => zone.has(n.id) && !keep.has(n.id)));
+  from.nodes = from.nodes.filter(n => !zone.has(n.id) || keep.has(n.id));
   for (const n of to.nodes) if (n.b !== undefined && !to.buildings.some(b => b.id === n.b)) delete n.b;
-  // lignes : entièrement conquises → transférées avec leurs véhicules ; à cheval → les arrêts conquis sont retirés
+  // lignes : entièrement conquises → transférées avec leurs véhicules ;
+  // une exploitation conquise qui livrait un entrepôt resté de l'autre côté livre désormais l'entrepôt conquis ;
+  // sinon les arrêts conquis sont retirés et la ligne continue sur le reste de son trajet
+  const isSt = (id: number) => { const b = to.buildings.find(x => x.id === id) ?? from.buildings.find(x => x.id === id); return !!b && isStore(b); };
+  const takenStores = moved.filter(isStore);
+  const movedLines: Line[] = [];
+  const dropLine = (l: Line) => { from.lines = from.lines.filter(x => x !== l); from.vehicles = from.vehicles.filter(v => v.line !== l.id); };
   for (const l of [...from.lines]) {
-    const inL = l.stops.filter(st => ids.has(st.bid)).length;
-    if (!inL) continue;
-    if (inL === l.stops.length) {
-      from.lines = from.lines.filter(x => x !== l); to.lines.push(l);
+    const inL = l.stops.filter(st => ids.has(st.bid));
+    if (!inL.length) continue;
+    const outL = l.stops.filter(st => !ids.has(st.bid));
+    if (outL.length && takenStores.length && outL.every(st => isSt(st.bid))) {
+      const ref = moved.find(b => inL.some(st => st.bid === b.id && !isStore(b))) ?? takenStores[0];
+      const w = takenStores.sort((a, z) => dist(a, ref) - dist(z, ref))[0];
+      for (const st of outL) st.bid = w.id;
+    }
+    if (l.stops.every(st => ids.has(st.bid))) {
+      if (new Set(l.stops.map(st => st.bid)).size < 2) { dropLine(l); continue; }
+      from.lines = from.lines.filter(x => x !== l); to.lines.push(l); movedLines.push(l);
       const vs = from.vehicles.filter(v => v.line === l.id);
       from.vehicles = from.vehicles.filter(v => v.line !== l.id); to.vehicles.push(...vs);
       for (const v of vs) { v.state = 'lost'; v.timer = 0; }
     } else {
       l.stops = l.stops.filter(st => !ids.has(st.bid));
-      if (l.stops.length < 2) { from.lines = from.lines.filter(x => x !== l); from.vehicles = from.vehicles.filter(v => v.line !== l.id); }
+      if (new Set(l.stops.map(st => st.bid)).size < 2) dropLine(l);
     }
   }
-  // convois de chantier vers les bâtiments perdus : annulés ; véhicules restés de l'autre côté : nouvel itinéraire
+  // routes empruntées : chaque ligne garde son itinéraire, même à travers les routes de l'autre camp
+  const merged = { nodes: [...to.nodes, ...from.nodes.filter(n => !to.nodes.some(m => m.id === n.id))], edges: [...to.edges, ...from.edges].filter(e => !e.ally) } as GameState;
+  const owner = new Map<number, 'to' | 'from'>();
+  for (const e of to.edges) if (!e.ally) owner.set(e.id, 'to');
+  for (const e of from.edges) if (!e.ally) owner.set(e.id, 'from');
+  const trees = new Map<number, ReturnType<typeof dijkstra>>();
+  const lend = (X: GameState, side: 'to' | 'from', tag: string, l: Line) => {
+    const ns = l.stops.map(st => X.buildings.find(b => b.id === st.bid)?.node).filter((n): n is number => n != null);
+    for (let i = 0; i < ns.length; i++) {
+      const a = ns[i], b = ns[(i + 1) % ns.length]; if (a === b) continue;
+      let tr = trees.get(a); if (!tr) { tr = dijkstra(merged, a); trees.set(a, tr); }
+      if (!tr.dist.has(b)) continue;
+      for (let cur = b; cur !== a;) {
+        const p = tr.prev.get(cur)!; cur = p.n;
+        const e = p.e; if (owner.get(e.id) === side) continue;
+        if (X.edges.some(x => x.id === e.id || x.src === e.id)) continue;
+        for (const id of [e.a, e.b]) if (!X.nodes.some(n => n.id === id)) { const n = merged.nodes.find(m => m.id === id)!; X.nodes.push({ id, x: n.x, y: n.y, ally: tag }); }
+        X.edges.push({ id: e.id, a: e.a, b: e.b, type: e.type, len: e.len, bridges: e.bridges, ally: tag, src: e.id, lent: true });
+      }
+    }
+  };
+  for (const l of movedLines) lend(to, 'to', fromTag, l);
+  for (const l of from.lines) lend(from, 'from', toTag, l);
+  // convois de chantier vers les bâtiments perdus : annulés ; véhicules en route : nouvel itinéraire
   from.vehicles = from.vehicles.filter(v => !(v.line === -1 && (ids.has(v.target!) || ids.has(v.from!))));
-  for (const v of from.vehicles) if (v.state === 'go') { v.state = 'lost'; v.timer = 0; }
+  for (const v of [...from.vehicles, ...to.vehicles]) if (v.state === 'go') { v.state = 'lost'; v.timer = 0; }
   invalidate();
   return moved.length;
+}
+
+/** Routes empruntées : elles suivent leur propriétaire (revêtement, démolition) ; si le propriétaire disparaît, elles sont à toi */
+export function syncLent(s: GameState) {
+  const ownerOf = (tag: string) => tag === 'player' ? s : s.factions?.find(f => f.id === tag && !f.dead)?.eco;
+  for (const st of [s, ...(s.factions ?? []).filter(f => f.eco && !f.dead).map(f => f.eco!)]) {
+    let changed = false;
+    for (const e of st.edges.filter(x => x.lent)) {
+      const o = ownerOf(e.ally!);
+      if (!o) { delete e.ally; delete e.lent; delete e.src; changed = true; continue; }
+      const src = o.edges.find(x => x.id === e.src);
+      if (src) { if (src.type !== e.type) { e.type = src.type; changed = true; } continue; }
+      // tronçon disparu : gardé seulement si son propriétaire relie toujours ses deux bouts (un carrefour l'a coupé en deux)
+      const has = (id: number) => o.nodes.some(n => n.id === id);
+      if (has(e.a) && has(e.b) && !dijkstra(o, e.a).dist.has(e.b)) { st.edges = st.edges.filter(x => x !== e); changed = true; }
+    }
+    for (const n of st.nodes) if (n.ally && !ownerOf(n.ally)) { delete n.ally; changed = true; }
+    if (changed) { invalidate(); for (const v of st.vehicles) if (v.state === 'go') { v.state = 'lost'; v.timer = 0; } }
+  }
 }
 
 // ---------- Routes des alliés ----------
@@ -179,15 +257,15 @@ export function syncAllyRoads(s: GameState) {
     const allied = !!f.alliance && !f.dead && !!f.eco;
     const mine = s.edges.filter(e => e.ally === f.id);
     if (!allied) {
-      if (mine.length) { s.edges = s.edges.filter(e => e.ally !== f.id); changed = true; }
+      if (mine.some(e => !e.lent)) { s.edges = s.edges.filter(e => e.ally !== f.id || e.lent); changed = true; }
       continue;
     }
     const eco = f.eco!, srcs = new Set(eco.edges.map(e => e.id)), have = new Set(mine.map(e => e.src));
     // tronçons disparus chez l'allié
-    if (mine.some(e => !srcs.has(e.src!))) { s.edges = s.edges.filter(e => e.ally !== f.id || srcs.has(e.src!)); changed = true; }
+    if (mine.some(e => !e.lent && !srcs.has(e.src!))) { s.edges = s.edges.filter(e => e.ally !== f.id || e.lent || srcs.has(e.src!)); changed = true; }
     const nodes = new Map(eco.nodes.map(n => [n.id, n])), known = new Set(s.nodes.map(n => n.id));
     for (const e of eco.edges) {
-      if (have.has(e.id)) continue;
+      if (have.has(e.id) || e.ally) continue;
       for (const id of [e.a, e.b]) if (!known.has(id)) { const n = nodes.get(id)!; s.nodes.push({ id, x: n.x, y: n.y, ally: f.id }); known.add(id); }
       s.edges.push({ id: e.id, a: e.a, b: e.b, type: e.type, len: e.len, bridges: e.bridges, ally: f.id, src: e.id });
       changed = true;
@@ -212,32 +290,65 @@ export interface Placer {
 let placer: Placer | null = null;
 export function setPlacer(p: Placer) { placer = p; }
 
-/** Entrepôt principal (celui de la capitale) */
+/** Entrepôt principal : celui de la capitale (la plus ancienne de ses villes) */
 function hub(eco: GameState): Building | undefined {
-  const stores = eco.buildings.filter(b => isStore(b) && b.built);
-  const cap = cities(eco).sort((a, z) => z.city!.pop - a.city!.pop)[0];
-  return cap ? stores.sort((a, z) => dist(a, cap) - dist(z, cap))[0] : stores[0];
+  const cap = cities(eco).sort((a, z) => a.id - z.id)[0];
+  return (cap && localStore(eco, cap)) ?? eco.buildings.find(b => isStore(b) && b.built);
 }
+/** Un entrepôt par ville : celui qui est à moins de STORE_R km d'elle (le plus proche) */
+export const STORE_R = 15;
+function localStore(eco: GameState, c: Building, builtOnly = true) {
+  return eco.buildings.filter(b => isStore(b) && (b.built || !builtOnly) && dist(b, c) <= STORE_R).sort((a, z) => dist(a, c) - dist(z, c))[0];
+}
+/** Ville la plus proche d'un bâtiment */
+const nearestCity = (eco: GameState, b: Building) => cities(eco).sort((a, z) => dist(a, b) - dist(z, b))[0];
+/** Entrepôt qui sert un bâtiment : celui de sa ville (ou de la ville la plus proche pour une exploitation), sinon l'entrepôt principal */
+function storeFor(eco: GameState, b: Building, linked: (a: Building, b: Building) => boolean, h: Building) {
+  const ok = (w?: Building) => !!w && linked(w, b);
+  if (b.city) {
+    const w = localStore(eco, b);
+    // tant que son entrepôt est vide, la ville reste servie par l'entrepôt principal
+    return ok(w) && (w === h || cargoTotal(w!.stock) >= 10) ? w! : linked(h, b) ? h : undefined;
+  }
+  for (const c of cities(eco).sort((a, z) => dist(a, b) - dist(z, b))) {
+    const w = localStore(eco, c);
+    if (ok(w)) return w!;
+  }
+  return linked(h, b) ? h : undefined;
+}
+/** Ce dont un entrepôt a besoin pour sa ville et ses ateliers */
+function storeNeeds(eco: GameState, w: Building, linked: (a: Building, b: Building) => boolean, h: Building): Stock {
+  const out: Stock = {};
+  for (const c of cities(eco)) if (localStore(eco, c) === w) addCityDemand(eco, c, out);
+  for (const b of eco.buildings) {
+    const rc = BUILD[b.type].recipe; if (!rc || b.city || storeFor(eco, b, linked, h) !== w) continue;
+    for (const [r, q] of Object.entries(rc.in) as [ResId, number][]) out[r] = (out[r] ?? 0) + q * LEVEL_MULT[b.level];
+  }
+  return out;
+}
+
 const producersOf = (eco: GameState, r: ResId) => (Object.keys(BUILD) as BType[]).filter(t => {
   const d = BUILD[t];
   return d.recipe?.out[r] && !d.hidden && !d.wonder && !d.coast && !d.river && d.era <= eco.era && (!d.tech || eco.techs.includes(d.tech));
 }).sort((a, z) => (Object.values(BUILD[z].recipe!.out)[0] ?? 0) - (Object.values(BUILD[a].recipe!.out)[0] ?? 0));
 const inputsOf = (eco: GameState, r: ResId) => eco.buildings.reduce((a, b) => a + (BUILD[b.type].recipe?.in[r] ?? 0) * LEVEL_MULT[b.level], 0);
 
-/** Besoins mensuels des villes (et un peu des biens du palier suivant quand elles s'en approchent) */
-function demand(eco: GameState): Stock {
-  const out: Stock = {};
-  for (const c of cities(eco)) {
-    for (const [r, q] of Object.entries(cityNeeds(c)) as [ResId, number][]) out[r] = (out[r] ?? 0) + q;
-    const next = TIERS[c.city!.tier + 1];
-    if (next && c.city!.pop >= next.minPop * 0.6) {
-      const cur = tierGoods(c.city!.tier, eco.era);
-      for (const r of tierGoods(c.city!.tier + 1, eco.era)) if (!cur.includes(r)) {
-        const q = ((next.needs[r] ?? 0) + (eco.era >= 2 ? TIER_NEEDS_2[c.city!.tier + 1]?.[r] ?? 0 : 0)) * c.city!.pop / 100;
-        out[r] = (out[r] ?? 0) + q;
-      }
+/** Besoins mensuels d'une ville (et un peu des biens du palier suivant quand elle s'en approche) */
+function addCityDemand(eco: GameState, c: Building, out: Stock) {
+  for (const [r, q] of Object.entries(cityNeeds(c)) as [ResId, number][]) out[r] = (out[r] ?? 0) + q;
+  const next = TIERS[c.city!.tier + 1];
+  if (next && c.city!.pop >= next.minPop * 0.6) {
+    const cur = tierGoods(c.city!.tier, eco.era);
+    for (const r of tierGoods(c.city!.tier + 1, eco.era)) if (!cur.includes(r)) {
+      const q = ((next.needs[r] ?? 0) + (eco.era >= 2 ? TIER_NEEDS_2[c.city!.tier + 1]?.[r] ?? 0 : 0)) * c.city!.pop / 100;
+      out[r] = (out[r] ?? 0) + q;
     }
   }
+}
+/** Besoins mensuels de toutes les villes */
+function demand(eco: GameState): Stock {
+  const out: Stock = {};
+  for (const c of cities(eco)) addCityDemand(eco, c, out);
   return out;
 }
 /** Capacité installée (chantiers compris) */
@@ -267,7 +378,7 @@ function connect(f: Faction, geo: Geo, b: Building): boolean {
   const eco = f.eco!;
   attachNode(eco, b);
   const own = new Set(b.node !== null ? [b.node] : []);
-  const cands = eco.nodes.filter(n => !own.has(n.id) && eco.edges.some(e => e.a === n.id || e.b === n.id)).sort((p, q) => dist(p, b) - dist(q, b)).slice(0, 8);
+  const cands = eco.nodes.filter(n => !own.has(n.id) && !n.ally && eco.edges.some(e => e.a === n.id || e.b === n.id)).sort((p, q) => dist(p, b) - dist(q, b)).slice(0, 8);
   if (!cands.length) return true;
   for (const n of cands) {
     const q = quoteSegment(geo, b.x, b.y, n.x, n.y, 'chemin', !!f.frontier);
@@ -352,14 +463,30 @@ function addLine(eco: GameState, stops: Line['stops'], vtype: VType = 'charrette
   buyVehicle(eco, l.id);
   return l;
 }
-/** Lignes de transport : ateliers → entrepôt, entrepôt → ateliers de transformation → entrepôt, entrepôt → villes */
+/** Ligne d'équilibrage entre l'entrepôt principal et celui d'une ville : [principal → ville → principal] */
+const isBalance = (eco: GameState, l: Line) => l.stops.length === 4 && [0, 1].every(i => { const b = eco.buildings.find(x => x.id === l.stops[i].bid); return !!b && isStore(b); }) && l.stops[0].bid !== l.stops[1].bid;
+/** Lignes de transport, autour d'un entrepôt par ville :
+ *  exploitations → entrepôt de la ville la plus proche, entrepôt → ateliers de transformation → entrepôt,
+ *  entrepôt → sa ville, et entre l'entrepôt principal et chaque entrepôt de ville (ce qui manque d'un côté, le surplus de l'autre) */
 function manageLines(f: Faction) {
   const eco = f.eco!, h = hub(eco); if (!h || h.node === null) return;
-  const comp = components(eco), linked = (b: Building) => b.node !== null && comp.get(b.node) === comp.get(h.node!);
-  const stops = (b: Building) => eco.lines.filter(l => l.stops.some(st => st.bid === b.id));
+  const comp = components(eco);
+  const linked = (a: Building, b: Building) => a.node !== null && b.node !== null && comp.get(a.node) === comp.get(b.node);
+  const byId = (id: number) => eco.buildings.find(x => x.id === id);
+  // l'entrepôt d'une ligne change (entrepôt de ville achevé) : mêmes arrêts, même chariots, nouvel entrepôt
+  const repoint = (l: Line, from: number, to: Building) => {
+    for (const st of l.stops) if (st.bid === from) st.bid = to.id;
+    for (const v of eco.vehicles) if (v.line === l.id && v.state === 'go') { v.state = 'lost'; v.timer = 0; }
+  };
+  // équilibrages qui ne partent plus de l'entrepôt principal (capitale perdue)
+  for (const l of eco.lines.filter(x => isBalance(eco, x) && x.stops[0].bid !== h.id)) {
+    for (const v of eco.vehicles.filter(x => x.line === l.id)) sellVehicle(eco, v);
+    eco.lines = eco.lines.filter(x => x !== l);
+  }
   for (const b of eco.buildings) {
-    if (!b.built || b === h || !linked(b)) continue;
-    const d = BUILD[b.type];
+    if (!b.built || isStore(b)) continue;
+    const d = BUILD[b.type], w = storeFor(eco, b, linked, h);
+    if (!w) continue;
     if (b.city) {
       // deux lignes par ville : les céréales d'un côté, les autres marchandises de l'autre
       // (un chariot plein de blé que la ville a déjà ne bloque pas le bois et la pierre)
@@ -369,15 +496,31 @@ function manageLines(f: Faction) {
       for (const group of [['cereales'] as ResId[], goods.filter(r => r !== 'cereales').sort((a, z) => fill(a) - fill(z))]) {
         const res = group.filter(r => goods.includes(r)); if (!res.length) continue;
         // le chariot revient déposer à l'entrepôt ce que la ville n'a pas pris, puis repart avec un chargement frais
-        const l = lineOf(eco, x => x.stops.length === 3 && x.stops[0].bid === h.id && x.stops[1].bid === b.id && (x.stops[0].res[0] === 'cereales') === (res[0] === 'cereales'));
-        if (l) l.stops[0].res = res;
-        else if (res.some(r => (h.stock[r] ?? 0) >= 2)) addLine(eco, [{ bid: h.id, action: 'load', res }, { bid: b.id, action: 'unload', res: [] }, { bid: h.id, action: 'unload', res: [] }]);
+        const l = lineOf(eco, x => x.stops.length === 3 && x.stops[1].bid === b.id && !!byId(x.stops[0].bid) && isStore(byId(x.stops[0].bid)!) && (x.stops[0].res[0] === 'cereales') === (res[0] === 'cereales'));
+        if (l) { if (l.stops[0].bid !== w.id) repoint(l, l.stops[0].bid, w); l.stops[0].res = res; }
+        else if (res.some(r => (w.stock[r] ?? 0) >= 2)) addLine(eco, [{ bid: w.id, action: 'load', res }, { bid: b.id, action: 'unload', res: [] }, { bid: w.id, action: 'unload', res: [] }]);
       }
-    } else if (d.recipe && !stops(b).length) {
+    } else if (d.recipe) {
+      const mine = eco.lines.filter(l => l.stops.some(st => st.bid === b.id));
+      if (mine.length) {
+        for (const l of mine) for (const id of [...new Set(l.stops.map(st => st.bid))]) { const o = byId(id); if (o && isStore(o) && o !== w) repoint(l, id, w); }
+        continue;
+      }
       const outs = Object.keys(d.recipe.out) as ResId[], ins = Object.keys(d.recipe.in) as ResId[];
-      if (ins.length) addLine(eco, [{ bid: h.id, action: 'load', res: ins }, { bid: b.id, action: 'unload', res: [] }, { bid: b.id, action: 'load', res: outs }, { bid: h.id, action: 'unload', res: [] }]);
-      else addLine(eco, [{ bid: b.id, action: 'load', res: outs }, { bid: h.id, action: 'unload', res: [] }]);
+      if (ins.length) addLine(eco, [{ bid: w.id, action: 'load', res: ins }, { bid: b.id, action: 'unload', res: [] }, { bid: b.id, action: 'load', res: outs }, { bid: w.id, action: 'unload', res: [] }]);
+      else addLine(eco, [{ bid: b.id, action: 'load', res: outs }, { bid: w.id, action: 'unload', res: [] }]);
     }
+  }
+  // entre l'entrepôt principal et ceux des villes : à l'aller ce qui manque à la ville, au retour son surplus
+  for (const w of eco.buildings) {
+    if (!isStore(w) || !w.built || w === h || !linked(w, h)) continue;
+    const need = storeNeeds(eco, w, linked, h);
+    const lack = (Object.keys(need) as ResId[]).filter(r => (need[r] ?? 0) > 0 && (w.stock[r] ?? 0) < (need[r] ?? 0) * 2 + 2 && (h.stock[r] ?? 0) >= 4)
+      .sort((a, z) => (w.stock[a] ?? 0) / need[a]! - (w.stock[z] ?? 0) / need[z]!);
+    const spare = (Object.keys(w.stock) as ResId[]).filter(r => (w.stock[r] ?? 0) > (need[r] ?? 0) * 3 + 5);
+    const l = lineOf(eco, x => isBalance(eco, x) && x.stops[0].bid === h.id && x.stops[1].bid === w.id);
+    if (l) { l.stops[0].res = lack; l.stops[2].res = spare; }
+    else if (lack.length || spare.length) addLine(eco, [{ bid: h.id, action: 'load', res: lack }, { bid: w.id, action: 'unload', res: [] }, { bid: w.id, action: 'load', res: spare }, { bid: h.id, action: 'unload', res: [] }]);
   }
   // lignes vers des bâtiments disparus
   eco.lines = eco.lines.filter(l => l.stops.length >= 2 && l.stops.every(st => eco.buildings.some(b => b.id === st.bid)));
@@ -397,7 +540,7 @@ function manageVehicles(f: Faction) {
     if (!first || !target) continue;
     const memo = (l as Line & { last?: number }), idle = vs.filter(v => v.state === 'load' && cargoTotal(v.cargo) < 1).length;
     let level = 0, more = false, less = false;
-    if (first !== h) {
+    if (!isStore(first)) {
       // atelier → entrepôt : sa production s'entasse ?
       const r = l.stops[0].res[0], cap = BUILD[first.type].storage * first.level;
       level = first.stock[r] ?? 0;
@@ -406,7 +549,12 @@ function manageVehicles(f: Faction) {
     } else if (target.city) {
       // entrepôt → ville : elle manque d'un bien que l'entrepôt possède, et tous les chariots sont en route ?
       const q = (r: ResId) => Math.max(0.3, cityNeeds(target)[r] ?? 0);
-      more = l.stops[0].res.some(r => (target.city!.stock[r] ?? 0) < q(r) * 2 && (h.stock[r] ?? 0) >= 4) && idle === 0;
+      more = l.stops[0].res.some(r => (target.city!.stock[r] ?? 0) < q(r) * 2 && (first.stock[r] ?? 0) >= 4) && idle === 0;
+      less = idle >= 2;
+    } else if (isStore(target)) {
+      // entrepôt principal ↔ entrepôt d'une ville : il manque quelque chose là-bas, ou le surplus s'y entasse
+      level = l.stops[2].res.reduce((a, r) => a + (target.stock[r] ?? 0), 0);
+      more = idle === 0 && (l.stops[0].res.length > 0 || (level > 20 && level > (memo.last ?? 0)));
       less = idle >= 2;
     } else {
       // entrepôt → atelier de transformation → entrepôt
@@ -496,9 +644,17 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   const sites = eco.buildings.filter(b => !b.built || b.upgrading).length;
   const maxSites = s.difficulty === 'ambitieux' ? 3 : 2;
   let started = 0;
+  // chaque ville a son entrepôt, d'où partent les lignes de la ville et de ses exploitations
+  if (!distracted) for (const c of cities(eco)) {
+    if (sites + started >= maxSites || localStore(eco, c, false)) continue;
+    for (let k = 0; k < 30; k++) {
+      const a = Math.random() * 6.283, rr = 2 + Math.random() * 5;
+      if (build(s, f, geo, 'entrepot', c.x + Math.cos(a) * rr, c.y + Math.sin(a) * rr, `Entrepôt de ${c.name}`)) { started++; break; }
+    }
+  }
   const todo = shortages(eco, need);
   if (todo.length > 1 && Math.random() < 0.3) [todo[0], todo[1]] = [todo[1], todo[0]];
-  if (sites < maxSites && !distracted) for (const r of todo) {
+  if (sites + started < maxSites && !distracted) for (const r of todo) {
     const res = tryBuild(s, f, geo, r);
     if (res === 'ok' && ++started + sites >= maxSites) break;
     if (res === 'wait') break;

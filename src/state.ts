@@ -4,8 +4,9 @@ import type { BType, Difficulty, ResId, RoadType, VType } from './defs';
 export type Stock = Partial<Record<ResId, number>>;
 
 export interface RNode { id: number; x: number; y: number; b?: number; ally?: string; }
-/** `ally` : route d'un allié recopiée dans le réseau du joueur (empruntable, pas démolissable) ; `src` : tronçon d'origine */
-export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; ally?: string; src?: number; }
+/** `ally` : route d'un autre camp recopiée dans ce réseau (empruntable, pas démolissable) ; `src` : tronçon d'origine ;
+ *  `lent` : route empruntée par une ligne (conquête) : elle reste en paix comme en guerre, tant que son propriétaire la garde */
+export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; ally?: string; src?: number; lent?: boolean; }
 
 export interface City {
   pop: number; stock: Stock; sat: number; foodSat: number; tier: number;

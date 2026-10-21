@@ -4,7 +4,7 @@ import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, RES, RIVALS, TECHS, TIERS, type
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState } from './state';
 import { ownerAt, territoryReady } from './territory';
-import { foundHome, newEco, rivalMonth, setPlacer, syncAllyRoads } from './rivalai';
+import { foundHome, newEco, rivalMonth, setPlacer, syncAllyRoads, syncLent } from './rivalai';
 
 /** Rayon de territoire d'un bâtiment (km) : les villes rayonnent selon leur palier */
 export const territoryRadius = (b: { tier?: number; pop?: number; type: BType }) => b.type === 'village' ? 18 + 8 * (b.tier ?? 0) : 6;
@@ -161,4 +161,5 @@ export function monthlyRivals(s: GameState, geo: Geo) {
     rivalMonth(s, geo, f);
   }
   syncAllyRoads(s);
+  syncLent(s);
 }

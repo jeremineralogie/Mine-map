@@ -3,7 +3,7 @@ import { BUILD, PLAYER_COLOR, type ResId } from './defs';
 import { changeRel, relLabel, relOf, takeFromStores, storeTotal } from './diplomacy';
 import type { Geo } from './geo';
 import { factionPop, territoryRadius } from './rivals';
-import { ecoBuilding, syncAllyRoads, syncView, transfer } from './rivalai';
+import { cityDomain, ecoBuilding, syncAllyRoads, syncLent, syncView, transfer } from './rivalai';
 import type { Army, Building, Faction, GameState, RBuilding } from './state';
 
 const YEAR = 365.25;
@@ -203,19 +203,21 @@ function victory(s: GameState, geo: Geo, a: Army, f: Faction, c: RBuilding, n: W
   const tribute = Math.round(Math.max(60, factionPop(f) * 0.05));
   const conquer = () => {
     const r = territoryRadius(c);
-    // la ville et tout ce qui l'entoure (sauf les autres villes) passent au joueur, en état de marche :
-    // bâtiments, routes entre eux, lignes qui ne desservent qu'eux et leurs véhicules
-    const taken = f.b.filter(b => b.id === c.id || (b.type !== 'village' && Math.hypot(b.x - c.x, b.y - c.y) <= r));
+    // la ville, son entrepôt, les exploitations que desservent ses lignes et ses environs (sauf les autres villes)
+    // passent au joueur, en état de marche : routes, lignes et véhicules
+    const city = ecoBuilding(f, c.id);
+    const ids = f.eco && city ? cityDomain(f.eco, city, r) : new Set([c.id]);
+    const taken = f.b.filter(b => ids.has(b.id));
     shrink(s, f, c, 0.85);
     syncAllyRoads(s);
-    if (f.eco) transfer(f.eco, s, new Set(taken.map(b => b.id)), { x: c.x, y: c.y, r });
+    if (f.eco) transfer(f.eco, s, ids, { x: c.x, y: c.y, r }, f.id, PLAYER);
     syncView(s, f);
     changeRel(f, -30); for (const o of s.factions ?? []) if (o !== f) changeRel(o, -8);
     s.log.unshift({ day: s.day, text: `Tu conquiers ${c.name} et ses environs (${taken.length} bâtiment(s)).` });
     n.toast(`${c.name} est à toi ! Relie-la par la route à ton réseau.`, 'good');
     if (!rivalCities(f).length) {
       // plus de ville : le rival se soumet, ses derniers bâtiments sont abandonnés
-      makePeace(s, f); f.dead = true; f.b = []; f.roads = []; f.trade = false; f.alliance = false; f.eco = undefined;
+      makePeace(s, f); f.dead = true; f.b = []; f.roads = []; f.trade = false; f.alliance = false; f.eco = undefined; syncLent(s);
       s.armies = armies(s).filter(x => x.owner !== f.id);
       for (const o of s.factions ?? []) o.foes = (o.foes ?? []).filter(id => id !== f.id);
       n.event(`Les ${f.name} se soumettent`, 'Ils n\'ont plus aucune ville : leurs terres sont désormais libres.');
@@ -243,10 +245,10 @@ function defeat(s: GameState, geo: Geo, a: Army, c: Building, n: WarNotify) {
   const conquer = s.difficulty === 'ambitieux' || relLabel(f).label === 'Hostile';
   const r = 18 + 8 * c.city!.tier;
   if (conquer) {
-    const taken = s.buildings.filter(b => (b === c || (!b.city && Math.hypot(b.x - c.x, b.y - c.y) <= r)) && !b.partner && b.type !== 'comptoir' && !BUILD[b.type].wonder);
-    // le rival récupère la ville et ses environs en état de marche (routes, lignes, véhicules)
+    const ids = cityDomain(s, c, r), taken = s.buildings.filter(b => ids.has(b.id));
+    // le rival récupère la ville, son entrepôt et ses exploitations en état de marche (routes, lignes, véhicules)
     syncAllyRoads(s);
-    if (f.eco) transfer(s, f.eco, new Set(taken.map(b => b.id)), { x: c.x, y: c.y, r });
+    if (f.eco) transfer(s, f.eco, ids, { x: c.x, y: c.y, r }, PLAYER, f.id);
     syncView(s, f);
     // défaite totale : la dernière ville vient de tomber
     if (!playerCities(s).length) { s.over = true; n.gameOver(`${c.name}, ta dernière ville, est tombée aux mains des ${f.name}. Tes rivaux se partagent la province.`); return; }

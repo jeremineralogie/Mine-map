@@ -135,8 +135,11 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
 - **L'ordinateur** donne une fois par mois les ordres d'un joueur : il bâtit ce qui manque le plus
   (nourriture, bois et pierre, puis biens du palier), va chercher un gisement même loin (route, village
   pour les ouvriers), construit la matière première avant l'atelier qui la transforme, améliore ses
-  ateliers, crée ses lignes (ateliers → entrepôt, entrepôt → ateliers de transformation → entrepôt,
-  entrepôt → villes avec retour des restes) et ajuste ses véhicules selon le besoin réel.
+  ateliers, crée ses lignes et ajuste ses véhicules selon le besoin réel.
+- **Un entrepôt par ville** : chaque ville rivale bâtit son entrepôt. Ses lignes partent de là : exploitations
+  → entrepôt de la ville la plus proche, entrepôt → ateliers de transformation → entrepôt, entrepôt → sa ville
+  avec retour des restes. Une ligne relie l'entrepôt de la capitale à celui de chaque ville : à l'aller ce
+  qui manque à la ville, au retour son surplus (achats à Rome, ventes et commerce passent par la capitale).
   Leurs véhicules ne sont pas affichés.
 - **Capitale selon les ressources** : sa région historique si elle offre forêt, pierre, terres et argile,
   sinon la région de repli la mieux pourvue (jamais trop près du joueur ni d'un autre rival).
@@ -148,8 +151,8 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
 - **Petites erreurs de gestion** : certains mois il est distrait (pas de nouveau chantier ni de réglage
   de ses lignes), il ne surveille pas toutes ses lignes chaque mois et ne choisit pas toujours le
   chantier le plus urgent. Ses villes connaissent donc des creux et des pénuries, comme celles du joueur.
-- **Équilibre visé** (vérifié sur 15 ans) : chaque rival reste entre 70 % et 130 % de la moyenne des rivaux,
-  avec une croissance progressive (environ 3 000 à 4 500 habitants au bout de 15 ans).
+- **Équilibre visé** (vérifié sur 15 ans) : chaque rival reste au-dessus de 70 % de la moyenne des rivaux,
+  avec une croissance progressive (environ 3 500 à 6 000 habitants au bout de 15 ans).
 - **Territoires** : une seule zone par camp (rayon de main-d'œuvre des villes, bâtiments, routes) ;
   impossible de construire chez un rival ou d'exploiter ses gisements sans alliance.
 - **Routes des alliés** : tant que dure l'alliance, elles font partie du réseau du joueur (pointillés
@@ -158,10 +161,16 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
   espionnage. Commerce à la taverne seulement si une **route** la relie à moins de 10 km d'une ville du rival ;
   on n'achète que ce qu'il a en réserve.
 - **Guerre** : caserne (légionnaires, auxiliaires, mercenaires), armées visibles avec effectif et moral,
-  sièges. Une ville rivale vaincue : **conquête** (la ville et ses environs passent au joueur en état de
-  marche : bâtiments, toutes les routes de la zone avec virages et carrefours, lignes et véhicules ;
-  une route qui traverse la nouvelle frontière y est coupée, chaque camp garde sa partie), **pillage** ou **tribut**. Un rival peut aussi prendre
+  sièges. Une ville rivale vaincue : **conquête**, **pillage** ou **tribut**. Un rival peut aussi prendre
   ou piller une ville du joueur ; perdre la dernière ville = fin de partie.
+- **Conquête en état de marche** (dans les deux sens) : on prend la ville, son entrepôt, toutes les
+  exploitations et tous les ateliers que desservent les lignes de la ville et de cet entrepôt (même loin),
+  et les autres bâtiments de ses environs (pas les autres villes). Toutes ces lignes continuent de tourner
+  avec leurs véhicules ; une exploitation conquise qui livrait un entrepôt resté à l'ennemi livre désormais
+  l'entrepôt conquis. Les routes de la zone changent de camp ; une route qui traverse la frontière est
+  partagée au point de passage, sans coupure. Les routes de l'autre camp qu'empruntent les lignes de chacun
+  restent utilisables, même en guerre (**routes empruntées**, en pointillés clairs) : elles restent à leur
+  propriétaire, et deviennent les tiennes s'il disparaît. Aucune route ne disparaît.
 
 ## 11. Interface
 - Ordinateur, tablette et téléphone (souris et tactile).
