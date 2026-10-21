@@ -2,11 +2,11 @@
 // (bâtiments, chantiers livrés par convois, routes, lignes, véhicules, ouvriers, besoins des villes,
 // croissance, salaires et entretien). L'ordinateur ne fait que donner les ordres d'un joueur :
 // construire, tracer une route, créer une ligne, acheter ou revendre un véhicule.
-import { BUILD, DIFFICULTY, IMPORT_MULT, LEVEL_MULT, RES, START_MONEY, START_STOCK, TECHS, TIERS, VEH, WATER_RANGE, WORK_RANGES, type BType, type ResId, type VType } from './defs';
+import { BUILD, DIFFICULTY, IMPORT_MULT, LAST_CHAPTER, LEVEL_MULT, RES, START_MONEY, START_STOCK, TECHS, TIERS, VEH, WATER_RANGE, WORK_RANGES, type BType, type ResId, type VType } from './defs';
 import type { Geo } from './geo';
 import { addEdge, components, dijkstra, invalidate, quoteSegment } from './roads';
 import {
-  Sim, attachNode, buildMoney, buyVehicle, checkPlace, cities, cityNeeds, demolish, isStore, levelAllowed, place, sellVehicle, tierGoods, upgrade, workRange,
+  Sim, attachNode, buildMoney, buyVehicle, checkPlace, cities, cityNeeds, demolish, isStore, levelAllowed, place, sellVehicle, tierGoods, upgrade, upgradeCost, workRange,
   type Notifier,
 } from './sim';
 import { cargoTotal, type Building, type Edge, type Faction, type GameState, type Line, type RBuilding, type Stock } from './state';
@@ -23,11 +23,13 @@ const EXPORT = 0.9;
 export const diffMult = (s: GameState) => DIFFICULTY[s.difficulty ?? 'equilibre'].mult;
 export const rivalWorkRange = (f: Faction, c: RBuilding) => (WORK_RANGES[c.tier ?? 0] ?? WORK_RANGES[0]) + ((f.techs ?? []).includes('cite_prospere') ? 15 : 0);
 export const rivalCities = (f: Faction) => f.b.filter(b => b.type === 'village');
-/** Époque d'un rival : comme le joueur, il passe au chapitre suivant quand il a découvert tout l'arbre du chapitre en cours */
-const MAX_ERA = Math.max(...TECHS.map(t => t.era));
-export function rivalEra(f: Faction) {
-  let e = 1;
-  while (e < MAX_ERA && TECHS.filter(t => t.era === e).every(t => (f.techs ?? []).includes(t.id))) e++;
+/** Époque d'un rival (mise à jour chaque mois par nextRivalEra) */
+export const rivalEra = (f: Faction) => f.era ?? 1;
+/** Époque que le rival peut atteindre : comme le joueur, il passe au chapitre suivant quand il a découvert
+ *  tout l'arbre du chapitre en cours (et, pour quitter la Gaule romaine, une fois arrivée la fin de l'Empire) */
+export function nextRivalEra(f: Faction, year: number) {
+  let e = rivalEra(f);
+  while (e < LAST_CHAPTER && TECHS.filter(t => t.era === e).every(t => (f.techs ?? []).includes(t.id)) && (e !== 2 || year >= 426)) e++;
   return e;
 }
 /** Deux rivaux sont-ils alliés ? */
@@ -403,6 +405,9 @@ function connect(f: Faction, geo: Geo, b: Building): boolean {
   return false;
 }
 
+/** Un matériau est-il disponible : en stock, produit par un de ses ateliers ou acheté à Rome */
+const canGet = (eco: GameState, r: ResId) => ROME_SELLS.includes(r) || eco.buildings.some(b => (b.built && BUILD[b.type].recipe?.out[r]) || (isStore(b) && (b.stock[r] ?? 0) >= 1));
+
 /** Construit un bâtiment : vérifications, chantier, route ; null si impossible */
 function build(s: GameState, f: Faction, geo: Geo, t: BType, x: number, y: number, name?: string): Building | null {
   const eco = f.eco!;
@@ -480,7 +485,8 @@ function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok'
       }
     }
     // plus de place : il améliore un atelier existant, comme le joueur
-    const up = eco.buildings.filter(b => b.type === t && b.built && !b.upgrading && levelAllowed(eco, b))[0];
+    // seulement s'il a (ou produit) tous les matériaux de l'amélioration
+    const up = eco.buildings.filter(b => b.type === t && b.built && !b.upgrading && levelAllowed(eco, b) && (Object.keys(upgradeCost(b)) as ResId[]).every(r => canGet(eco, r)))[0];
     if (up && !upgrade(eco, up)) return 'ok';
   }
   return 'none';
@@ -584,7 +590,8 @@ function manageVehicles(f: Faction) {
     } else if (isStore(target)) {
       // entrepôt principal ↔ entrepôt d'une ville : il manque quelque chose là-bas, ou le surplus s'y entasse
       level = l.stops[2].res.reduce((a, r) => a + (target.stock[r] ?? 0), 0);
-      more = idle === 0 && (l.stops[0].res.length > 0 || (level > 20 && level > (memo.last ?? 0)));
+      const full = Object.values(target.stock).reduce((a, q) => a + (q ?? 0), 0) >= BUILD[target.type].storage * target.level * 0.8;
+      more = idle === 0 && (l.stops[0].res.length > 0 || full || (level > 20 && level > (memo.last ?? 0)));
       less = idle >= 2;
     } else {
       // entrepôt → atelier de transformation → entrepôt
@@ -619,6 +626,20 @@ function manageStock(f: Faction, need: Stock) {
   }
   // entrepôt presque plein : il l'agrandit
   if (room() < BUILD[h.type].storage * h.level * 0.2 && levelAllowed(eco, h) && !h.upgrading) upgrade(eco, h);
+  // entrepôts des villes : un entrepôt plein ne reçoit plus rien et bloque ses exploitations ;
+  // il vend sur place ce qui dépasse largement les besoins de sa ville et de ses ateliers, et s'agrandit
+  const comp = components(eco), linked = (a: Building, b: Building) => a.node !== null && b.node !== null && comp.get(a.node) === comp.get(b.node);
+  for (const w of eco.buildings) {
+    if (!isStore(w) || !w.built || w === h) continue;
+    const cap = BUILD[w.type].storage * w.level, used = () => Object.values(w.stock).reduce((a, q) => a + (q ?? 0), 0);
+    if (used() < cap * 0.75) continue;
+    const ns = storeNeeds(eco, w, linked, h);
+    for (const r of Object.keys(w.stock) as ResId[]) {
+      const q = Math.floor((w.stock[r] ?? 0) - Math.max(20, (ns[r] ?? 0) * 6));
+      if (q > 5) { w.stock[r]! -= q; const g = q * RES[r].price * EXPORT; eco.money += g; eco.stats.income += g; }
+    }
+    if (used() >= cap * 0.75 && levelAllowed(eco, w) && !w.upgrading) upgrade(eco, w);
+  }
 }
 
 /** Commerce entre rivaux : il achète à un rival qui en a en trop ce qui manque à ses villes ou à ses ateliers.
@@ -666,9 +687,25 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   const distracted = Math.random() < 0.2;
   if (!distracted) manageVehicles(f);
   // chantiers : pas plus de deux à la fois (trois en mode ambitieux), comme un joueur prudent
+  // amélioration bloquée (un matériau qu'il n'a pas, ou qui n'arrive pas depuis deux ans) : il y renonce,
+  // sinon elle occuperait pour toujours une de ses places de chantier
+  for (const b of eco.buildings) {
+    if (!b.upgrading || b.repair) continue;
+    b.upSince ??= s.day;
+    const waiting = (Object.keys(b.need) as ResId[]).filter(r => (b.need[r] ?? 0) - (b.incoming[r] ?? 0) > 0.5);
+    if (waiting.length && (waiting.some(r => !canGet(eco, r)) || s.day - b.upSince > 2 * 365)) { b.upgrading = false; b.need = {}; b.incoming = {}; b.work = 0; b.upSince = undefined; }
+  }
   const sites = eco.buildings.filter(b => !b.built || b.upgrading).length;
   const maxSites = s.difficulty === 'ambitieux' ? 3 : 2;
   let started = 0;
+  // Moyen Âge : un relais routier près de chaque ville entretient ses routes
+  if (!distracted && eco.era >= 3 && eco.techs.includes('relais')) for (const c of cities(eco)) {
+    if (sites + started >= maxSites || eco.buildings.some(b => b.type === 'relais' && dist(b, c) <= 20)) continue;
+    for (let k = 0; k < 20; k++) {
+      const a = Math.random() * 6.283, rr = 3 + Math.random() * 8;
+      if (build(s, f, geo, 'relais', c.x + Math.cos(a) * rr, c.y + Math.sin(a) * rr)) { started++; break; }
+    }
+  }
   // chaque ville a son entrepôt, d'où partent les lignes de la ville et de ses exploitations
   if (!distracted) for (const c of cities(eco)) {
     if (sites + started >= maxSites || localStore(eco, c, false)) continue;

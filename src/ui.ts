@@ -1,6 +1,6 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
 import { CHARACTERS, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
-  BRANCHES, BUILD, ERAS, LEVEL_MONEY, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, TECHS, TIERS, VEH, WORK_RANGE,
+  BRANCHES, BUILD, ERAS, LEVEL_MONEY, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, ROAD_WEAR_SLOW, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
@@ -11,10 +11,10 @@ import { factionPop, findRival, initRivals, playerPop } from './rivals';
 import { rivalWorkRange } from './rivalai';
 import { MERC, PLAYER, RECRUIT, declareWar, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
 import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction, linkedTraders, TRADE_LINK_KM } from './diplomacy';
-import { addEdge, addNode, findPath, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
+import { addEdge, addNode, findPath, nodeById, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
-  hasTech, levelAllowed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
+  hasTech, levelAllowed, relaisMult, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type Edge, type GameState, type Line, type RNode, type Stock } from './state';
 
@@ -107,7 +107,7 @@ export class Game {
   load(s: GameState) {
     this.s = s = migrate(s);
     this.sim = new Sim(s, this.geo, this.notifier());
-    if (s.chapterDone && s.era === 1) setTimeout(() => this.chapterModal(), 300);
+    if (s.chapterDone && (s.era === 1 || s.era === 2)) setTimeout(() => this.chapterModal(), 300);
     const camp = s.buildings.find(b => b.type === 'entrepot');
     if (camp) this.centerOn(camp.x, camp.y, 6); else this.centerOn(0, -20, Math.min(this.cam.w, this.cam.h) / 1150);
     this.setMode(camp ? { kind: 'select' } : { kind: 'start' });
@@ -119,10 +119,26 @@ export class Game {
       this.modal(`<h2>Chapitre I terminé !</h2><p>Tu as posé les bases de l'économie de la province : tout l'arbre de recherche de l'Antiquité romaine est débloqué.</p>
         <p>Place au <b>chapitre II — ${ERAS[2]}</b> (jusqu'à la chute de Rome en 476) : l'âge d'or des villes romaines, puis la crise du IIIe siècle et les invasions.</p>`,
         [{ label: 'Commencer le chapitre II', primary: true, fn: () => { startEra(s, 2); this.save(); setTimeout(() => this.introEra2(), 50); } }]);
+    } else if (s.era === 2) {
+      this.modal(`<h2>Chapitre II terminé !</h2><p>Ta Gaule romaine a traversé l'âge d'or, la crise du IIIe siècle et les invasions. L'Empire d'Occident vit ses dernières années.</p>
+        <p>Place au <b>chapitre III — ${ERAS[3]}</b> : Rome tombe, la province doit se reconstruire.</p>`,
+        [{ label: 'Commencer le chapitre III', primary: true, fn: () => { startEra(s, 3); this.save(); setTimeout(() => this.introEra3(), 50); } }]);
     } else {
-      this.modal(`<h2>Chapitre ${ROMAN[s.era]} terminé !</h2><p>Ta Gaule romaine a traversé l'âge d'or, la crise du IIIe siècle et les invasions. L'Empire d'Occident vit ses dernières années : Rome tombera en 476.</p>
-        <p>Le <b>chapitre III — ${ERAS[3]}</b> arrive dans une prochaine version. Tu peux continuer à développer ton économie en attendant.</p>`, [{ label: 'Continuer', primary: true }]);
+      this.modal(`<h2>Chapitre ${ROMAN[s.era]} terminé !</h2><p>La suite arrive dans une prochaine version. Tu peux continuer à développer ton économie en attendant.</p>`, [{ label: 'Continuer', primary: true }]);
     }
+  }
+  /** Ouverture du chapitre III : la chute de Rome */
+  private introEra3() {
+    const item = (t: string, d: string) => `<li><b>${t}</b> — ${d}</li>`;
+    this.modal(`<h2>Chapitre III — ${ERAS[3]}</h2>
+      <p>476 : le dernier empereur d'Occident est déposé. Sans Rome, la province se replie sur elle-même… avant de renaître autour des monastères, des châteaux et des foires.</p>
+      <h3>La chute de Rome</h3><ul class="intro">
+        ${item('Villes', 'elles perdent 30 % de leurs habitants')}
+        ${item('Commerce d\'outre-mer', 'plus aucun navire pendant 50 ans ; les postes-frontières restent ouverts')}
+        ${item('Routes', 'elles ne sont plus entretenues : une route s\'abîme peu à peu et ralentit les véhicules (jusqu\'à moitié). Un relais routier entretient et répare les routes à moins de 30 km')}</ul>
+      ${this.s.factions?.length ? `<h3>Tes rivaux</h3><p>Les grandes familles romaines deviennent des maisons médiévales (duchés, comtés) quand elles entrent à leur tour dans le Moyen Âge.</p>` : ''}
+      <p class="muted">Les nouvelles productions, les nouveaux paliers de villes et l'arbre de recherche du Moyen Âge arrivent dans une prochaine version.</p>`,
+      [{ label: 'Continuer', primary: true }]);
   }
   /** Ouverture du chapitre II : résumé de ce qui se débloque */
   private introEra2() {
@@ -683,7 +699,10 @@ export class Game {
     if (e.ally) { const f = s.factions?.find(x => x.id === e.ally); return `<h2>${ROADS[e.type].name}</h2><p>Route alliée des <b>${esc(f?.name ?? '?')}</b> : tes véhicules peuvent l'emprunter et tu peux y raccorder tes routes.</p><p class="muted">Elle disparaît de ton réseau si l'alliance est rompue.</p>`; }
     const up = e.type === 'chemin' && hasTech(s, 'voie_romaine');
     const upCost = Math.round(e.len * (ROADS.voie.perKm - ROADS.chemin.perKm) * 1.3);
-    return `<h2>${ROADS[e.type].name}</h2><p>Longueur : <b>${e.len.toFixed(1)} km</b>${e.bridges ? ` · ${e.bridges} pont(s)` : ''}</p><p>Vitesse : ×${ROADS[e.type].speed}</p>
+    const wear = e.wear ?? 0, kept = relaisMult(s, (nodeById(s, e.a)!.x + nodeById(s, e.b)!.x) / 2, (nodeById(s, e.a)!.y + nodeById(s, e.b)!.y) / 2) > 1;
+    const state = s.era >= 3 ? `<p>État : <b>${Math.round((1 - wear) * 100)} %</b>${wear > 0.01 ? ` · vitesse ${Math.round((1 - ROAD_WEAR_SLOW * wear) * 100)} %` : ''}</p>
+      <p class="hint ${kept ? 'good' : wear > 0.5 ? 'bad' : 'warn'}">${kept ? 'Entretenue par un relais routier : elle se répare peu à peu.' : 'Personne ne l\'entretient : elle s\'abîme. Construis un relais routier à moins de 30 km pour la réparer.'}</p>` : '';
+    return `<h2>${ROADS[e.type].name}</h2><p>Longueur : <b>${e.len.toFixed(1)} km</b>${e.bridges ? ` · ${e.bridges} pont(s)` : ''}</p><p>Vitesse : ×${ROADS[e.type].speed}</p>${state}
       ${up ? `<button data-act="paveroad" data-id="${e.id}" data-cost="${upCost}">Paver en voie romaine (${fmt(upCost)})</button>` : ''}
       <button class="danger" data-act="delroad" data-id="${e.id}">Démolir</button>`;
   }
@@ -1179,6 +1198,13 @@ export class Game {
     const key = `${s.techs.join(',')}|${Math.floor(s.rp)}|${this.treeSel}|${s.era}`;
     if (key === this.treeKey) return;
     this.treeKey = key;
+    if (!techs.length) {
+      // chapitre dont l'arbre n'est pas encore disponible
+      $('treeView').innerHTML = `<div class="tv-box"><header class="tv-head"><div class="tv-title">${IC.research}<div><h2>Arbre de recherche</h2><small>${ERAS[s.era]}</small></div></div>
+        <button class="tv-close" data-tv="close" title="Fermer">${IC.close}</button></header>
+        <div class="tv-body" style="display:grid;place-items:center;padding:30px"><p class="muted">L'arbre de recherche du ${ERAS[s.era]} arrive dans une prochaine version. Tes points de recherche sont conservés.</p></div></div>`;
+      return;
+    }
     // ---- disposition : colonnes = rang dans l'arbre, bandes = branches ----
     const depth = (id: string): number => { const t = TECHS.find(x => x.id === id)!; return t.req.length ? 1 + Math.max(...t.req.map(depth)) : 0; };
     const NW = 156, NH = 58, CW = 176, RH = 68, PAD = 10, X0 = 134, BP = 8;
@@ -1293,7 +1319,7 @@ export class Game {
   private modsHtml(): string {
     const s = this.s, mods = activeMods(s);
     if (!mods.length) return '';
-    const pn = (id?: string) => PARTNERS.find(p => p.id === id)?.name ?? id ?? '';
+    const pn = (id?: string) => id === 'mer' ? 'commerce d\'outre-mer (chute de Rome)' : PARTNERS.find(p => p.id === id)?.name ?? id ?? '';
     const pct = (m: number) => `${m >= 1 ? '+' : '−'}${Math.round(Math.abs(m - 1) * 100)} %`;
     const label = (m: typeof mods[number]) => m.kind === 'discount' ? `Constructions et améliorations ${pct(m.mult)}`
       : m.kind === 'demand' ? `Les villes paient ${(m.res ?? []).map(r => RES[r].name.toLowerCase()).join(', ')} ${pct(m.mult)}`
@@ -1320,7 +1346,7 @@ export class Game {
         ${cond(cc.techs, `Arbre de recherche complet (${techN} / ${techT})`)}
         ${end ? cond(cc.wonder, `Construire ${BUILD[end.wonder].name}`) : ''}
         ${end ? cond(cc.date, `Atteindre l'an ${end.year - 50} (fin de l'époque : ${end.year}, à 50 ans près)`) : ''}</ul>
-      <div class="bar"><i style="width:${Math.round(techN / techT * 100)}%"></i></div>
+      <div class="bar"><i style="width:${techT ? Math.round(techN / techT * 100) : 0}%"></i></div>
       ${s.chapterDone ? `<div class="actions top"><button class="primary" data-act="nextera">Chapitre suivant →</button></div>` : ffwdBtn}
       <p class="muted">Objectifs historiques : <b>${doneN} / ${objs.length}</b>. Ils sont facultatifs${end ? ` (sauf ${BUILD[end.wonder].name})` : ''} et rapportent argent et points de recherche.</p>
       ${this.modsHtml()}

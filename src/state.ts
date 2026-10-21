@@ -6,7 +6,9 @@ export type Stock = Partial<Record<ResId, number>>;
 export interface RNode { id: number; x: number; y: number; b?: number; ally?: string; }
 /** `ally` : route d'un autre camp recopiée dans ce réseau (empruntable, pas démolissable) ; `src` : tronçon d'origine ;
  *  `lent` : route empruntée par une ligne (conquête) : elle reste en paix comme en guerre, tant que son propriétaire la garde */
-export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; ally?: string; src?: number; lent?: boolean; }
+export interface Edge { id: number; a: number; b: number; type: RoadType; len: number; bridges: number; ally?: string; src?: number; lent?: boolean;
+  /** usure (0 neuve … 1 complètement abîmée) : Moyen Âge, routes non entretenues par un relais */
+  wear?: number; }
 
 export interface City {
   pop: number; stock: Stock; sat: number; foodSat: number; tier: number;
@@ -55,6 +57,7 @@ export interface Building {
   damaged?: boolean;     // endommagé par une invasion : à l'arrêt jusqu'à sa réparation
   repair?: boolean;      // chantier de réparation en cours (utilise need/work comme une amélioration)
   haltWhy?: string;      // raison d'un arrêt temporaire (éboulement, révolte…)
+  upSince?: number;      // jour du début de l'amélioration en cours
 }
 
 /** Arrêt d'une ligne : au chargement, `res` liste les ressources à prendre (dans la limite de la capacité) */
@@ -121,6 +124,8 @@ export interface Faction {
   /** alliances avec d'autres rivaux (gisements et territoires partagés) ; demande d'alliance au joueur en attente
    *  (nom du gisement convoité) ; dernières demandes, par camp */
   allies?: string[]; wantAlly?: string; asked?: Record<string, number>;
+  /** époque (chapitre) où se trouve ce rival */
+  era?: number;
   /** plus aucune ville : soumis au joueur ou détruit */
   dead?: boolean;
   /** économie complète du rival (bâtiments, routes, lignes, véhicules), simulée comme celle du joueur */

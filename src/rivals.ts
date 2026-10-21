@@ -1,10 +1,11 @@
 // Rivaux : grandes familles et cités romaines gérées par l'ordinateur.
 // Chacun a sa propre économie, simulée par le même moteur que le joueur (voir rivalai.ts).
-import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, RES, RIVALS, TECHS, TIERS, type BType, type ResId } from './defs';
+import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, MEDIEVAL, RES, RIVALS, TECHS, TIERS, type BType, type ResId } from './defs';
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState } from './state';
 import { ownerAt, territoryReady } from './territory';
-import { alliedRivals, foundHome, newEco, rivalEra, rivalMonth, setPlacer, syncAllyRoads, syncLent } from './rivalai';
+import { alliedRivals, foundHome, newEco, nextRivalEra, rivalEra, rivalMonth, setPlacer, syncAllyRoads, syncLent } from './rivalai';
+import { fallOfRome, year } from './sim';
 
 /** Rayon de territoire d'un bâtiment (km) : les villes rayonnent selon leur palier */
 export const territoryRadius = (b: { tier?: number; pop?: number; type: BType }) => b.type === 'village' ? 18 + 8 * (b.tier ?? 0) : 6;
@@ -148,9 +149,7 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
     const goal = avail.find(t => t.id === f.goal);
     if (goal) {
       if (eco.rp < goal.cost) break;
-      const era0 = rivalEra(f);
       eco.rp -= goal.cost; f.techs.push(goal.id); f.goal = undefined; s.log.unshift({ day: s.day, text: `Les ${f.name} découvrent : ${goal.name}.` });
-      if (rivalEra(f) > era0) s.log.unshift({ day: s.day, text: `Les ${f.name} ont terminé l'arbre du chapitre ${['', 'I', 'II', 'III'][era0]} et entrent dans le chapitre ${['', 'I', 'II', 'III'][rivalEra(f)]}.` });
       continue;
     }
     const score = (t: typeof TECHS[number]) => {
@@ -175,12 +174,30 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
   }
 }
 
+/** Passage d'un rival au chapitre suivant (arbre terminé) ; au Moyen Âge, il subit la chute de Rome
+ *  et devient une grande maison médiévale (celle dont le cœur est le plus proche de sa capitale) */
+function advanceEra(s: GameState, geo: Geo, f: Faction) {
+  const roman = ['', 'I', 'II', 'III'], e0 = rivalEra(f), e1 = nextRivalEra(f, year(s));
+  for (let e = e0 + 1; e <= e1; e++) {
+    f.era = e;
+    s.log.unshift({ day: s.day, text: `Les ${f.name} ont terminé l'arbre du chapitre ${roman[e - 1]} et entrent dans le chapitre ${roman[e]}.` });
+    if (e === 3 && f.eco) {
+      fallOfRome(f.eco);
+      const cap = f.b.find(b => b.type === 'village') ?? f.b[0];
+      const taken = new Set((s.factions ?? []).filter(o => o !== f).map(o => o.short));
+      const m = MEDIEVAL.filter(x => !taken.has(x.short)).map(x => ({ x, d: cap ? Math.hypot(geo.proj(...x.at)[0] - cap.x, geo.proj(...x.at)[1] - cap.y) : 0 })).sort((a, z) => a.d - z.d)[0]?.x;
+      if (m) { s.log.unshift({ day: s.day, text: `Les ${f.name} deviennent les ${m.name}.` }); f.name = m.name; f.short = m.short; }
+    }
+  }
+}
+
 /** Évolution mensuelle des rivaux : technologies, puis décisions de l'ordinateur sur leur économie */
 export function monthlyRivals(s: GameState, geo: Geo) {
   if (!s.factions?.length) return;
   initPlacer(s, geo);
   for (const f of s.factions) {
     if (f.dead || !f.eco || !f.b.some(b => b.type === 'village')) continue;
+    advanceEra(s, geo, f);
     syncTechs(s, geo, f);
     rivalMonth(s, geo, f);
   }

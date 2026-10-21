@@ -277,8 +277,13 @@ export class Renderer {
         ctx.strokeStyle = sel || hov ? '#d9480f' : e.type === 'voie' ? '#4a4a4a' : '#6e5232';
         ctx.lineWidth = this.px((e.type === 'voie' ? 5 : 3.6) * z + (sel || hov ? 2 : 0)); ctx.stroke();
       } else {
+        // route abîmée (Moyen Âge) : revêtement en morceaux, plus terne
+        const w = e.wear ?? 0;
         ctx.strokeStyle = e.type === 'voie' ? '#d9d4c7' : '#c9a774';
+        ctx.globalAlpha = 1 - 0.55 * w;
+        if (w > 0.3) ctx.setLineDash([this.px(9 - 5 * w), this.px(3 + 6 * w)]);
         ctx.lineWidth = this.px((e.type === 'voie' ? 2.6 : 1.6) * z); ctx.stroke();
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
         if (e.bridges && this.cam.scale > 1.5) {
           ctx.fillStyle = '#5a5a5a'; const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
           ctx.fillRect(mx - this.px(2), my - this.px(2), this.px(4), this.px(4));

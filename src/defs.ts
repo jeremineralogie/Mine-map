@@ -544,6 +544,23 @@ export const CHARACTERS: Record<RivalDef['character'], string> = {
   opportuniste: 'Opportunistes, tournés vers la mer',
   guerrier: 'Méfiants et guerriers',
 };
+/** Dernier chapitre disponible (les suivants arrivent dans une prochaine version) */
+export const LAST_CHAPTER = 3;
+/** Usure des routes au Moyen Âge : années pour qu'une route non entretenue soit complètement abîmée ;
+ *  une route abîmée ralentit jusqu'à moitié ; un relais routier entretient les routes autour de lui */
+export const ROAD_WEAR_YEARS = 40, ROAD_WEAR_SLOW = 0.5;
+/** Grandes maisons médiévales : un rival prend le nom de la plus proche de sa capitale en entrant au Moyen Âge */
+export const MEDIEVAL: { name: string; short: string; at: [number, number] }[] = [
+  { name: 'Ducs de Bourgogne', short: 'Bourgogne', at: [4.85, 47.1] },
+  { name: 'Comtes de Toulouse', short: 'Toulouse', at: [1.44, 43.6] },
+  { name: 'Ducs d\'Aquitaine', short: 'Aquitaine', at: [0.34, 46.58] },
+  { name: 'Ducs de Lorraine', short: 'Lorraine', at: [6.18, 48.69] },
+  { name: 'Comtes de Flandre', short: 'Flandre', at: [3.06, 50.63] },
+  { name: 'Comtes de Champagne', short: 'Champagne', at: [4.03, 48.3] },
+  { name: 'Comtes d\'Auvergne', short: 'Auvergne', at: [3.08, 45.78] },
+  { name: 'Comtes de Provence', short: 'Provence', at: [5.45, 43.53] },
+  { name: 'Ducs de Bretagne', short: 'Bretagne', at: [-1.68, 48.11] },
+];
 export const RIVALS: RivalDef[] = [
   { id: 'aedui', name: 'Éduens d\'Augustodunum', short: 'Éduens', capital: 'Augustodunum', home: [4.3, 46.95], color: '#2b8a3e', character: 'fidele', desc: 'Le plus fidèle allié de Rome en Gaule, riche de ses terres de Bourgogne.' },
   { id: 'narbo', name: 'Domitii de Narbo Martius', short: 'Narbonne', capital: 'Narbo Martius', home: [3.0, 43.18], color: '#1971c2', character: 'commercant', desc: 'Famille de la plus ancienne colonie romaine de Gaule, tournée vers la Méditerranée.' },

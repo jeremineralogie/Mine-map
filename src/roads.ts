@@ -1,5 +1,5 @@
 // Réseau routier : nœuds, tronçons, coûts selon le relief, itinéraires.
-import { BRIDGE_COST, MAX_GRADIENT, ROADS, type RoadType } from './defs';
+import { BRIDGE_COST, MAX_GRADIENT, ROADS, ROAD_WEAR_SLOW, type RoadType } from './defs';
 import type { Geo } from './geo';
 import type { GameState, RNode, Edge } from './state';
 
@@ -42,6 +42,9 @@ export function removeEdge(s: GameState, id: number) {
   invalidate();
 }
 
+/** Vitesse d'un tronçon (une route abîmée ralentit les véhicules) */
+export const edgeSpeed = (e: Edge) => ROADS[e.type].speed * (1 - ROAD_WEAR_SLOW * (e.wear ?? 0));
+
 export function roadKm(s: GameState) { return s.edges.reduce((t, e) => t + (e.ally ? 0 : e.len), 0); }
 
 // ---- Graphe et plus court chemin (en temps de trajet) ----
@@ -73,7 +76,7 @@ export function dijkstra(s: GameState, from: number, voieOnly = false) {
     if (d > (dist.get(n) ?? Infinity)) continue;
     for (const { to, e } of g.get(n) || []) {
       if (voieOnly && e.type !== 'voie') continue;   // carpentum : voies romaines seulement
-      const nd = d + e.len / ROADS[e.type].speed;
+      const nd = d + e.len / edgeSpeed(e);
       if (nd < (dist.get(to) ?? Infinity)) { dist.set(to, nd); prev.set(to, { n, e }); heap.push([nd, to]); siftUp(heap); }
     }
   }
@@ -103,7 +106,7 @@ export function findPath(s: GameState, from: number, to: number, voieOnly = fals
   let len = 0, cur = to;
   while (cur !== from) {
     const p = prev.get(cur)!;
-    speeds.unshift(ROADS[p.e.type].speed); len += p.e.len;
+    speeds.unshift(edgeSpeed(p.e)); len += p.e.len;
     cur = p.n; nodes.unshift(cur);
   }
   const pts = nodes.map(id => { const n = nodeById(s, id)!; return { x: n.x, y: n.y }; });
