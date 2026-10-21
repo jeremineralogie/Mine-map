@@ -139,6 +139,8 @@ const ART_FILES: Partial<Record<BType, string[]>> = {
   mine_fer: ['mine_fer_1', 'mine_fer_2', 'mine_fer_3'], mine_plomb: ['mine_plomb_1', 'mine_plomb_2', 'mine_plomb_3'],
   saline: ['saline_1', 'saline_2', 'saline_3'], carriere_marbre: ['carriere_marbre_1', 'carriere_marbre_2', 'carriere_marbre_3'],
   mine_cuivre: ['mine_cuivre_1', 'mine_cuivre_2', 'mine_cuivre_3'], mine_etain: ['mine_etain_1', 'mine_etain_2', 'mine_etain_3'],
+  briqueterie: ['briqueterie_1', 'briqueterie_2', 'briqueterie_3'], bas_fourneau: ['bas_fourneau_1', 'bas_fourneau_2', 'bas_fourneau_3'],
+  forge: ['forge_1', 'forge_2', 'forge_3'],
   // une seule image pour l'instant (niveau 1), utilisée à tous les niveaux
   port_mer: ['port_mer'], comptoir: ['comptoir'], poste: ['poste'], phare: ['phare'], taverne: ['taverne'],
   // villa agricole : niveaux 1 à 3, puis grand domaine aux niveaux 4 à 6
