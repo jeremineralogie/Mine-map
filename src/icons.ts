@@ -142,6 +142,7 @@ const ART_FILES: Partial<Record<BType, string[]>> = {
   briqueterie: ['briqueterie_1', 'briqueterie_2', 'briqueterie_3'], bas_fourneau: ['bas_fourneau_1', 'bas_fourneau_2', 'bas_fourneau_3'],
   forge: ['forge_1', 'forge_2', 'forge_3'],
   potier: ['potier_1', 'potier_2', 'potier_3'], verrerie: ['verrerie_1', 'verrerie_2', 'verrerie_3'], four_chaux: ['four_chaux_1', 'four_chaux_2', 'four_chaux_3'],
+  saloir: ['saloir_1', 'saloir_2', 'saloir_3'], tissage: ['tissage_1', 'tissage_2', 'tissage_3'], fonderie: ['fonderie_1', 'fonderie_2', 'fonderie_3'],
   // une seule image pour l'instant (niveau 1), utilisée à tous les niveaux
   port_mer: ['port_mer'], comptoir: ['comptoir'], poste: ['poste'], phare: ['phare'], taverne: ['taverne'],
   // villa agricole : niveaux 1 à 3, puis grand domaine aux niveaux 4 à 6
