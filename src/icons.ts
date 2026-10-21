@@ -157,7 +157,7 @@ export const bIcon = (t: BType, level?: number) => { const a = artOf(t, level); 
 export const bIconUrl = (t: BType, level?: number) => artOf(t, level)?.src ?? BICON[t].src;
 /** Illustrations des véhicules, vues de dessus, tournées vers la droite (remplacent le pictogramme une fois chargées) */
 const VART: Partial<Record<VType, HTMLImageElement>> = {};
-for (const t of ['charrette', 'chariot', 'barge', 'carpentum', 'grande_barge', 'oneraria'] as VType[]) { const img = new Image(); img.src = `${import.meta.env.BASE_URL}icones/v_${t}.png`; VART[t] = img; }
+for (const t of ['charrette', 'chariot', 'barge', 'carpentum', 'grande_barge', 'oneraria', 'navire', 'chaland', 'convoi'] as VType[]) { const img = new Image(); img.src = `${import.meta.env.BASE_URL}icones/v_${t}.png`; VART[t] = img; }
 /** Image d'un véhicule pour la carte, et sa hauteur relative (largeur = 1) */
 export const vIcon = (t: VType): { img: HTMLImageElement; h: number } => {
   const a = VART[t];
