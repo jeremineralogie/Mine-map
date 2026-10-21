@@ -503,7 +503,7 @@ export class Sim {
       const total = b.repair ? d.days * 0.5 : b.upgrading ? d.days * LEVEL_DAYS[b.level + 1] : d.days;
       if (b.work >= total) {
         if (b.repair) { b.repair = false; b.upgrading = false; b.damaged = false; this.notify.toast(`${b.name} est réparé.`, 'good'); }
-        else if (b.upgrading) { b.upgrading = false; b.level++; const ln = BUILD[b.type].levels?.[b.level]?.name; this.notify.toast(`${b.name} passe au niveau ${b.level}${ln ? ` : ${ln.toLowerCase()}` : ''}.`, 'good'); }
+        else if (b.upgrading) { b.upgrading = false; b.level++; const ln = BUILD[b.type].levels?.[b.level]?.name; this.notify.toast(`${b.name} passe au niveau ${b.level}${ln ? ` (${ln})` : ''}.`, 'good'); }
         else { b.built = true; this.notify.toast(`Construction terminée : ${b.name}.`, 'good'); }
         b.work = 0;
       }

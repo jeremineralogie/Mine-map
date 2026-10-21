@@ -133,7 +133,7 @@ const ART_FILES: Partial<Record<BType, string[]>> = {
   thermes: ['thermes'], amphitheatre: ['amphitheatre'], remparts: ['remparts'], basilique: ['basilique'], caserne: ['caserne'],
   entrepot: ['entrepot_1', 'entrepot_2', 'entrepot_3'], port: ['port_1', 'port_2', 'port_3'], relais: ['relais'],
   bucheron: ['bucheron_1', 'bucheron_2', 'bucheron_3'],
-  // la villa agricole a 4 niveaux ; les images 5 et 6 attendent de futurs niveaux
+  // villa agricole : niveaux 1 à 3, puis grand domaine aux niveaux 4 à 6
   ferme: ['ferme_1', 'ferme_2', 'ferme_3', 'ferme_4', 'ferme_5', 'ferme_6'],
 };
 const ART = Object.fromEntries(Object.entries(ART_FILES).map(([t, fs]) => [t, fs.map(f => { const img = new Image(); img.src = `${import.meta.env.BASE_URL}icones/${f}.png`; return img; })])) as Partial<Record<BType, HTMLImageElement[]>>;

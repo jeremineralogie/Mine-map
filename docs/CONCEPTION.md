@@ -122,8 +122,8 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
   Trois Gaules), prix de rachat des villes en hausse (incendie de Lugdunum), production en hausse ou en baisse,
   croissance des villes, frontières fermées… Les effets en cours sont listés dans Économie et Objectifs.
 - Améliorations des bâtiments par niveaux (prix : ×2 au niveau 2, ×3 au niveau 3). Certaines technologies ajoutent
-  un niveau 4 : au chapitre II, Grands domaines fait passer la villa agricole au grand domaine (32 t de céréales
-  par mois au lieu de 23 ; 4 fois le prix, plus pierre, briques et bois) ; un bâtiment en amélioration utilise d'abord sa propre production
+  des niveaux : au chapitre II, Grands domaines fait de la villa agricole un grand domaine, sur trois niveaux de plus
+  (niveaux 4, 5 et 6 : 32, 41 puis 50 t de céréales par mois, contre 23 au niveau 3) ; un bâtiment en amélioration utilise d'abord sa propre production
   (bûches du camp de bûcherons, pierre de la carrière…) avant de recevoir des convois, avec des matériaux propres à chaque bâtiment (la carrière
   s'améliore avec de la pierre, la ferme et le camp de bûcherons avec du bois, la forge avec de la pierre
   et des briques, les mines avec du fer et de la pierre…).

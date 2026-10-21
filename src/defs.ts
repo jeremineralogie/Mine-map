@@ -232,8 +232,13 @@ export const BUILD: Record<BType, BDef> = {
   village: { name: 'Village', desc: 'Fournit la main-d\'œuvre et achète ce dont ses habitants ont besoin. Grandit s\'il est bien approvisionné.', era: 1, cost: {}, money: 150, days: 25, workers: 0, needsWater: true, storage: 0, maxLevel: 1 },
   bucheron: { name: 'Camp de bûcherons', desc: 'Abat le bois d\'une forêt.', era: 1, cost: { bois: 8 }, money: 50, days: 10, workers: 4, deposit: 'bois', recipe: { in: {}, out: { bois: 8 } }, storage: 60, maxLevel: 3, upgrade: { bois: 14 } },
   carriere: { name: 'Carrière de pierre', desc: 'Extrait la pierre de taille d\'un banc de calcaire.', era: 1, cost: { bois: 15 }, money: 80, days: 15, workers: 6, deposit: 'pierre', recipe: { in: {}, out: { pierre: 5 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 20 } },
-  ferme: { name: 'Villa agricole', desc: 'Cultive des céréales, sur n\'importe quelles terres. Au chapitre II, la technologie Grands domaines permet de l\'améliorer au niveau 4 : le grand domaine.', era: 1, cost: { bois: 15, pierre: 5 }, money: 60, days: 12, workers: 5, deposit: 'cereales', recipe: { in: {}, out: { cereales: 10 } }, storage: 80, maxLevel: 4, upgrade: { bois: 18 },
-    levels: { 4: { tech: 'villae', name: 'Grand domaine', cost: { pierre: 20, briques: 15, bois: 10 } } } },
+  ferme: { name: 'Villa agricole', desc: 'Cultive des céréales, sur n\'importe quelles terres. Au chapitre II, la technologie Grands domaines permet de l\'améliorer en grand domaine (niveaux 4 à 6).', era: 1, cost: { bois: 15, pierre: 5 }, money: 60, days: 12, workers: 5, deposit: 'cereales', recipe: { in: {}, out: { cereales: 10 } }, storage: 80, maxLevel: 6, upgrade: { bois: 18 },
+    // niveaux 4 à 6 : les trois niveaux du grand domaine (chapitre II)
+    levels: {
+      4: { tech: 'villae', name: 'Grand domaine', cost: { pierre: 20, briques: 15, bois: 10 } },
+      5: { tech: 'villae', name: 'Grand domaine II', cost: { pierre: 15, briques: 10 } },
+      6: { tech: 'villae', name: 'Grand domaine III', cost: { pierre: 23, briques: 15 } },
+    } },
   argiliere: { name: 'Argilière', desc: 'Extrait l\'argile.', era: 1, tech: 'terre_cuite', cost: { bois: 10 }, money: 60, days: 10, workers: 4, deposit: 'argile', recipe: { in: {}, out: { argile: 6 } }, storage: 60, maxLevel: 3, upgrade: { bois: 12 } },
   briqueterie: { name: 'Tuilerie-briqueterie', desc: 'Cuit l\'argile au feu de bois pour faire briques et tuiles. A besoin d\'eau.', era: 1, tech: 'terre_cuite', cost: { bois: 20, pierre: 15 }, money: 150, days: 20, workers: 5, needsWater: true, recipe: { in: { argile: 4, bois: 2 }, out: { briques: 3 } }, storage: 40, maxLevel: 3, upgrade: { pierre: 12, briques: 10 } },
   mine_fer: { name: 'Mine de fer', desc: 'Extrait le minerai de fer.', era: 1, tech: 'metallurgie', cost: { bois: 25, pierre: 15 }, money: 150, days: 20, workers: 8, deposit: 'minerai_fer', recipe: { in: {}, out: { minerai_fer: 4 } }, storage: 60, maxLevel: 3, upgrade: { fer: 4, pierre: 15 } },
@@ -275,10 +280,10 @@ export const BUILD: Record<BType, BDef> = {
   caserne: { name: 'Caserne', desc: 'Recrute légionnaires et auxiliaires parmi les habitants de la ville voisine. Les armées se déplacent sur la carte.', era: 2, cost: { pierre: 30, bois: 20 }, money: 400, days: 30, workers: 0, storage: 0, maxLevel: 1, city: true },
 };
 
-export const LEVEL_MULT = [0, 1, 1.6, 2.3, 3.2];            // production par niveau
-export const LEVEL_COST = [0, 1, 1.6, 2.4, 3.2];            // matériaux d'amélioration (en fraction du coût initial)
-export const LEVEL_MONEY = [0, 1, 2, 3, 4];               // argent d'amélioration (en fraction du prix initial)
-export const LEVEL_DAYS = [0, 1, 2, 3.5, 4];              // durée d'amélioration (en fraction de la durée initiale)
+export const LEVEL_MULT = [0, 1, 1.6, 2.3, 3.2, 4.1, 5];            // production par niveau
+export const LEVEL_COST = [0, 1, 1.6, 2.4, 3.2, 4, 5];            // matériaux d'amélioration (en fraction du coût initial)
+export const LEVEL_MONEY = [0, 1, 2, 3, 4, 5, 6];               // argent d'amélioration (en fraction du prix initial)
+export const LEVEL_DAYS = [0, 1, 2, 3.5, 4, 4.5, 5];              // durée d'amélioration (en fraction de la durée initiale)
 
 // ---- Villes ----
 export interface Tier { name: string; minPop: number; needs: Partial<Record<ResId, number>>; }
@@ -431,7 +436,7 @@ export const TECHS: Tech[] = [
   { id: 'sigillee', name: 'Céramique sigillée', desc: 'Ateliers de potier : la poterie rouge de La Graufesenque, exportée dans tout l\'Empire.', era: 2, cost: 50, req: [], branch: 'production' },
   { id: 'verrerie', name: 'Verrerie', desc: 'Verreries sur les gisements de sable.', era: 2, cost: 65, req: ['sigillee'], branch: 'production' },
   { id: 'bronze', name: 'Bronze', desc: 'Mines de cuivre et d\'étain, fonderies de bronze.', era: 2, cost: 80, req: ['verrerie'], branch: 'production' },
-  { id: 'villae', name: 'Grands domaines', desc: 'Les villas agricoles peuvent passer au niveau 4 : le grand domaine (32 t de céréales par mois au lieu de 23 au niveau 3).', era: 2, cost: 55, req: [], branch: 'cite' },
+  { id: 'villae', name: 'Grands domaines', desc: 'Les villas agricoles deviennent de grands domaines : niveaux 4, 5 et 6 (32, 41 puis 50 t de céréales par mois, contre 23 au niveau 3).', era: 2, cost: 55, req: [], branch: 'cite' },
   { id: 'mortier', name: 'Mortier de chaux', desc: 'Fours à chaux sur les gisements de calcaire : la chaux des grands monuments.', era: 2, cost: 50, req: [], branch: 'cite' },
   { id: 'remparts', name: 'Remparts', desc: 'Murailles qui protègent des invasions les bâtiments à moins de 20 km.', era: 2, cost: 70, req: ['mortier'], branch: 'cite' },
   { id: 'capitales', name: 'Capitales provinciales', desc: 'Les plus grandes villes peuvent devenir des capitales (15 000 habitants) : rayon de main-d\'œuvre de 90 km.', era: 2, cost: 95, req: ['remparts', 'villae'], branch: 'cite' },
