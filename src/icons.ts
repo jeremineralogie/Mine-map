@@ -133,6 +133,8 @@ const ART_FILES: Partial<Record<BType, string[]>> = {
   thermes: ['thermes'], amphitheatre: ['amphitheatre'], remparts: ['remparts'], basilique: ['basilique'], caserne: ['caserne'],
   entrepot: ['entrepot_1', 'entrepot_2', 'entrepot_3'], port: ['port_1', 'port_2', 'port_3'], relais: ['relais'],
   bucheron: ['bucheron_1', 'bucheron_2', 'bucheron_3'],
+  vignoble: ['vignoble_1', 'vignoble_2', 'vignoble_3'], oliveraie: ['oliveraie_1', 'oliveraie_2', 'oliveraie_3'],
+  pecherie: ['pecherie_1', 'pecherie_2', 'pecherie_3'], bergerie: ['bergerie_1', 'bergerie_2', 'bergerie_3'],
   // villa agricole : niveaux 1 à 3, puis grand domaine aux niveaux 4 à 6
   ferme: ['ferme_1', 'ferme_2', 'ferme_3', 'ferme_4', 'ferme_5', 'ferme_6'],
 };
