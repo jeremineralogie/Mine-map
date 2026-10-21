@@ -2,7 +2,7 @@
 // (bâtiments, chantiers livrés par convois, routes, lignes, véhicules, ouvriers, besoins des villes,
 // croissance, salaires et entretien). L'ordinateur ne fait que donner les ordres d'un joueur :
 // construire, tracer une route, créer une ligne, acheter ou revendre un véhicule.
-import { BUILD, DIFFICULTY, IMPORT_MULT, LEVEL_MULT, RES, START_MONEY, START_STOCK, TIERS, TIER_NEEDS_2, VEH, WATER_RANGE, WORK_RANGES, type BType, type ResId, type VType } from './defs';
+import { BUILD, DIFFICULTY, IMPORT_MULT, LEVEL_MULT, RES, START_MONEY, START_STOCK, TIERS, VEH, WATER_RANGE, WORK_RANGES, type BType, type ResId, type VType } from './defs';
 import type { Geo } from './geo';
 import { addEdge, components, dijkstra, invalidate, quoteSegment } from './roads';
 import {
@@ -340,7 +340,7 @@ function addCityDemand(eco: GameState, c: Building, out: Stock) {
   if (next && c.city!.pop >= next.minPop * 0.6) {
     const cur = tierGoods(c.city!.tier, eco.era);
     for (const r of tierGoods(c.city!.tier + 1, eco.era)) if (!cur.includes(r)) {
-      const q = ((next.needs[r] ?? 0) + (eco.era >= 2 ? TIER_NEEDS_2[c.city!.tier + 1]?.[r] ?? 0 : 0)) * c.city!.pop / 100;
+      const q = (next.needs[r] ?? 0) * c.city!.pop / 100;
       out[r] = (out[r] ?? 0) + q;
     }
   }

@@ -280,33 +280,25 @@ export const LEVEL_DAYS = [0, 1, 2, 3.5];              // durée d'amélioration
 
 // ---- Villes ----
 export interface Tier { name: string; minPop: number; needs: Partial<Record<ResId, number>>; }
-// Besoins mensuels pour 100 habitants
+// Besoins mensuels pour 100 habitants : trois paliers au chapitre I, trois de plus au chapitre II.
+// Chaque palier garde les biens des précédents et en ajoute de nouveaux.
 export const TIERS: Tier[] = [
   { name: 'Village', minPop: 0, needs: { cereales: 0.833, bois: 0.5, pierre: 0.133 } },
   { name: 'Bourg', minPop: 400, needs: { cereales: 0.833, bois: 0.5, pierre: 0.167, sel: 0.05, briques: 0.1 } },
-  { name: 'Ville', minPop: 1500, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.133, outils: 0.02 } },
-  { name: 'Cité', minPop: 5000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017 } },
-  { name: 'Capitale', minPop: 15000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017 } },
+  { name: 'Ville', minPop: 1500, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.133, outils: 0.02, plomb: 0.012 } },
+  { name: 'Cité', minPop: 4000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.08, vin: 0.12 } },
+  { name: 'Métropole', minPop: 8000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.1, vin: 0.15, huile: 0.06, tissus: 0.05, verre: 0.03 } },
+  { name: 'Capitale', minPop: 15000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.04, bronze: 0.01, garum: 0.02, marbre: 0.02 } },
 ];
-/** Points de recherche par mois et par ville, selon son palier (village, bourg, ville, cité) */
-export const RP_TIER = [0.12, 0.2, 0.35, 0.6, 1.0];
-/** Besoins supplémentaires des villes à partir du chapitre II (Gaule romaine), par palier, pour 100 habitants */
-export const TIER_NEEDS_2: Partial<Record<ResId, number>>[] = [
-  {},
-  { sigillee: 0.08 },
-  { sigillee: 0.08, vin: 0.12, huile: 0.06, tissus: 0.05 },
-  { sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.03 },
-  { sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.04, bronze: 0.01, garum: 0.02, marbre: 0.02 },
-];
-/** Quand une ville reçoit les produits de la Gaule romaine, elle consomme moins des anciens */
-export const OLD_NEEDS_MULT = 0.8;
+/** Points de recherche par mois et par ville, selon son palier */
+export const RP_TIER = [0.12, 0.2, 0.35, 0.6, 0.8, 1.0];
 /** Bâtiments de ville (thermes, remparts…) : distance maximale à une ville (km) */
 export const CITY_BUILD_RANGE = 8;
 /** Cours du Rhin, frontière de l'Empire (lon, lat), pour les invasions */
 export const RHINE: [number, number][] = [[7.59, 47.56], [7.55, 48.0], [7.8, 48.58], [8.1, 48.97], [8.45, 49.5], [8.3, 50.0], [7.6, 50.35], [7.0, 50.9], [6.2, 51.8]];
 export const WORK_RANGE = 35;   // km (village) ; le rayon grandit avec la ville
 /** Rayon de main-d'œuvre selon le palier de la ville (village, bourg, ville, cité) */
-export const WORK_RANGES = [30, 40, 55, 70, 90];
+export const WORK_RANGES = [30, 40, 55, 70, 80, 90];
 export const WATER_RANGE = 6;   // km d'un fleuve, lac ou de la côte
 export const WAGE = 0.6;        // sesterces par ouvrier et par mois
 

@@ -135,8 +135,8 @@ export class Game {
         ${item('Marbre, cuivre, étain, bronze', 'carrières de marbre des Pyrénées, mines et fonderies de bronze')}
         ${item('Poisson, garum, laine, tissus', 'pêcheries sur la côte, saloirs, bergeries sur les pâturages, ateliers de tissage')}</ul>
       <h3>Villes</h3><ul class="intro">
-        ${item('Nouveaux besoins', 'poterie, vin, huile, tissus puis verre ; les villes qui les reçoivent consomment 20 % de moins des anciens produits')}
-        ${item('Thermes, amphithéâtres, basiliques', 'croissance plus rapide et points de recherche ; nouveau palier : Capitale (15 000 habitants)')}
+        ${item('Trois nouveaux paliers', 'Cité (4 000 habitants) : poterie sigillée et vin · Métropole (8 000) : huile d\'olive, tissus et verre · Capitale (15 000, technologie Capitales provinciales) : bronze, garum et marbre')}
+        ${item('Thermes, amphithéâtres, basiliques', 'croissance plus rapide et points de recherche')}
         ${item('Remparts', 'protègent des invasions les bâtiments à moins de 20 km et doublent la garnison de la ville')}
         ${this.s.factions?.length ? item('Caserne et guerre', 'tes rivaux peuvent désormais te déclarer la guerre : lève des légionnaires et des auxiliaires, engage des mercenaires à la taverne') : ''}</ul>
       <h3>Transport</h3><ul class="intro">
@@ -855,7 +855,7 @@ export class Game {
       }).join('')}</div>`;
       if (next) {
         const cur = tierGoods(c.tier, s.era), newGoods = tierGoods(c.tier + 1, s.era).filter(r => !cur.includes(r));
-        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()}, la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}${c.tier + 1 === 4 && !s.techs.includes('capitales') ? ' — et il faut la technologie Capitales provinciales' : ''}</p>`;
+        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()}, la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}${c.tier + 1 === 5 && !s.techs.includes('capitales') ? ' — et il faut la technologie Capitales provinciales' : ''}</p>`;
       }
     }
 

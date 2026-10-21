@@ -1,5 +1,5 @@
 // Diplomatie avec les rivaux : relations, traités, cadeaux, espionnage, commerce par la taverne.
-import { BUILD, RES, TIERS, TIER_NEEDS_2, type ResId } from './defs';
+import { BUILD, RES, TIERS, type ResId } from './defs';
 import { factionPop, territoryRadius } from './rivals';
 import { ecoAdd, ecoTake, syncAllyRoads } from './rivalai';
 import type { Building, Faction, GameState } from './state';
@@ -37,7 +37,6 @@ export function factionBuys(s: GameState, f: Faction): ResId[] {
   const g = new Set<ResId>();
   for (let t = 0; t <= Math.min(tier + 1, TIERS.length - 1); t++) {
     for (const r of Object.keys(TIERS[t].needs) as ResId[]) g.add(r);
-    if (s.era >= 2) for (const r of Object.keys(TIER_NEEDS_2[t] ?? {}) as ResId[]) g.add(r);
   }
   return [...g].filter(r => RES[r].era <= s.era);
 }

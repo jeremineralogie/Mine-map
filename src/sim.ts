@@ -1,7 +1,7 @@
 // Simulation : production, chantiers, main-d'œuvre, villes, véhicules, marché, objectifs, événements.
 import {
   ANCIENT, BUILD, EVENTS, SPARE_NAMES, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_MONEY, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
-  START_YEAR, TECHS, TIERS, TIER_NEEDS_2, OLD_NEEDS_MULT, RHINE, CITY_BUILD_RANGE, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
+  START_YEAR, TECHS, TIERS, RHINE, CITY_BUILD_RANGE, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
   RP_TIER,
 } from './defs';
 import type { Geo } from './geo';
@@ -262,20 +262,15 @@ const manque = (rs: ResId[]) => rs.map(r => `Manque ${RES[r].name.toLowerCase()}
 export const RESERVE_TO_GROW = 1;
 export function cityNeeds(b: Building): Stock {
   const c = b.city!; const t = TIERS[c.tier], out: Stock = {}, k = c.pop / 100 * (c.needMult ?? 1);
-  // dès qu'elle reçoit les produits de la Gaule romaine, la ville consomme moins des anciens
-  const old = c.modern ? OLD_NEEDS_MULT : 1;
-  for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * k * old;
-  if ((c.era ?? 1) >= 2) for (const [r, q] of Object.entries(TIER_NEEDS_2[c.tier] ?? {})) out[r as ResId] = (out[r as ResId] ?? 0) + q! * k;
+  for (const [r, q] of Object.entries(t.needs)) out[r as ResId] = q! * k;
   return out;
 }
 /** Biens demandés par un palier de ville à une époque donnée */
-export function tierGoods(tier: number, era: number): ResId[] {
-  const g = Object.keys(TIERS[tier]?.needs ?? {}) as ResId[];
-  if (era >= 2) g.push(...(Object.keys(TIER_NEEDS_2[tier] ?? {}) as ResId[]));
-  return [...new Set(g)];
+export function tierGoods(tier: number, _era?: number): ResId[] {
+  return Object.keys(TIERS[tier]?.needs ?? {}) as ResId[];
 }
 /** Le palier suivant est-il accessible ? (la capitale demande une technologie) */
-export const tierAllowed = (s: GameState, tier: number) => tier < 4 || s.techs.includes('capitales');
+export const tierAllowed = (s: GameState, tier: number) => tier < 5 || s.techs.includes('capitales');
 /** Quantité qu'un bâtiment accepte de recevoir */
 export function accepts(s: GameState, b: Building, res: ResId): number {
   const d = BUILD[b.type];
@@ -283,7 +278,7 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
     const need = cityNeeds(b)[res] ?? 0;
     // la ville achète aussi un peu des biens du palier suivant pour pouvoir y accéder
     const era = b.city.era ?? 1, nextT = TIERS[b.city.tier + 1];
-    const nextQ = nextT ? (nextT.needs[res] ?? 0) + (era >= 2 ? TIER_NEEDS_2[b.city.tier + 1]?.[res] ?? 0 : 0) : 0;
+    const nextQ = nextT ? nextT.needs[res] ?? 0 : 0;
     const future = nextQ && !tierGoods(b.city.tier, era).includes(res) ? nextQ * b.city.pop / 100 : 0;
     if (need + future <= 0) return 0;
     // réserve d'un an au plus, mais toujours de quoi recevoir au moins deux chargements complets
@@ -465,7 +460,6 @@ export class Sim {
       avail.set(c.id, Math.floor(c.city!.pop * 0.4));
       const city = c.city!;
       city.needMult = wonderNeedMult(s, c); city.era = s.era;
-      city.modern = s.era >= 2 && Object.keys(TIER_NEEDS_2[city.tier] ?? {}).some(r => (city.stock[r as ResId] ?? 0) >= 0.5);
     }
     const jobs = s.buildings.filter(b => b.built && !b.paused && !b.damaged && BUILD[b.type].workers);
     const near = new Map(jobs.map(b => [b.id, cs.map(c => ({ c, d: Math.hypot(c.x - b.x, c.y - b.y) })).filter(o => o.d <= workRange(o.c, s)).sort((a, z) => a.d - z.d)]));
@@ -806,7 +800,7 @@ export class Sim {
         city.pop = Math.max(20, city.pop * (1 - Math.min(0.06, 0.3 * (1 - city.foodSat))));
       }
       let t = 0; for (let i = 0; i < TIERS.length; i++) if (city.pop >= TIERS[i].minPop) t = i;
-      if (t > city.tier) this.notify.toast(`${c.name} devient un${t === 3 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
+      if (t > city.tier) this.notify.toast(`${c.name} devient un${t >= 2 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
       city.tier = t;
       s.rp += RP_TIER[city.tier];   // recherche volontairement lente : chaque technologie se mérite
     }

@@ -26,8 +26,8 @@ Mélange de *Transport Tycoon* (logistique, lignes, véhicules visibles) et de *
 
 **Chapitre II — Gaule romaine** : fin quand l'arbre (20 technologies, 5 branches dont Culture et religion)
 est complet, les Arènes de Nîmes construites et la date ≥ 426 (476 à 50 ans près ; bouton d'avance rapide).
-Nouveaux besoins des villes par palier (poterie, vin, huile, tissus, verre, puis bronze, garum, marbre pour
-la Capitale à 15 000 habitants) ; les anciens produits sont consommés 20 % de moins. Crise du IIIe siècle :
+Trois nouveaux paliers de villes : Cité (4 000 habitants : poterie sigillée, vin), Métropole (8 000 : huile
+d'olive, tissus, verre), Capitale (15 000, technologie Capitales provinciales : bronze, garum, marbre). Crise du IIIe siècle :
 monnaie dévaluée (−20 % sur les ventes 235–284), raids et invasions (256, 275, 352, 406, 451) qui endommagent
 les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent + matériaux).
 
@@ -75,9 +75,13 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
 
 ## 6. Villes, main-d'œuvre, eau, électricité
 - Le joueur **fonde ses villes**. Elles grandissent seules si elles sont approvisionnées,
-  et évoluent avec les époques (village → bourg → ville → cité).
-- Les villes fournissent la **main-d'œuvre** dans un rayon qui grandit avec elles (30 km pour un village,
-  70 km pour une cité). Leurs bras en trop renforcent les ateliers voisins (jusqu'à +50 % d'équipe, +25 % de production).
+  et évoluent par **paliers**, trois par chapitre. Chaque palier garde les biens des précédents et en ajoute :
+  - Chapitre I : Village (céréales, bois, pierre), Bourg à 400 habitants (sel, briques), Ville à 1 500 (outils, plomb).
+  - Chapitre II : Cité à 4 000 (poterie sigillée, vin), Métropole à 8 000 (huile d'olive, tissus, verre),
+    Capitale à 15 000 avec la technologie Capitales provinciales (bronze, garum, marbre).
+  - Pour franchir un palier, la ville doit déjà recevoir ses nouveaux biens.
+- Les villes fournissent la **main-d'œuvre** dans un rayon qui grandit avec elles (30, 40, 55, 70, 80 puis 90 km
+  selon le palier). Leurs bras en trop renforcent les ateliers voisins (jusqu'à +50 % d'équipe, +25 % de production).
 - **Eau** : près d'un fleuve, d'un lac ou de la côte, ou dans la portée d'un aqueduc / d'une pompe.
 - **Électricité** (à partir de l'époque IV) : chaque centrale couvre une zone (portée).
 
