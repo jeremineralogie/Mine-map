@@ -146,7 +146,12 @@ export class Game {
         ${item('Monastères, halles, hôtels-Dieu', 'recherche, droits de marché et croissance')}
         ${item('Châteaux forts', 'protègent des invasions les bâtiments à moins de 30 km')}
         ${item('Foire de Champagne', 'une seule : elle rapporte des droits sur toutes tes villes à moins de 200 km')}</ul>
-      <p class="muted">Les invasions, les grands événements et Notre-Dame de Paris arrivent dans une prochaine version.</p>`,
+      <h3>Ce qui t'attend</h3><ul class="intro">
+        ${item('Les Vikings (799-911)', 'des bandes pillent les villes des côtes et des fleuves, puis s\'installent : ils prennent une ville ou fondent la leur, et deviennent un rival')}
+        ${item('Les croisades (1096-1270)', 'les villes réclament fer et outils ; les routes de l\'Orient s\'ouvrent')}
+        ${item('La guerre de Cent Ans (1337-1453)', 'chevauchées anglaises dans l\'ouest et le nord, commerce avec la Bretagne insulaire coupé')}
+        ${item('La peste noire (1347)', 'les villes perdent un tiers de leurs habitants, beaucoup moins près d\'un hôtel-Dieu')}</ul>
+      <p class="muted">Notre-Dame de Paris arrive dans une prochaine version.</p>`,
       [{ label: 'Continuer', primary: true }]);
   }
   /** Ouverture du chapitre II : résumé de ce qui se débloque */
@@ -1328,7 +1333,7 @@ export class Game {
   private modsHtml(): string {
     const s = this.s, mods = activeMods(s);
     if (!mods.length) return '';
-    const pn = (id?: string) => id === 'mer' ? 'commerce d\'outre-mer (chute de Rome)' : PARTNERS.find(p => p.id === id)?.name ?? id ?? '';
+    const pn = (id?: string) => id === 'mer' ? 'commerce d\'outre-mer (chute de Rome)' : id?.startsWith('mer:') ? SEA_PARTNERS.find(p => 'mer:' + p.id === id)?.name ?? id : PARTNERS.find(p => p.id === id)?.name ?? id ?? '';
     const pct = (m: number) => `${m >= 1 ? '+' : '−'}${Math.round(Math.abs(m - 1) * 100)} %`;
     const label = (m: typeof mods[number]) => m.kind === 'discount' ? `Constructions et améliorations ${pct(m.mult)}`
       : m.kind === 'demand' ? `Les villes paient ${(m.res ?? []).map(r => RES[r].name.toLowerCase()).join(', ')} ${pct(m.mult)}`
@@ -1372,6 +1377,7 @@ export class Game {
     const top = (Object.keys(RES) as ResId[]).filter(r => RES[r].era <= s.era && storeTotal(s, r) >= 20).sort((a, z) => RES[z].price - RES[a].price).slice(0, 3);
     for (const f of fs) {
       if (f.dead) { h += `<div class="dipl" style="--fc:${f.color}"><div class="dipl-h"><i></i><b>${esc(f.name)}</b><span class="pill info">Soumis</span></div><small class="muted">Plus aucune ville.</small></div>`; continue; }
+      if (f.raider) { h += `<div class="dipl" style="--fc:${f.color}"><div class="dipl-h"><i></i><b>${esc(f.name)}</b><span class="pill bad">Pillards</span></div><small class="muted">Des bandes sans ville qui pillent les côtes et les fleuves : aucune diplomatie possible. Un tribut (Danegeld), depuis Guerre et paix, les éloigne de tes villes pendant 5 ans.</small></div>`; continue; }
       const rl = relLabel(f), r = relOf(f), cities = f.b.filter(b => b.type === 'village'), know = (f.intel ?? 0) > s.day;
       const th = (k: 'trade' | 'pact' | 'alliance') => THRESHOLD[k][f.character as keyof typeof THRESHOLD.trade];
       const btn = (act: string, label: string, extra = '', dis = false) => `<button data-act="${act}" data-f="${f.id}" ${extra} ${!open || dis ? 'disabled' : ''}>${label}</button>`;
@@ -1442,8 +1448,8 @@ export class Game {
     const state = { idle: 'au repos', march: 'en marche', fight: 'au combat', siege: 'siège' };
     let h = '<h3>Rivaux</h3>';
     h += fs.map(f => `<div class="dipl" style="--fc:${f.color}"><div class="dipl-h"><i></i><b>${esc(f.name)}</b>${f.war ? '<span class="pill bad">⚔ Guerre</span>' : f.pact && f.pact > s.day ? `<span class="pill info">Non-agression jusqu'en ${yearOf(f.pact)}</span>` : f.alliance ? '<span class="pill good">Alliance</span>' : '<span class="pill info">Paix</span>'}</div>
-      <small class="muted">${f.b.filter(b => b.type === 'village').length} ville(s) · ${fmt(factionPop(f))} hab.</small>
-      <div class="dipl-act">${f.war ? `<button data-act="peace" data-f="${f.id}">Proposer la paix</button><button data-act="peace" data-f="${f.id}" data-pay="1">Paix contre indemnité</button>` : `<button data-act="war" data-f="${f.id}" ${f.alliance ? 'disabled' : ''}>⚔ Déclarer la guerre</button>`}</div></div>`).join('') || '<p class="muted">Aucun rival.</p>';
+      <small class="muted">${f.raider ? `Pillards sans ville · ${f.raids ?? 0} raid(s) réussi(s)` : `${f.b.filter(b => b.type === 'village').length} ville(s) · ${fmt(factionPop(f))} hab.`}</small>
+      <div class="dipl-act">${f.raider ? (f.war ? `<button data-act="peace" data-f="${f.id}" data-pay="1">Payer le Danegeld</button>` : '<small class="muted">Tribut payé : ils épargnent tes villes.</small>') : f.war ? `<button data-act="peace" data-f="${f.id}">Proposer la paix</button><button data-act="peace" data-f="${f.id}" data-pay="1">Paix contre indemnité</button>` : `<button data-act="war" data-f="${f.id}" ${f.alliance ? 'disabled' : ''}>⚔ Déclarer la guerre</button>`}</div></div>`).join('') || '<p class="muted">Aucun rival.</p>';
     const mine = (s.armies ?? []).filter(a => a.owner === PLAYER), foes = (s.armies ?? []).filter(a => a.owner !== PLAYER && hostile(s, PLAYER, a.owner));
     h += `<h3>Tes armées (${mine.length})</h3>${mine.map(a => `<button class="row" data-act="selarmy" data-id="${a.id}"><span class="army-dot" style="background:${PLAYER_COLOR}"></span><span>${a.merc ? 'Mercenaires · ' : ''}${fmt(a.men)} hommes · ${Math.round(a.hp)} %</span><small class="muted">${state[a.state]}</small></button>`).join('') || '<p class="muted">Aucune. Recrute dans une caserne.</p>'}`;
     const cas = s.buildings.filter(b => b.type === 'caserne');

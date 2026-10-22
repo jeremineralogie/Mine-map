@@ -5,6 +5,7 @@ import type { Geo } from './geo';
 import { factionPop, territoryRadius } from './rivals';
 import { cityDomain, ecoBuilding, syncAllyRoads, syncLent, syncView, transfer } from './rivalai';
 import type { Army, Building, Faction, GameState, RBuilding } from './state';
+import { prepareConquest, settleNow, takeRivalCity, tookPlayerCity } from './vikings';
 
 const YEAR = 365.25;
 export const PLAYER = 'player';
@@ -100,12 +101,15 @@ export function proposePeace(s: GameState, f: Faction, pay: boolean): string {
   const mine = armies(s).filter(a => a.owner === PLAYER).reduce((t, a) => t + strength(a), 0);
   const theirs = armies(s).filter(a => a.owner === f.id).reduce((t, a) => t + strength(a), 0);
   const long = s.day - (f.warSince ?? s.day) > 3 * YEAR;
-  const cost = Math.round(500 + factionPop(f) * 0.3);
+  // Vikings pillards : pas de paix, seulement un tribut (Danegeld) qui les détourne de tes villes pendant 5 ans
+  const cost = f.raider ? Math.round(800 + s.buildings.reduce((t, b) => t + (b.city?.pop ?? 0), 0) * 0.05) : Math.round(500 + factionPop(f) * 0.3);
+  if (f.raider && !pay) return `Les Vikings ne négocient pas : ils veulent de l'argent. Un tribut (Danegeld) de ${cost} sesterces les éloignerait de tes villes pendant 5 ans.`;
   if (pay) {
     if (s.money < cost) return `Il faut ${cost} sesterces d'indemnité.`;
     s.money -= cost; s.stats.expenses += cost; f.money += cost;
   } else if (!(theirs < mine * 0.8 || long || f.character === 'commercant')) return `Les ${f.name} refusent la paix. Une indemnité de ${cost} sesterces pourrait les convaincre.`;
   makePeace(s, f);
+  if (f.raider) return `Tribut payé : les Vikings laissent tes villes en paix pendant 5 ans.`;
   return `Paix signée avec les ${f.name} (pacte de non-agression de 5 ans).`;
 }
 export function makePeace(s: GameState, f: Faction) {
@@ -211,7 +215,10 @@ function victory(s: GameState, geo: Geo, a: Army, f: Faction, c: RBuilding, n: W
   if (a.owner !== PLAYER) {
     // guerre entre rivaux : le vainqueur pille la ville
     const w = s.factions!.find(x => x.id === a.owner);
-    if (w) { const loot = Math.min(f.money, (c.pop ?? 0) * 1.5); f.money -= loot; w.money += loot; shrink(s, f, c, 0.85); }
+    // Vikings : à partir de 880, la bande peut garder la ville
+    if (w && settleNow(s, w)) { takeRivalCity(s, geo, w, f, c, n); return; }
+    if (w?.raider) w.raids = (w.raids ?? 0) + 1;
+    if (w) { const loot = Math.min(f.money, (c.pop ?? 0) * 1.5); f.money -= loot; w.money += loot; shrink(s, f, c, 0.85); const e = ecoBuilding(f, c.id); if (e?.city) e.city.pillaged = s.day; }
     s.log.unshift({ day: s.day, text: `Les ${ownerName(s, a.owner)} pillent ${c.name} (${f.short}).` });
     return;
   }
@@ -256,9 +263,10 @@ function victory(s: GameState, geo: Geo, a: Army, f: Faction, c: RBuilding, n: W
 
 /** Un rival prend une ville du joueur : conquête (ambitieux ou hostile) ou pillage */
 function defeat(s: GameState, geo: Geo, a: Army, c: Building, n: WarNotify) {
-  void geo;
   const f = s.factions!.find(x => x.id === a.owner)!;
-  const conquer = s.difficulty === 'ambitieux' || relLabel(f).label === 'Hostile';
+  // les Vikings pillent ; à partir de 880, ils peuvent garder la ville
+  const conquer = f.raider ? settleNow(s, f) : s.difficulty === 'ambitieux' || relLabel(f).label === 'Hostile';
+  if (conquer && f.raider) prepareConquest(s, f);
   const r = 18 + 8 * c.city!.tier;
   if (conquer) {
     const ids = cityDomain(s, c, r), taken = s.buildings.filter(b => ids.has(b.id));
@@ -268,16 +276,21 @@ function defeat(s: GameState, geo: Geo, a: Army, c: Building, n: WarNotify) {
     syncView(s, f);
     // défaite totale : la dernière ville vient de tomber
     if (!playerCities(s).length) { s.over = true; n.gameOver(`${c.name}, ta dernière ville, est tombée aux mains des ${f.name}. Tes rivaux se partagent la province.`); return; }
+    if (f.raider) { tookPlayerCity(s, geo, f, c, n); return; }
     n.event(`${c.name} est tombée !`, `Les ${f.name} ont pris la ville et ${taken.length - 1} bâtiment(s) autour. Lève une armée pour la reprendre.`);
     s.log.unshift({ day: s.day, text: `Les ${f.name} conquièrent ${c.name}.` });
   } else {
     const loss = Math.round(Math.min(s.money * 0.15, 2000));
-    s.money -= loss; f.money += loss; c.city!.pop *= 0.8;
+    s.money -= loss; f.money += loss; c.city!.pop *= 0.8; c.city!.pillaged = s.day;
+    if (f.raider) f.raids = (f.raids ?? 0) + 1;
     for (const b of s.buildings) if (b !== c && b.built && !b.city && !BUILD[b.type].wonder && Math.hypot(b.x - c.x, b.y - c.y) <= r && Math.random() < 0.5) b.damaged = true;
     n.event(`${c.name} est pillée !`, `Les ${f.name} ont pillé la ville : ${loss} sesterces volés, des habitants tués et des bâtiments endommagés.`);
     s.log.unshift({ day: s.day, text: `Les ${f.name} pillent ${c.name}.` });
   }
 }
+
+/** Ville pillée depuis moins d'un an */
+export const recentlyPillaged = (s: GameState, c?: Building) => !!c?.city?.pillaged && s.day - c.city.pillaged < YEAR;
 
 // ---------- Mensuel : solde, tributs, décisions des rivaux ----------
 export function monthlyWar(s: GameState, n: WarNotify) {
@@ -298,7 +311,7 @@ export function monthlyWar(s: GameState, n: WarNotify) {
   s.tributes = (s.tributes ?? []).filter(t => t.until >= s.day);
   if (!warAllowed(s)) return;
   const y = year(s);
-  for (const f of (s.factions ?? []).filter(x => !x.dead)) {
+  for (const f of (s.factions ?? []).filter(x => !x.dead && !x.raider)) {
     // déclaration de guerre
     if (!f.war && !f.alliance && !(f.pact && f.pact > s.day) && playerCities(s).length) {
       const period = y >= 235 && y <= 284 ? 0.02 : y >= 400 ? 0.015 : y >= 150 ? 0.006 : 0.003;
@@ -313,8 +326,8 @@ export function monthlyWar(s: GameState, n: WarNotify) {
         for (const o of s.factions ?? []) if (o !== f && o.alliance) { (o.foes ??= []).push(f.id); (f.foes ??= []).push(o.id); s.log.unshift({ day: s.day, text: `Tes alliés ${o.name} entrent en guerre à tes côtés.` }); }
       }
     }
-    // recrutement et offensives des rivaux en guerre
-    const enemies = [...(f.war ? [PLAYER] : []), ...(f.foes ?? [])];
+    // recrutement et offensives des rivaux en guerre (des pillards sans ville ne justifient pas une armée)
+    const enemies = [...(f.war ? [PLAYER] : []), ...(f.foes ?? []).filter(id => !s.factions?.find(o => o.id === id)?.raider)];
     if (!enemies.length) continue;
     const pop = factionPop(f), mine = list.filter(a => a.owner === f.id);
     const total = mine.reduce((t, a) => t + a.men, 0);
@@ -334,8 +347,9 @@ export function monthlyWar(s: GameState, n: WarNotify) {
     for (const a of mine) {
       if (a.state !== 'idle' || a.men < 40) continue;
       const targets: { kind: 'b' | 'rb'; id: number; x: number; y: number }[] = [];
-      if (f.war) for (const c of playerCities(s)) targets.push({ kind: 'b', id: c.id, x: c.x, y: c.y });
-      for (const o of s.factions ?? []) if (f.foes?.includes(o.id)) for (const c of rivalCities(o)) targets.push({ kind: 'rb', id: c.id, x: c.x, y: c.y });
+      // une ville pillée depuis moins d'un an n'a plus rien à prendre
+      if (f.war) for (const c of playerCities(s)) if (!recentlyPillaged(s, c)) targets.push({ kind: 'b', id: c.id, x: c.x, y: c.y });
+      for (const o of s.factions ?? []) if (f.foes?.includes(o.id)) for (const c of rivalCities(o)) if (!recentlyPillaged(s, ecoBuilding(o, c.id))) targets.push({ kind: 'rb', id: c.id, x: c.x, y: c.y });
       const t = targets.sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y))[0];
       if (t) { a.target = { kind: t.kind, id: t.id }; a.state = 'march'; }
     }

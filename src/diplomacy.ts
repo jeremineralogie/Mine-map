@@ -180,7 +180,7 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
   const fs = s.factions ?? [];
   const tv = tavernes(s);
   for (const f of fs) {
-    if (f.dead) continue;
+    if (f.dead || f.raider) continue;
     const before = relLabel(f).label;
     f.rel = relOf(f);
     // retour lent vers son humeur naturelle

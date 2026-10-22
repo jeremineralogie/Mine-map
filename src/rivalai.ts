@@ -302,6 +302,10 @@ export interface Placer {
 }
 let placer: Placer | null = null;
 export function setPlacer(p: Placer) { placer = p; }
+/** Un camp peut-il s'installer ici (terre libre) ? */
+export const settleSpot = (f: Faction, x: number, y: number) => !!placer?.free(f, x, y);
+/** Nom d'une nouvelle ville à cet endroit */
+export const spotName = (x: number, y: number) => placer?.cityName(x, y) ?? 'Vicus Nortmannorum';
 
 /** Entrepôt principal : celui de la capitale (la plus ancienne de ses villes) */
 function hub(eco: GameState): Building | undefined {

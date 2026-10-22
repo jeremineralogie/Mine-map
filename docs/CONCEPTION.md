@@ -47,8 +47,17 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
   à l'étranger, Hanse : rouvre le commerce d'outre-mer, volume +50 %). Halle : 1 sesterce/mois pour 100 habitants
   de sa ville ; Foire de Champagne (une seule) : 1 sesterce/mois pour 200 habitants à moins de 200 km. Les paliers
   médiévaux ne s'atteignent qu'au chapitre III.
-- *Étape 3* : événements (Vikings : cinquième faction qui pille, puis s'installe ou conquiert une ville sur les
-  côtes et les fleuves, avec sa propre économie ; croisades ; peste noire ; guerre de Cent Ans).
+- *Étape 3 (faite)* : événements. **Vikings** (799-911) : cinquième faction, d'abord sans ville. Des bandes
+  débarquent sur la côte atlantique ou remontent les fleuves (Seine, Loire, Garonne…) et assiègent une ville
+  (celle du joueur une fois sur trois) ; victorieuses, elles pillent puis rembarquent. Siège de Paris en 845.
+  Dès 880, une bande victorieuse garde la ville une fois sur deux ; sinon, en 911, ils fondent leur ville à
+  l'estuaire de la Seine (Ducs de Normandie). Installés, ils deviennent un rival ordinaire (économie, recherche),
+  avec une trêve de 5 ans pour tous (même s'ils ont pris une ville du joueur). Tribut (Danegeld) : 5 ans sans raid.
+  **Croisades** (1096, 1099, 1147, 1190, 1270) : fer et outils plus chers, routes de l'Orient. **Guerre de Cent
+  Ans** (1337-1453) : commerce avec la Bretagne insulaire coupé, chevauchées anglaises au hasard dans l'ouest et
+  le nord, Crécy, Poitiers (rançon), Azincourt, Jeanne d'Arc. **Peste noire** (1347) : −35 % d'habitants
+  (−20 % près d'un hôtel-Dieu). Aussi : Clovis, Charlemagne, Hugues Capet. Ces événements touchent aussi les
+  rivaux (habitants).
 - *Étape 4* : Notre-Dame de Paris, merveille de fin de chapitre (avec l'arbre complet et la date ≥ 1403).
 
 ## 3. Carte
@@ -223,5 +232,5 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
 1. Chapitre I (Antiquité romaine) : fait.
 2. Chapitre II (Gaule romaine) : fait.
 3. Rivaux, diplomatie et guerre : fait.
-4. Chapitre III (Moyen Âge) : en cours (étapes 1 et 2 faites). ← *prochaine étape : étape 3*
+4. Chapitre III (Moyen Âge) : en cours (étapes 1 à 3 faites). ← *prochaine étape : étape 4*
 5. Chapitres IV à VI.

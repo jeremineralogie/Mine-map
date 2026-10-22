@@ -295,7 +295,7 @@ export const BUILD: Record<BType, BDef> = {
   monastere: { name: 'Monastère', desc: 'Abbaye où les moines copient les livres : +0,4 point de recherche par mois. N\'importe où, même loin des villes.', era: 3, tech: 'monasteres', cost: { pierre: 40, bois: 20, briques: 10 }, money: 400, days: 40, workers: 2, storage: 0, maxLevel: 1, effect: { rp: 0.4 } },
   chateau_fort: { name: 'Château fort', desc: 'Donjon et murailles de granite : protège des invasions tous les bâtiments à moins de 30 km.', era: 3, tech: 'chateaux_forts', cost: { pierre: 40, granite: 40, bois: 20 }, money: 700, days: 60, workers: 0, storage: 0, maxLevel: 1, city: true, effect: { protect: 30 } },
   halle: { name: 'Halle', desc: 'Marché couvert de la ville : chaque mois, les droits de marché rapportent 1 sesterce pour 100 habitants. Une par ville.', era: 3, tech: 'chartes', cost: { bois: 25, planches: 20, pierre: 10 }, money: 300, days: 25, workers: 2, storage: 0, maxLevel: 1, city: true, perCity: true, effect: { tax: 0.01, range: 8 } },
-  hotel_dieu: { name: 'Hôtel-Dieu', desc: 'Hôpital tenu par les religieux : la ville voisine grandit 20 % plus vite.', era: 3, tech: 'chartes', cost: { pierre: 40, planches: 15 }, money: 400, days: 35, workers: 3, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.2, range: 8 } },
+  hotel_dieu: { name: 'Hôtel-Dieu', desc: 'Hôpital tenu par les religieux : la ville voisine grandit 20 % plus vite, et perd beaucoup moins d\'habitants lors des épidémies (peste noire).', era: 3, tech: 'chartes', cost: { pierre: 40, planches: 15 }, money: 400, days: 35, workers: 3, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.2, range: 8 } },
   foire: { name: 'Foire de Champagne', desc: 'La grande foire où les marchands de toute l\'Europe se retrouvent : chaque mois, elle rapporte 1 sesterce pour 200 habitants de toutes tes villes à moins de 200 km. Une seule.', era: 3, tech: 'foires', cost: { bois: 40, planches: 30, pierre: 30 }, money: 1200, days: 60, workers: 4, storage: 0, maxLevel: 1, city: true, unique: true, effect: { tax: 0.005, range: 200 } },
   // ---- Rivaux : diplomatie et guerre ----
   taverne: { name: 'Taverne', desc: 'Lieu de rencontre des marchands et des émissaires : ouvre la diplomatie avec les rivaux et le commerce avec ceux qui ont signé un accord. Une par ville ; plus elles sont proches d\'un rival, plus les relations progressent.', era: 1, cost: { bois: 20, pierre: 10 }, money: 200, days: 15, workers: 2, storage: 100, maxLevel: 1, city: true },
@@ -538,9 +538,12 @@ export type EventEffect =
   /** invasion : une part des bâtiments non protégés de la zone est endommagée */
   | { kind: 'raid'; share: number; rhin?: boolean; lon?: number; lat?: number; range: number }
   /** révolte : des ateliers pris au hasard s'arrêtent */
-  | { kind: 'revolt'; count: number; months: number };
+  | { kind: 'revolt'; count: number; months: number }
+  /** épidémie : les villes perdent une part de leurs habitants (moins près d'un hôtel-Dieu) */
+  | { kind: 'plague'; mult: number; cared: number };
 
-export interface HistEvent { year: number; title: string; text: string; effects: EventEffect[]; }
+/** `era` : l'événement n'arrive qu'à partir de ce chapitre (au chapitre III, il touche aussi les rivaux) */
+export interface HistEvent { year: number; title: string; text: string; effects: EventEffect[]; era?: number; }
 export const EVENTS: HistEvent[] = [
   { year: -46, title: 'Triomphe de César', text: 'César célèbre à Rome sa victoire sur les Gaules. Rome réclame fer et outils : l\'Italie paie 50 % plus cher pendant 2 ans.', effects: [{ kind: 'partnerBoost', partner: 'italie', mult: 1.5, months: 24 }] },
   { year: -43, title: 'Fondation de Lugdunum', text: 'Munatius Plancus fonde Lugdunum au confluent du Rhône et de la Saône. Les colons apportent de nouveaux savoirs.', effects: [{ kind: 'rp', amount: 6 }] },
@@ -568,6 +571,29 @@ export const EVENTS: HistEvent[] = [
   { year: 406, title: 'Le Rhin gelé est franchi', text: 'La nuit du 31 décembre, Vandales, Suèves et Alains traversent le Rhin gelé : le nord-est est dévasté, jusqu\'à 150 km de la frontière.', effects: [{ kind: 'raid', share: 0.6, rhin: true, range: 150 }, { kind: 'pop', mult: 0.92 }] },
   { year: 451, title: 'Bataille des champs Catalauniques', text: 'Aetius, les Francs et les Wisigoths arrêtent Attila près de Châlons. La région est ravagée.', effects: [{ kind: 'raid', share: 0.4, lon: 4.36, lat: 48.95, range: 90 }, { kind: 'pop', mult: 0.95 }] },
   { year: 476, title: 'Chute de Rome', text: 'Le dernier empereur d\'Occident, Romulus Augustule, est déposé. L\'Antiquité s\'achève : place aux royaumes francs.', effects: [{ kind: 'partnerClosed', partner: 'italie', months: 240 }] },
+  // ---- Chapitre III : Moyen Âge (les Vikings sont gérés à part, de 799 à 911) ----
+  { year: 496, era: 3, title: 'Baptême de Clovis', text: 'Le roi des Francs est baptisé à Reims. L\'Église soutient le nouveau royaume, et ses écoles conservent le savoir antique.', effects: [{ kind: 'rp', amount: 10 }] },
+  { year: 800, era: 3, title: 'Charlemagne empereur', text: 'Charlemagne est couronné empereur d\'Occident à Rome. L\'ordre revient : les villes grandissent 20 % plus vite pendant 5 ans, et les écoles carolingiennes relancent la recherche.', effects: [{ kind: 'growth', mult: 1.2, months: 60 }, { kind: 'rp', amount: 10 }] },
+  { year: 987, era: 3, title: 'Hugues Capet roi', text: 'Hugues Capet est élu roi des Francs : la dynastie capétienne commence. Le royaume se stabilise.', effects: [{ kind: 'growth', mult: 1.15, months: 60 }, { kind: 'rp', amount: 5 }] },
+  { year: 1096, era: 3, title: 'Première croisade', text: 'À l\'appel du pape à Clermont, les chevaliers partent pour Jérusalem : les villes perdent 3 % de leurs habitants et, pendant 4 ans, paient le fer et les outils 50 % plus cher pour équiper les croisés.', effects: [{ kind: 'pop', mult: 0.97 }, { kind: 'demand', res: ['fer', 'outils'], mult: 1.5, months: 48 }] },
+  { year: 1099, era: 3, title: 'Prise de Jérusalem', text: 'Les croisés prennent Jérusalem. Les routes de l\'Orient s\'ouvrent : pendant 10 ans, la Grèce et l\'Orient paient 50 % plus cher par la mer, l\'Italie 30 % plus cher, et les savoirs arabes arrivent en Occident.', effects: [{ kind: 'partnerBoost', partner: 'mer:grece', mult: 1.5, months: 120 }, { kind: 'partnerBoost', partner: 'italie', mult: 1.3, months: 120 }, { kind: 'rp', amount: 10 }] },
+  { year: 1147, era: 3, title: 'Deuxième croisade', text: 'Louis VII part pour l\'Orient : pendant 3 ans, les villes paient le fer et les outils 40 % plus cher.', effects: [{ kind: 'pop', mult: 0.98 }, { kind: 'demand', res: ['fer', 'outils'], mult: 1.4, months: 36 }] },
+  { year: 1190, era: 3, title: 'Troisième croisade', text: 'Philippe Auguste et Richard Cœur de Lion partent ensemble pour l\'Orient : pendant 3 ans, le fer et les outils se vendent 40 % plus cher aux villes.', effects: [{ kind: 'demand', res: ['fer', 'outils'], mult: 1.4, months: 36 }, { kind: 'rp', amount: 6 }] },
+  { year: 1270, era: 3, title: 'Mort de Saint Louis', text: 'Louis IX meurt devant Tunis pendant la dernière croisade. L\'époque des croisades s\'achève ; ses fondations (hôpitaux, Sorbonne) restent.', effects: [{ kind: 'rp', amount: 10 }] },
+  { year: 1337, era: 3, title: 'Début de la guerre de Cent Ans', text: 'Le roi d\'Angleterre revendique la couronne de France. Le commerce avec la Bretagne insulaire est coupé jusqu\'à la fin de la guerre, et des chevauchées anglaises ravageront l\'ouest et le nord : protège tes villes par des châteaux forts.', effects: [{ kind: 'partnerClosed', partner: 'mer:britannia', months: 1392 }] },
+  { year: 1346, era: 3, title: 'Bataille de Crécy', text: 'La chevalerie française est écrasée par les archers anglais. La Picardie et l\'Artois sont dévastés : bâtiments sans protection endommagés à moins de 80 km.', effects: [{ kind: 'raid', share: 0.35, lon: 1.9, lat: 50.25, range: 80 }] },
+  { year: 1347, era: 3, title: 'La peste noire', text: 'Venue d\'Orient par Marseille, la peste tue près d\'un habitant sur trois : les villes perdent 35 % de leurs habitants (20 % seulement près d\'un hôtel-Dieu) et les ateliers tournent au ralenti pendant 3 ans.', effects: [{ kind: 'plague', mult: 0.65, cared: 0.8 }, { kind: 'prod', mult: 0.85, months: 36 }] },
+  { year: 1356, era: 3, title: 'Bataille de Poitiers', text: 'Le roi Jean le Bon est fait prisonnier par le Prince Noir. Le Poitou est ravagé, et il faut payer sa rançon.', effects: [{ kind: 'raid', share: 0.35, lon: 0.34, lat: 46.58, range: 80 }, { kind: 'money', amount: -1500 }] },
+  { year: 1415, era: 3, title: 'Bataille d\'Azincourt', text: 'Nouvelle défaite française : Henri V d\'Angleterre conquiert la Normandie. Le nord est ravagé.', effects: [{ kind: 'raid', share: 0.35, lon: 1.5, lat: 49.8, range: 110 }] },
+  { year: 1429, era: 3, title: 'Jeanne d\'Arc', text: 'Jeanne d\'Arc délivre Orléans et fait sacrer Charles VII à Reims. Le royaume reprend courage : les villes grandissent 30 % plus vite pendant 5 ans.', effects: [{ kind: 'growth', mult: 1.3, months: 60 }, { kind: 'rp', amount: 8 }] },
+  { year: 1453, era: 3, title: 'Fin de la guerre de Cent Ans', text: 'Victoire de Castillon : les Anglais ne gardent que Calais. La paix revient, le commerce avec la Bretagne insulaire reprend et les villes se repeuplent.', effects: [{ kind: 'growth', mult: 1.2, months: 60 }] },
+];
+/** Guerre de Cent Ans : chevauchées anglaises au hasard dans l'ouest et le nord (lieux visés) */
+export const HUNDRED_YEARS: [number, number] = [1337, 1453];
+export const CHEVAUCHEES: { name: string; at: [number, number] }[] = [
+  { name: 'en Guyenne', at: [-0.4, 44.9] }, { name: 'en Saintonge', at: [-0.6, 45.75] }, { name: 'en Bretagne', at: [-2.0, 48.0] },
+  { name: 'en Normandie', at: [0.2, 49.15] }, { name: 'en Picardie', at: [2.2, 49.9] }, { name: 'autour de Calais', at: [1.86, 50.9] },
+  { name: 'en Poitou', at: [0.3, 46.5] }, { name: 'dans le Limousin', at: [1.25, 45.8] }, { name: 'en Champagne', at: [4.05, 48.9] },
 ];
 
 export const START_MONEY = 2500;

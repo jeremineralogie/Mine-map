@@ -12,6 +12,8 @@ export interface Edge { id: number; a: number; b: number; type: RoadType; len: n
 
 export interface City {
   pop: number; stock: Stock; sat: number; foodSat: number; tier: number;
+  /** jour du dernier pillage (une ville pillée n'est pas reprise pour cible pendant un an) */
+  pillaged?: number;
   /** consommation du mois en cours : quantités voulues et réellement mangées (au jour le jour) */
   want?: Stock; ate?: Stock;
   /** effet des merveilles proches sur la consommation (1 = aucun) */
@@ -128,6 +130,8 @@ export interface Faction {
   era?: number;
   /** plus aucune ville : soumis au joueur ou détruit */
   dead?: boolean;
+  /** Vikings : bandes de pillards sans ville (avant leur installation), nombre de raids, siège de Paris déjà lancé */
+  raider?: boolean; raids?: number; paris?: boolean;
   /** économie complète du rival (bâtiments, routes, lignes, véhicules), simulée comme celle du joueur */
   eco?: GameState;
 }

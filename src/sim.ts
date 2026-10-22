@@ -2,13 +2,14 @@
 import {
   ANCIENT, BUILD, EVENTS, SPARE_NAMES, IMPORT_MULT, LOCAL_SALE, SEA_PARTNERS, type SeaPartner, LEVEL_COST, LEVEL_MONEY, LEVEL_DAYS, LEVEL_MULT, OBJECTIVES, PARTNERS, RES, START_MONEY, START_STOCK,
   START_YEAR, TECHS, TIERS, RHINE, LAST_CHAPTER, ROAD_WEAR_YEARS, CITY_BUILD_RANGE, VEH, WAGE, WATER_RANGE, WORK_RANGE, WORK_RANGES, type BType, type ResId, type VType,
-  RP_TIER,
+  RP_TIER, HUNDRED_YEARS, CHEVAUCHEES,
 } from './defs';
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
 import { depOwner, monthlyRivals, rivalAt, rivalTooClose } from './rivals';
 import { monthlyWar, warStep } from './war';
-import { stepRivals } from './rivalai';
+import { stepRivals, syncView } from './rivalai';
+import { monthlyVikings } from './vikings';
 import { monthlyDiplomacy, tavernAccepts, tavernSell, tradeFaction } from './diplomacy';
 import { addFlow, cargoTotal, type Building, type GameState, type Stock, type Vehicle } from './state';
 
@@ -311,7 +312,7 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
   if (b.type === 'taverne' && b.built) return tavernAccepts(s, b, res);
   if (b.type === 'comptoir') {
     const p = SEA_PARTNERS.find(x => x.id === b.sp);
-    if (!p || !p.buys.includes(res) || seaClosed(s)) return 0;
+    if (!p || !p.buys.includes(res) || seaClosed(s) || partnerMods(s, 'mer:' + p.id).closed) return 0;
     return Math.max(0, seaVolume(s, p) - (s.stats.soldMonth['mer:' + p.id] ?? 0));
   }
   // chantier : accepte les matériaux qui lui manquent encore (livrés par une ligne)
@@ -428,7 +429,7 @@ export function seaVolume(s: GameState, p: SeaPartner) {
   return Math.round(p.volume * (s.techs.includes('monnaie') ? 2 : 1) * (1 + 0.25 * phares) * (s.techs.includes('hanse') ? 1.5 : 1));
 }
 export function seaPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
-  void b; return RES[res].price * p.mult * (s.market['mer:' + p.id + ':' + res] ?? 1) * (s.techs.includes('negoce') ? 1.2 : 1) * (s.techs.includes('lettre_change') ? 1.15 : 1) * priceMult(s);
+  void b; return RES[res].price * p.mult * (s.market['mer:' + p.id + ':' + res] ?? 1) * partnerMods(s, 'mer:' + p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1) * (s.techs.includes('lettre_change') ? 1.15 : 1) * priceMult(s);
 }
 /** Prix d'une importation par la mer (toujours plus cher que ce que le partenaire rachète) */
 export function seaImportPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
@@ -438,6 +439,7 @@ export function seaImportPrice(s: GameState, b: Building, p: SeaPartner, res: Re
 export function buySea(s: GameState, b: Building, pid: string, res: ResId, qty: number): string | null {
   const p = SEA_PARTNERS.find(x => x.id === pid)!;
   if (seaClosed(s)) return 'Le commerce d\'outre-mer est interrompu depuis la chute de Rome.';
+  if (partnerMods(s, 'mer:' + p.id).closed) return 'Ce comptoir est fermé pour le moment (guerre).';
   const room = BUILD[b.type].storage * b.level - Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
   qty = Math.min(qty, Math.floor(room));
   if (qty <= 0) return b.type === 'comptoir' ? 'Le comptoir est plein : envoie un navire chercher les marchandises.' : 'Le port est plein.';
@@ -858,8 +860,9 @@ export class Sim {
       this.objectives();
       const y = year(s);
       EVENTS.forEach((e, i) => {
-        if (s.events.includes(i) || e.year > y) return;
+        if (s.events.includes(i) || e.year > y || (e.era && s.era < e.era)) return;
         s.events.push(i);
+        if (e.era && y - e.year > 30) return;
         for (const f of e.effects) if (f.kind === 'rp') s.rp += f.amount;
       });
       return;
@@ -868,6 +871,7 @@ export class Sim {
     monthlyRivals(s, this.geo);
     monthlyDiplomacy(s, this.notify);
     monthlyWar(s, this.notify);
+    monthlyVikings(s, this.geo, this.notify);
     this.events();
     this.randomEvents();
 
@@ -936,8 +940,15 @@ export class Sim {
   events() {
     const s = this.s, y = year(s);
     EVENTS.forEach((e, i) => {
-      if (s.events.includes(i) || e.year > y) return;
+      if (s.events.includes(i) || e.year > y || (e.era && s.era < e.era)) return;
       s.events.push(i);
+      // chapitre commencé tard : les événements de plus de 30 ans sont passés sans toi
+      if (e.era && y - e.year > 30) return;
+      // au Moyen Âge, épidémies, saignées et chevauchées frappent aussi les rivaux
+      if (e.era && e.era >= 3) for (const f of e.effects) {
+        if (f.kind === 'pop' || f.kind === 'plague') hitRivals(s, f.mult);
+        else if (f.kind === 'raid' && f.lon !== undefined) hitRivals(s, 0.92, this.geo.proj(f.lon, f.lat!), f.range);
+      }
       for (const f of e.effects) {
         if (f.kind === 'money') s.money += f.amount;
         else if (f.kind === 'rp') s.rp += f.amount;
@@ -950,6 +961,10 @@ export class Sim {
         else if (f.kind === 'prod') s.mods.push({ kind: 'prod', mult: f.mult, res: f.res, until: s.day + f.months * MONTH });
         else if (f.kind === 'prices') s.mods.push({ kind: 'prices', mult: f.mult, until: s.day + f.months * MONTH });
         else if (f.kind === 'raid') this.raid(f.share, f.range, f.rhin ? undefined : this.geo.proj(f.lon!, f.lat!));
+        else if (f.kind === 'plague') for (const c of cities(s)) {
+          const cared = s.buildings.some(b => b.type === 'hotel_dieu' && b.built && !b.damaged && Math.hypot(b.x - c.x, b.y - c.y) <= (BUILD.hotel_dieu.effect!.range ?? 8));
+          c.city!.pop = Math.max(20, c.city!.pop * (cared ? f.cared : f.mult));
+        }
         else if (f.kind === 'revolt') {
           const ws = s.buildings.filter(b => b.built && !b.damaged && BUILD[b.type].recipe).sort(() => Math.random() - 0.5).slice(0, f.count);
           for (const b of ws) { b.halted = s.day + f.months * MONTH; b.haltWhy = 'révolte'; }
@@ -982,6 +997,14 @@ export class Sim {
     }
     // crise du IIIe siècle : raids barbares imprévisibles sur le Rhin
     const y = year(s);
+    // guerre de Cent Ans : chevauchées anglaises dans l'ouest et le nord
+    if (s.era >= 3 && y > HUNDRED_YEARS[0] && y < HUNDRED_YEARS[1] && Math.random() < 0.02) {
+      const ch = CHEVAUCHEES[Math.floor(Math.random() * CHEVAUCHEES.length)], at = this.geo.proj(ch.at[0], ch.at[1]);
+      const n = this.raid(0.25, 70, at);
+      hitRivals(s, 0.95, at, 70);
+      if (n) this.notify.event(`${y} — Chevauchée anglaise`, `Une armée anglaise ravage le pays ${ch.name} : ${n} bâtiment${n > 1 ? 's' : ''} sans protection endommagé${n > 1 ? 's' : ''}. Un château fort protège tout ce qui est à moins de 30 km.`);
+      else s.log.unshift({ day: s.day, text: `Chevauchée anglaise ${ch.name}.` });
+    }
     if (s.era >= 2 && y >= 235 && y <= 284 && Math.random() < 0.03) {
       const n = this.raid(0.2, 80);
       if (n) this.notify.event(`${y} — Raid barbare`, `Une bande de Francs ou d'Alamans franchit le Rhin : ${n} bâtiment${n > 1 ? 's' : ''} sans remparts endommagé${n > 1 ? 's' : ''}. Répare-les depuis leur fiche.`);
@@ -1043,6 +1066,14 @@ export function fallOfRome(s: GameState) {
   s.log.unshift({ day: s.day, text: 'Chute de Rome : les villes se vident, le commerce d\'outre-mer s\'arrête pour 50 ans et les routes ne sont plus entretenues.' });
 }
 /** Commerce d'outre-mer fermé (chute de Rome) */
+/** Événement du Moyen Âge chez les rivaux : leurs villes (toutes, ou celles d'une zone) perdent des habitants */
+export function hitRivals(s: GameState, mult: number, at?: [number, number], range = 0) {
+  for (const f of s.factions ?? []) {
+    if (!f.eco || f.dead) continue;
+    for (const c of cities(f.eco)) if (!at || Math.hypot(c.x - at[0], c.y - at[1]) <= range) c.city!.pop = Math.max(20, c.city!.pop * mult);
+    syncView(s, f);
+  }
+}
 export const seaClosed = (s: GameState) => !s.techs.includes('hanse') && s.mods.some(m => m.kind === 'closed' && m.partner === 'mer' && m.until > s.day);
 /** Au Moyen Âge, les routes s'abîment ; celles qu'un relais routier entretient (dans sa portée) sont remises en état */
 export function wearRoads(s: GameState) {
@@ -1141,6 +1172,7 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
   if (b.type === 'comptoir') {
     const p = SEA_PARTNERS.find(x => x.id === b.sp)!, sold = s.stats.soldMonth['mer:' + p.id] ?? 0;
     if (seaClosed(s)) return { label: 'Commerce interrompu', level: 'bad', hint: 'Depuis la chute de Rome, plus aucun navire ne vient commercer (50 ans).' };
+    if (partnerMods(s, 'mer:' + p.id).closed) return { label: 'Fermé (guerre)', level: 'bad', hint: 'La guerre de Cent Ans coupe ce commerce jusqu\'à la paix.' };
     return sold >= seaVolume(s, p) ? { label: 'Volume du mois atteint', level: 'info' } : { label: 'Route maritime ouverte', level: 'good' };
   }
   if ((!b.built || b.upgrading) && b.paused) return { label: 'Chantier en pause', level: 'info', hint: 'Les livraisons et les travaux sont suspendus.' };
