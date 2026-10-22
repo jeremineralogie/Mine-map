@@ -14,7 +14,7 @@ import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSel
 import { addEdge, addNode, findPath, nodeById, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
 import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
-  hasTech, levelAllowed, relaisMult, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year,
+  hasTech, levelAllowed, relaisMult, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year, vehCap, vehSpeed,
 } from './sim';
 import { SAVE_KEY, cargoTotal, migrate, type Building, type Edge, type GameState, type Line, type RNode, type Stock } from './state';
 
@@ -137,7 +137,16 @@ export class Game {
         ${item('Commerce d\'outre-mer', 'plus aucun navire pendant 50 ans ; les postes-frontières restent ouverts')}
         ${item('Routes', 'elles ne sont plus entretenues : une route s\'abîme peu à peu et ralentit les véhicules (jusqu\'à moitié). Un relais routier entretient et répare les routes à moins de 30 km')}</ul>
       ${this.s.factions?.length ? `<h3>Tes rivaux</h3><p>Les grandes familles romaines deviennent des maisons médiévales (duchés, comtés) quand elles entrent à leur tour dans le Moyen Âge.</p>` : ''}
-      <p class="muted">Les nouvelles productions, les nouveaux paliers de villes et l'arbre de recherche du Moyen Âge arrivent dans une prochaine version.</p>`,
+      <h3>Nouvelles productions</h3><ul class="intro">
+        ${item('Farine et planches', 'moulins à eau et scieries au bord de l\'eau, puis moulins à vent partout')}
+        ${item('Viande et bière', 'élevages (nourris au grain) et brasseries')}
+        ${item('Granite, ardoise, or et argent', 'carrières de granite, ardoisières et mines d\'or sur leurs gisements')}</ul>
+      <h3>Villes</h3><ul class="intro">
+        ${item('Trois nouveaux paliers', 'Bourg franc (25 000 habitants) : farine et viande · Cité épiscopale (40 000) : planches et bière · Ville royale (60 000) : ardoise, or et argent')}
+        ${item('Monastères, halles, hôtels-Dieu', 'recherche, droits de marché et croissance')}
+        ${item('Châteaux forts', 'protègent des invasions les bâtiments à moins de 30 km')}
+        ${item('Foire de Champagne', 'une seule : elle rapporte des droits sur toutes tes villes à moins de 200 km')}</ul>
+      <p class="muted">Les invasions, les grands événements et Notre-Dame de Paris arrivent dans une prochaine version.</p>`,
       [{ label: 'Continuer', primary: true }]);
   }
   /** Ouverture du chapitre II : résumé de ce qui se débloque */
@@ -691,7 +700,7 @@ export class Game {
       const st = { go: 'En route', load: 'Chargement', unload: 'Déchargement', lost: 'Aucun itinéraire !', parked: 'À l\'arrêt (ligne en pause)' }[v.state];
       return `<h2><img class="ic" src="${vIconUrl(v.type)}">${VEH[v.type].name}</h2>
         ${l ? this.lineCard(l) : `<p>Convoi de chantier vers <b>${esc(getB(s, v.target!)?.name ?? '?')}</b></p>`}
-        <p>État : <b>${st}</b></p><p>Chargement (${fmt(cargoTotal(v.cargo))} / ${VEH[v.type].cap} t) : ${cargoList(v.cargo) || '<span class="muted">vide</span>'}</p>
+        <p>État : <b>${st}</b></p><p>Chargement (${fmt(cargoTotal(v.cargo))} / ${vehCap(s, v.type)} t) : ${cargoList(v.cargo) || '<span class="muted">vide</span>'}</p>
         ${l ? `<p>Recettes : <b>${fmt(v.income)}</b> sesterces</p><button data-act="sellv" data-id="${v.id}">Vendre (${fmt(VEH[v.type].price / 2)})</button> <button data-act="line" data-id="${l.id}">Voir la ligne</button>` : ''}`;
     }
     const e = s.edges.find(x => x.id === sel.id); if (!e) return '';
@@ -874,7 +883,7 @@ export class Game {
       }).join('')}</div>`;
       if (next) {
         const cur = tierGoods(c.tier, s.era), newGoods = tierGoods(c.tier + 1, s.era).filter(r => !cur.includes(r));
-        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()}, la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}${c.tier + 1 === 5 && !s.techs.includes('capitales') ? ' — et il faut la technologie Capitales provinciales' : ''}</p>`;
+        h += `<p class="muted">Pour devenir ${next.name.toLowerCase()}, la ville devra aussi recevoir : ${newGoods.map(r => resChip(r)).join(' ')}${c.tier + 1 === 5 && !s.techs.includes('capitales') ? ' — et il faut la technologie Capitales provinciales' : ''}${c.tier + 1 >= 6 && s.era < 3 ? ' — au Moyen Âge (chapitre III)' : ''}</p>`;
       }
     }
 
@@ -1002,7 +1011,7 @@ export class Game {
         <div class="lc-st-qty"><small class="muted">Mois dernier :</small> ${moved.length ? moved.map(([r, q]) => `${resIcon(r)}<b>${fmt(q)} t</b>`).join(' ') : '<small class="muted">rien</small>'}</div>
         <div class="lc-st-qty"><small class="muted">Total ${verb} :</small> ${tot.length ? tot.map(([r, q]) => `${resIcon(r)}<b>${fmt(q)} t</b>`).join(' ') : '<small class="muted">rien encore</small>'}</div></div></li>`;
     }).join('');
-    const cap = VEH[l.vtype].cap * vs.length;
+    const cap = vehCap(s, l.vtype) * vs.length;
     return `<div class="linebox" style="--lc:${l.color}" data-line="${l.id}">
       <button class="linecard lc-top" data-act="line" data-id="${l.id}" style="--lc:${l.color}">
         <span class="lc-head"><i class="dot" style="background:${l.color}"></i><b>${esc(this.lineLabel(l))}</b>${l.paused ? '<span class="pill info">En pause</span>' : ''}<span class="lc-edit">Modifier ›</span></span>
@@ -1051,7 +1060,7 @@ export class Game {
         const sugg = b ? this.suggestRes(b) : [];
         const others = (Object.keys(RES) as ResId[]).filter(r => RES[r].era <= s.era && r !== 'eau' && !st.res.includes(r));
         const opt = (r: ResId) => `<option value="${r}">${RES[r].name}${b && (b.stock[r] ?? 0) >= 1 ? ` (${fmt(b.stock[r]!)} en stock)` : ''}</option>`;
-        const cap = VEH[l.vtype].cap, sum = st.res.reduce((a, r) => a + (st.pct?.[r] ?? 0), 0);
+        const cap = vehCap(s, l.vtype), sum = st.res.reduce((a, r) => a + (st.pct?.[r] ?? 0), 0);
         const pctSel = (r: ResId) => { const p = st.pct?.[r] ?? 0; return `<select class="pct" data-field="pct" data-i="${i}" data-r="${r}" title="Part du véhicule"><option value="0" ${p ? '' : 'selected'}>libre</option>${[10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100].map(v => `<option value="${v}" ${p === v ? 'selected' : ''}>${v} % (${fmt(Math.max(1, Math.round(cap * v / 100)))} t)</option>`).join('')}</select>`; };
         what = `<div class="loadres">${st.res.map(r => `<div class="lr">${resChip(r)}${pctSel(r)}<button class="x" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">✕</button></div>`).join('') || '<small class="warn">choisis au moins une ressource</small>'}</div>
           ${sum > 100 ? '<small class="warn">Le total dépasse 100 % : la place manquera pour tout charger.</small>' : ''}
@@ -1082,7 +1091,7 @@ export class Game {
     return `<h2><i class="dot" style="background:${l.color}"></i><input class="name" data-field="lname" value="${esc(l.name)}" placeholder="${esc(this.lineLabel({ ...l, name: '' }))}"></h2>
       ${l.stops.length >= 2 ? `<p class="route big"><span class="stopTag start">Départ</span>${esc(this.short(l.stops[0].bid))}<span class="arrow">→</span><span class="stopTag end">Arrivée</span>${esc(this.short(l.stops[l.stops.length - 1].bid))}</p>` : ''}
       <p class="muted">Le véhicule fait le tour des arrêts dans l'ordre, puis revient au départ. Il peut transporter plusieurs matériaux à la fois, dans la limite de sa capacité.</p>
-      <p>Véhicule : <select data-field="vtype">${vtypes.map(t => `<option value="${t}" ${l.vtype === t ? 'selected' : ''}>${VEH[t].name} (${VEH[t].cap} t, ${VEH[t].speed} km/j)</option>`).join('')}</select></p>
+      <p>Véhicule : <select data-field="vtype">${vtypes.map(t => `<option value="${t}" ${l.vtype === t ? 'selected' : ''}>${VEH[t].name} (${vehCap(s, t)} t, ${fmt(vehSpeed(s, t))} km/j)</option>`).join('')}</select></p>
       <h3>Arrêts <small class="muted">— glisse ⠿ pour changer l'ordre</small></h3>${stops || '<p class="muted">Ajoute au moins deux arrêts.</p>'}
       <div class="actions"><button data-act="pickstop">+ Ajouter un arrêt sur la carte</button></div>
       <h3>Véhicules (${vs.length})</h3>

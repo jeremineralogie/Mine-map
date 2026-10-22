@@ -38,10 +38,15 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
   Moyen Âge quand ils ont fini l'arbre du chapitre II (et au plus tôt en 426) : ils subissent aussi la chute de
   Rome et deviennent la grande maison médiévale la plus proche de leur capitale (Ducs de Bourgogne, Comtes de
   Toulouse, Ducs d'Aquitaine, Ducs de Lorraine…) ; ils bâtissent un relais près de chaque ville.
-- *Étape 2* : ressources (granite, ardoise, viande, planches, or et argent, farine, bière), bâtiments (moulins,
+- *Étape 2 (faite)* : ressources (granite, ardoise, viande, planches, or et argent, farine, bière), bâtiments (moulins,
   scierie, élevage, brasserie, monastère, château fort, halle, hôtel-Dieu, foire de Champagne), trois paliers de
   villes (Bourg franc 25 000 : farine, viande ; Cité épiscopale 40 000 : planches, bière ; Ville royale 60 000 :
-  ardoise, or et argent) et l'arbre de recherche.
+  ardoise, or et argent) et l'arbre de recherche (16 technologies : collier d'épaule +30 % de charge sur route,
+  coche d'eau +25 % de vitesse sur les fleuves, gouvernail d'étambot +30 % de charge en mer, charrue lourde et
+  assolement triennal +20 % de céréales chacun, haut fourneau +50 % de fer, lettre de change +15 % sur les ventes
+  à l'étranger, Hanse : rouvre le commerce d'outre-mer, volume +50 %). Halle : 1 sesterce/mois pour 100 habitants
+  de sa ville ; Foire de Champagne (une seule) : 1 sesterce/mois pour 200 habitants à moins de 200 km. Les paliers
+  médiévaux ne s'atteignent qu'au chapitre III.
 - *Étape 3* : événements (Vikings : cinquième faction qui pille, puis s'installe ou conquiert une ville sur les
   côtes et les fleuves, avec sa propre économie ; croisades ; peste noire ; guerre de Cent Ans).
 - *Étape 4* : Notre-Dame de Paris, merveille de fin de chapitre (avec l'arbre complet et la date ≥ 1403).
@@ -218,5 +223,5 @@ peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré /
 1. Chapitre I (Antiquité romaine) : fait.
 2. Chapitre II (Gaule romaine) : fait.
 3. Rivaux, diplomatie et guerre : fait.
-4. Chapitre III (Moyen Âge) : en cours (étape 1 faite). ← *prochaine étape : étape 2*
+4. Chapitre III (Moyen Âge) : en cours (étapes 1 et 2 faites). ← *prochaine étape : étape 3*
 5. Chapitres IV à VI.

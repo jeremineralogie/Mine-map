@@ -413,7 +413,7 @@ function build(s: GameState, f: Faction, geo: Geo, t: BType, x: number, y: numbe
   const eco = f.eco!;
   if (!placer?.free(f, x, y)) return null;
   const chk = checkPlace(eco, geo, t, x, y);
-  if (!chk.ok) return null;
+  if (!chk.ok || (Object.keys(BUILD[t].cost) as ResId[]).some(r => !canGet(eco, r))) return null;
   if (eco.money < buildMoney(eco, t) + 150) return null;
   const b = place(eco, geo, t, x, y, name ?? (t === 'village' ? placer.cityName(x, y) : `${BUILD[t].name}${chk.depName && BUILD[t].deposit ? ' — ' + chk.depName : ''}`));
   if (!connect(f, geo, b)) { demolish(eco, b); eco.money += buildMoney(eco, t); return null; }
@@ -445,6 +445,9 @@ function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok'
   if (!cs.length || !placer) return 'none';
   for (const t of producersOf(eco, r)) {
     const d = BUILD[t];
+    // un matériau de chantier qu'il n'a pas (des planches pour un élevage…) : il installe d'abord de quoi le produire
+    const lack = (Object.keys(d.cost) as ResId[]).find(i => !canGet(eco, i));
+    if (lack) { if (depth < 2) { const sub = tryBuild(s, f, geo, lack, depth + 1); if (sub !== 'none') return sub; } continue; }
     if (!d.deposit) {
       // atelier de transformation : seulement s'il produit déjà ses matières (sauf les biens de base, achetables)
       const miss = (Object.keys(d.recipe!.in) as ResId[]).find(i => !ROME_SELLS.includes(i) && !eco.buildings.some(b => BUILD[b.type].recipe?.out[i]));

@@ -7,7 +7,8 @@ export type ResId =
   | 'cereales' | 'poisson' | 'viande' | 'vin' | 'huile' | 'garum' | 'laine' | 'tissus' | 'sigillee' | 'marbre'
   | 'planches' | 'briques' | 'chaux' | 'ciment' | 'beton' | 'verre' | 'fer' | 'acier' | 'bronze' | 'aluminium'
   | 'carburant' | 'plastique' | 'porcelaine' | 'engrais'
-  | 'outils' | 'machines' | 'rails' | 'vehicules' | 'electronique';
+  | 'outils' | 'machines' | 'rails' | 'vehicules' | 'electronique'
+  | 'farine' | 'biere';
 
 export interface ResDef { name: string; color: string; era: number; price: number; }
 
@@ -41,6 +42,8 @@ export const RES: Record<ResId, ResDef> = {
   viande: { name: 'Viande', color: '#a93226', era: 3, price: 12 },
   vin: { name: 'Vin', color: '#7b2346', era: 2, price: 20 },
   planches: { name: 'Planches', color: '#c19a6b', era: 3, price: 10 },
+  farine: { name: 'Farine', color: '#f3e9d2', era: 3, price: 10 },
+  biere: { name: 'Bière', color: '#d4a017', era: 3, price: 16 },
   briques: { name: 'Briques et tuiles', color: '#c0583a', era: 1, price: 14 },
   chaux: { name: 'Chaux', color: '#eeeeee', era: 2, price: 9 },
   ciment: { name: 'Ciment', color: '#a6a6a6', era: 5, price: 15 },
@@ -191,6 +194,9 @@ export type BType =
   | 'vignoble' | 'oliveraie' | 'potier' | 'verrerie' | 'four_chaux' | 'carriere_marbre' | 'pecherie' | 'saloir'
   | 'bergerie' | 'tissage' | 'mine_cuivre' | 'mine_etain' | 'fonderie'
   | 'thermes' | 'amphitheatre' | 'remparts' | 'basilique' | 'relais' | 'phare' | 'arenes'
+  // Moyen Âge (chapitre III)
+  | 'moulin_eau' | 'moulin_vent' | 'scierie' | 'carriere_granite' | 'ardoisiere' | 'elevage' | 'brasserie' | 'mine_or'
+  | 'monastere' | 'chateau_fort' | 'halle' | 'hotel_dieu' | 'foire'
   // Rivaux : diplomatie et guerre
   | 'taverne' | 'caserne';
 
@@ -224,7 +230,9 @@ export interface BDef {
   /** bâtiment de ville : doit être construit à moins de CITY_BUILD_RANGE km d'une ville */
   city?: boolean;
   /** effets d'un bâtiment de service (thermes, remparts, relais…) */
-  effect?: { growth?: number; range?: number; rp?: number; protect?: number; speed?: number; seaVolume?: number };
+  effect?: { growth?: number; range?: number; rp?: number; protect?: number; speed?: number; seaVolume?: number; tax?: number };
+  /** un seul par ville */
+  perCity?: boolean;
 }
 
 export const BUILD: Record<BType, BDef> = {
@@ -275,6 +283,20 @@ export const BUILD: Record<BType, BDef> = {
   phare: { name: 'Phare', desc: 'Guide les navires : volume du commerce maritime +25 % (jusqu\'à deux phares).', era: 2, tech: 'phares', cost: { pierre: 40, chaux: 10 }, money: 350, days: 30, workers: 2, coast: true, storage: 0, maxLevel: 1, effect: { seaVolume: 0.25 } },
   arenes: { name: 'Arènes de Nîmes', desc: 'Le grand amphithéâtre de Nemausus, symbole de l\'âge d\'or de la Gaule romaine. Merveille du chapitre II, nécessaire pour le terminer. Une fois construites : +30 % de croissance pour les villes à moins de 60 km, +1 point de recherche par mois et un revenu des jeux.', era: 2, tech: 'spectacles', cost: { pierre: 300, chaux: 40, marbre: 15 }, money: 2500, days: 120, workers: 0, storage: 0, maxLevel: 1, unique: true, site: [4.359, 43.835],
     wonder: { range: 60, needMult: 1, prodRange: 0, prodMult: 1, prodTypes: [], growth: 1.3, rp: 1, games: 0.02 } },
+  // ---- Moyen Âge (chapitre III) ----
+  moulin_eau: { name: 'Moulin à eau', desc: 'La roue du moulin moud les céréales en farine. Au bord d\'un fleuve, d\'un lac ou de la côte.', era: 3, tech: 'moulin_hydraulique', cost: { bois: 25, pierre: 10 }, money: 150, days: 20, workers: 3, needsWater: true, recipe: { in: { cereales: 6 }, out: { farine: 5 } }, storage: 60, maxLevel: 3, upgrade: { bois: 15, pierre: 10 } },
+  moulin_vent: { name: 'Moulin à vent', desc: 'Moud les céréales en farine, n\'importe où : il n\'a pas besoin d\'eau.', era: 3, tech: 'moulin_vent', cost: { bois: 25, pierre: 10 }, money: 140, days: 18, workers: 2, recipe: { in: { cereales: 5 }, out: { farine: 4 } }, storage: 50, maxLevel: 3, upgrade: { bois: 10, planches: 10 } },
+  scierie: { name: 'Scierie', desc: 'Une roue à eau actionne la scie : le bois devient des planches. A besoin d\'eau.', era: 3, tech: 'moulin_hydraulique', cost: { bois: 15, pierre: 15 }, money: 160, days: 18, workers: 4, needsWater: true, recipe: { in: { bois: 5 }, out: { planches: 4 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 10, planches: 10 } },
+  carriere_granite: { name: 'Carrière de granite', desc: 'Extrait le granite dur des châteaux forts (Bretagne, Limousin, Sidobre, Corse).', era: 3, tech: 'chateaux_forts', cost: { bois: 15, outils: 2 }, money: 150, days: 20, workers: 7, deposit: 'granite', recipe: { in: {}, out: { granite: 5 } }, storage: 60, maxLevel: 3, upgrade: { pierre: 10, outils: 2 } },
+  ardoisiere: { name: 'Ardoisière', desc: 'Fend l\'ardoise des toits (Anjou, Ardennes, Pyrénées).', era: 3, tech: 'art_roman', cost: { bois: 15, outils: 2 }, money: 150, days: 20, workers: 6, deposit: 'ardoise', recipe: { in: {}, out: { ardoise: 4 } }, storage: 60, maxLevel: 3, upgrade: { planches: 10, outils: 2 } },
+  elevage: { name: 'Élevage', desc: 'Bœufs et porcs nourris au grain : de la viande pour les villes. N\'importe où.', era: 3, tech: 'assolement', cost: { bois: 15, pierre: 5 }, money: 100, days: 12, workers: 3, recipe: { in: { cereales: 2 }, out: { viande: 4 } }, storage: 60, maxLevel: 3, upgrade: { bois: 10, planches: 8 } },
+  brasserie: { name: 'Brasserie', desc: 'Brasse la bière avec les céréales, comme dans les abbayes. A besoin d\'eau.', era: 3, tech: 'monasteres', cost: { pierre: 15, planches: 10 }, money: 180, days: 20, workers: 4, needsWater: true, recipe: { in: { cereales: 4 }, out: { biere: 3 } }, storage: 50, maxLevel: 3, upgrade: { pierre: 10, planches: 10 } },
+  mine_or: { name: 'Mine d\'or et d\'argent', desc: 'Extrait l\'or et l\'argent de la monnaie (Salsigne, Le Châtelet). Rare et très précieux.', era: 3, tech: 'lettre_change', cost: { bois: 25, pierre: 15, outils: 3 }, money: 400, days: 30, workers: 10, deposit: 'or', recipe: { in: {}, out: { or: 1 } }, storage: 30, maxLevel: 3, upgrade: { planches: 15, outils: 3 } },
+  monastere: { name: 'Monastère', desc: 'Abbaye où les moines copient les livres : +0,4 point de recherche par mois. N\'importe où, même loin des villes.', era: 3, tech: 'monasteres', cost: { pierre: 40, bois: 20, briques: 10 }, money: 400, days: 40, workers: 2, storage: 0, maxLevel: 1, effect: { rp: 0.4 } },
+  chateau_fort: { name: 'Château fort', desc: 'Donjon et murailles de granite : protège des invasions tous les bâtiments à moins de 30 km.', era: 3, tech: 'chateaux_forts', cost: { pierre: 40, granite: 40, bois: 20 }, money: 700, days: 60, workers: 0, storage: 0, maxLevel: 1, city: true, effect: { protect: 30 } },
+  halle: { name: 'Halle', desc: 'Marché couvert de la ville : chaque mois, les droits de marché rapportent 1 sesterce pour 100 habitants. Une par ville.', era: 3, tech: 'chartes', cost: { bois: 25, planches: 20, pierre: 10 }, money: 300, days: 25, workers: 2, storage: 0, maxLevel: 1, city: true, perCity: true, effect: { tax: 0.01, range: 8 } },
+  hotel_dieu: { name: 'Hôtel-Dieu', desc: 'Hôpital tenu par les religieux : la ville voisine grandit 20 % plus vite.', era: 3, tech: 'chartes', cost: { pierre: 40, planches: 15 }, money: 400, days: 35, workers: 3, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.2, range: 8 } },
+  foire: { name: 'Foire de Champagne', desc: 'La grande foire où les marchands de toute l\'Europe se retrouvent : chaque mois, elle rapporte 1 sesterce pour 200 habitants de toutes tes villes à moins de 200 km. Une seule.', era: 3, tech: 'foires', cost: { bois: 40, planches: 30, pierre: 30 }, money: 1200, days: 60, workers: 4, storage: 0, maxLevel: 1, city: true, unique: true, effect: { tax: 0.005, range: 200 } },
   // ---- Rivaux : diplomatie et guerre ----
   taverne: { name: 'Taverne', desc: 'Lieu de rencontre des marchands et des émissaires : ouvre la diplomatie avec les rivaux et le commerce avec ceux qui ont signé un accord. Une par ville ; plus elles sont proches d\'un rival, plus les relations progressent.', era: 1, cost: { bois: 20, pierre: 10 }, money: 200, days: 15, workers: 2, storage: 100, maxLevel: 1, city: true },
   caserne: { name: 'Caserne', desc: 'Recrute légionnaires et auxiliaires parmi les habitants de la ville voisine. Les armées se déplacent sur la carte.', era: 2, cost: { pierre: 30, bois: 20 }, money: 400, days: 30, workers: 0, storage: 0, maxLevel: 1, city: true },
@@ -296,16 +318,20 @@ export const TIERS: Tier[] = [
   { name: 'Cité', minPop: 4000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.08, vin: 0.12 } },
   { name: 'Métropole', minPop: 8000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.1, vin: 0.15, huile: 0.06, tissus: 0.05, verre: 0.03 } },
   { name: 'Capitale', minPop: 15000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.04, bronze: 0.01, garum: 0.02, marbre: 0.02 } },
+  // Moyen Âge (chapitre III)
+  { name: 'Bourg franc', minPop: 25000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.04, bronze: 0.01, garum: 0.02, marbre: 0.02, farine: 0.25, viande: 0.08 } },
+  { name: 'Cité épiscopale', minPop: 40000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.04, bronze: 0.01, garum: 0.02, marbre: 0.02, farine: 0.3, viande: 0.1, planches: 0.1, biere: 0.1 } },
+  { name: 'Ville royale', minPop: 60000, needs: { cereales: 0.833, bois: 0.5, pierre: 0.2, sel: 0.05, briques: 0.167, outils: 0.027, plomb: 0.017, sigillee: 0.1, vin: 0.15, huile: 0.08, tissus: 0.06, verre: 0.04, bronze: 0.01, garum: 0.02, marbre: 0.02, farine: 0.3, viande: 0.12, planches: 0.12, biere: 0.12, ardoise: 0.04, or: 0.003 } },
 ];
 /** Points de recherche par mois et par ville, selon son palier */
-export const RP_TIER = [0.12, 0.2, 0.35, 0.6, 0.8, 1.0];
+export const RP_TIER = [0.12, 0.2, 0.35, 0.6, 0.8, 1.0, 1.3, 1.6, 2.0];
 /** Bâtiments de ville (thermes, remparts…) : distance maximale à une ville (km) */
 export const CITY_BUILD_RANGE = 8;
 /** Cours du Rhin, frontière de l'Empire (lon, lat), pour les invasions */
 export const RHINE: [number, number][] = [[7.59, 47.56], [7.55, 48.0], [7.8, 48.58], [8.1, 48.97], [8.45, 49.5], [8.3, 50.0], [7.6, 50.35], [7.0, 50.9], [6.2, 51.8]];
 export const WORK_RANGE = 35;   // km (village) ; le rayon grandit avec la ville
 /** Rayon de main-d'œuvre selon le palier de la ville (village, bourg, ville, cité) */
-export const WORK_RANGES = [30, 40, 55, 70, 80, 90];
+export const WORK_RANGES = [30, 40, 55, 70, 80, 90, 100, 110, 120];
 export const WATER_RANGE = 6;   // km d'un fleuve, lac ou de la côte
 export const WAGE = 0.6;        // sesterces par ouvrier et par mois
 
@@ -447,6 +473,23 @@ export const TECHS: Tech[] = [
   { id: 'spectacles', name: 'Jeux et spectacles', desc: 'Amphithéâtres et Arènes de Nîmes, la merveille du chapitre.', era: 2, cost: 90, req: ['thermes'], branch: 'culture' },
   { id: 'marbriers', name: 'Marbriers', desc: 'Carrières de marbre des Pyrénées.', era: 2, cost: 65, req: [], branch: 'culture' },
   { id: 'christianisme', name: 'Christianisme', desc: 'Basiliques : lieux de culte et de savoir, +0,3 point de recherche par mois chacune.', era: 2, cost: 85, req: ['marbriers'], branch: 'culture' },
+  // ---- Chapitre III : Moyen Âge ----
+  { id: 'collier', name: 'Collier d\'épaule', desc: 'Le cheval tire sans s\'étrangler : charrettes, chariots et convois emportent 30 % de plus.', era: 3, cost: 90, req: [], branch: 'transport' },
+  { id: 'coche_eau', name: 'Coche d\'eau', desc: 'Bateaux halés par des chevaux le long des berges : barges, grandes barges et chalands 25 % plus rapides.', era: 3, cost: 100, req: ['collier'], branch: 'transport' },
+  { id: 'gouvernail', name: 'Gouvernail d\'étambot', desc: 'Le gouvernail fixé à l\'arrière : les navires de mer emportent 30 % de plus.', era: 3, cost: 120, req: ['coche_eau'], branch: 'transport' },
+  { id: 'charrue', name: 'Charrue lourde', desc: 'Le soc de fer retourne les terres lourdes : +20 % de céréales.', era: 3, cost: 80, req: [], branch: 'production' },
+  { id: 'assolement', name: 'Assolement triennal', desc: 'Une terre sur trois au repos, une pour l\'avoine des bêtes : encore +20 % de céréales, et l\'élevage.', era: 3, cost: 100, req: ['charrue'], branch: 'production' },
+  { id: 'moulin_hydraulique', name: 'Moulin hydraulique', desc: 'Moulins à eau (farine) et scieries (planches).', era: 3, cost: 85, req: [], branch: 'production' },
+  { id: 'moulin_vent', name: 'Moulin à vent', desc: 'Moulins à vent : de la farine loin des rivières.', era: 3, cost: 110, req: ['moulin_hydraulique'], branch: 'production' },
+  { id: 'haut_fourneau', name: 'Haut fourneau', desc: 'Les soufflets actionnés par l\'eau : les bas fourneaux produisent 50 % de fer en plus.', era: 3, cost: 130, req: ['moulin_hydraulique'], branch: 'production' },
+  { id: 'chateaux_forts', name: 'Châteaux forts', desc: 'Carrières de granite et châteaux forts, qui protègent les bâtiments à moins de 30 km.', era: 3, cost: 95, req: [], branch: 'cite' },
+  { id: 'chartes', name: 'Chartes communales', desc: 'Les villes s\'administrent elles-mêmes : halles (droits de marché) et hôtels-Dieu (croissance).', era: 3, cost: 115, req: ['chateaux_forts'], branch: 'cite' },
+  { id: 'foires', name: 'Foires', desc: 'La Foire de Champagne, où se croisent les marchands de toute l\'Europe.', era: 3, cost: 110, req: ['chartes'], branch: 'commerce' },
+  { id: 'lettre_change', name: 'Lettre de change', desc: 'Les banquiers paient à distance : ventes à l\'étranger +15 %, et mines d\'or et d\'argent.', era: 3, cost: 130, req: ['foires'], branch: 'commerce' },
+  { id: 'hanse', name: 'Hanse', desc: 'La ligue des marchands du Nord : rouvre aussitôt le commerce d\'outre-mer et augmente son volume de 50 %.', era: 3, cost: 150, req: ['lettre_change', 'gouvernail'], branch: 'commerce' },
+  { id: 'monasteres', name: 'Monastères', desc: 'Abbayes (+0,4 point de recherche par mois) et brasseries.', era: 3, cost: 85, req: [], branch: 'culture' },
+  { id: 'art_roman', name: 'Art roman', desc: 'Les églises se couvrent d\'ardoise : ardoisières.', era: 3, cost: 105, req: ['monasteres'], branch: 'culture' },
+  { id: 'art_gothique', name: 'Art gothique', desc: 'Voûtes d\'ogives et vitraux : les grandes cathédrales (Notre-Dame de Paris arrive dans une prochaine version).', era: 3, cost: 140, req: ['art_roman', 'chartes'], branch: 'culture' },
 ];
 
 // ---- Objectifs du chapitre I ----

@@ -68,6 +68,13 @@ export const getB = (s: GameState, id: number) => s.buildings.find(b => b.id ===
 export const isStore = (b: Building) => b.type === 'entrepot' || b.type === 'port' || b.type === 'port_mer';
 export const cities = (s: GameState) => s.buildings.filter(b => b.type === 'village' && b.built && b.city);
 
+/** Technologies du Moyen Âge qui augmentent une production (charrue lourde, assolement triennal, haut fourneau) */
+export function medievalMult(s: GameState, r: ResId) {
+  if (r === 'cereales') return (s.techs.includes('charrue') ? 1.2 : 1) * (s.techs.includes('assolement') ? 1.2 : 1);
+  if (r === 'fer') return s.techs.includes('haut_fourneau') ? 1.5 : 1;
+  return 1;
+}
+
 // ---------- Placement ----------
 export interface PlaceCheck { ok: boolean; reason?: string; rich?: number; depName?: string; water?: boolean; }
 
@@ -84,6 +91,9 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
     if (Math.hypot(sx - x, sy - y) > 6) return { ok: false, reason: 'Ce monument doit être bâti sur son site historique (marqué sur la carte).' };
     if (s.buildings.some(b => b.type === type)) return { ok: false, reason: 'Déjà construit.' };
   }
+  if (d.unique && s.buildings.some(b => b.type === type)) return { ok: false, reason: `${d.name} : il n'y en a qu'une, déjà construite.` };
+  if (d.perCity && s.buildings.some(b => b.type === type && Math.hypot(b.x - x, b.y - y) < 2 * CITY_BUILD_RANGE))
+    return { ok: false, reason: `${d.name} : une seule par ville, il y en a déjà une tout près.` };
   if (s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 2.5) || rivalTooClose(s, x, y)) return { ok: false, reason: 'Trop près d\'un autre bâtiment.' };
   // territoire d'un rival : on ne peut pas y construire (sauf alliance, plus tard à la taverne)
   const owner = rivalAt(s, x, y);
@@ -235,7 +245,7 @@ function partnerMods(s: GameState, pid: string) {
 }
 export function priceAt(s: GameState, b: Building, res: ResId) {
   const base = RES[res].price * (s.market[b.id + ':' + res] ?? 1) * priceMult(s);
-  if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1); }
+  if (b.partner) { const p = PARTNERS.find(x => x.id === b.partner)!; return base * p.mult * partnerMods(s, p.id).mult * (s.techs.includes('negoce') ? 1.2 : 1) * (s.techs.includes('lettre_change') ? 1.15 : 1); }
   return base * (1 + 0.1 * (b.city?.tier ?? 0)) * demandMult(s, res);
 }
 /** Merveilles construites dont le rayon couvre ce point */
@@ -278,7 +288,7 @@ export function tierGoods(tier: number, _era?: number): ResId[] {
   return Object.keys(TIERS[tier]?.needs ?? {}) as ResId[];
 }
 /** Le palier suivant est-il accessible ? (la capitale demande une technologie) */
-export const tierAllowed = (s: GameState, tier: number) => tier < 5 || s.techs.includes('capitales');
+export const tierAllowed = (s: GameState, tier: number) => (tier < 5 || s.techs.includes('capitales')) && (tier < 6 || s.era >= 3);
 /** Quantité qu'un bâtiment accepte de recevoir */
 export function accepts(s: GameState, b: Building, res: ResId): number {
   const d = BUILD[b.type];
@@ -415,10 +425,10 @@ export function seaPartnersOf(s: GameState, b: Building): SeaPartner[] {
 }
 export function seaVolume(s: GameState, p: SeaPartner) {
   const phares = Math.min(2, s.buildings.filter(b => b.type === 'phare' && b.built).length);
-  return Math.round(p.volume * (s.techs.includes('monnaie') ? 2 : 1) * (1 + 0.25 * phares));
+  return Math.round(p.volume * (s.techs.includes('monnaie') ? 2 : 1) * (1 + 0.25 * phares) * (s.techs.includes('hanse') ? 1.5 : 1));
 }
 export function seaPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
-  void b; return RES[res].price * p.mult * (s.market['mer:' + p.id + ':' + res] ?? 1) * (s.techs.includes('negoce') ? 1.2 : 1) * priceMult(s);
+  void b; return RES[res].price * p.mult * (s.market['mer:' + p.id + ':' + res] ?? 1) * (s.techs.includes('negoce') ? 1.2 : 1) * (s.techs.includes('lettre_change') ? 1.15 : 1) * priceMult(s);
 }
 /** Prix d'une importation par la mer (toujours plus cher que ce que le partenaire rachète) */
 export function seaImportPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
@@ -543,7 +553,7 @@ export class Sim {
       if (!w || !path) continue;
       const type: VType = boat ? 'chaland' : 'convoi';
       const r = missing.find(x => (w!.stock[x] ?? 0) >= 1)!;
-      const qty = Math.min(VEH[type].cap, Math.floor(w.stock[r]!), Math.ceil(site.need[r]! - (site.incoming[r] ?? 0)));
+      const qty = Math.min(vehCap(s, type), Math.floor(w.stock[r]!), Math.ceil(site.need[r]! - (site.incoming[r] ?? 0)));
       if (qty <= 0) continue;
       w.stock[r]! -= qty; addFlow(w, 'out', r, qty);
       site.incoming[r] = (site.incoming[r] ?? 0) + qty;
@@ -569,7 +579,8 @@ export class Sim {
     const staffRatio = need ? Math.min(b.staff, need) / need + 0.5 * Math.max(0, b.staff - need) / need : 1;
     const out = Object.values(d.recipe.out)[0]!;
     const event = prodMult(this.s, Object.keys(d.recipe.out)[0] as ResId);
-    const skilled = event * (this.s.techs.includes('ouvrier_qualifie') && (d.deposit === 'bois' || d.deposit === 'pierre' || d.deposit === 'cereales') ? 1.2 : 1);
+    const skilled = event * (this.s.techs.includes('ouvrier_qualifie') && (d.deposit === 'bois' || d.deposit === 'pierre' || d.deposit === 'cereales') ? 1.2 : 1)
+      * medievalMult(this.s, Object.keys(d.recipe.out)[0] as ResId);
     return out * LEVEL_MULT[b.level] * staffRatio * skilled * wonderProdMult(this.s, b) * (d.deposit ? this.depositFactor(b) : 1);
   }
   production(dt: number) {
@@ -629,7 +640,7 @@ export class Sim {
       v.timer -= dt; if (v.timer > 0) return;
       if (!this.route(v)) { v.timer = 2; return; }
     }
-    let travel = VEH[v.type].speed * dt * (VEH[v.type].water || VEH[v.type].sea ? 1 : relaisMult(this.s, v.x, v.y));
+    let travel = vehSpeed(this.s, v.type) * dt * (VEH[v.type].water || VEH[v.type].sea ? 1 : relaisMult(this.s, v.x, v.y));
     while (travel > 0 && v.seg < v.path.length - 1) {
       const a = v.path[v.seg], b = v.path[v.seg + 1];
       const L = Math.hypot(b.x - a.x, b.y - a.y), sp = v.speeds[v.seg] ?? 1;
@@ -708,7 +719,7 @@ export class Sim {
     const b = getB(s, st.bid);
     if (!b) { this.next(v); return; }
     v.timer += dt;
-    const cap = VEH[v.type].cap;
+    const cap = vehCap(s, v.type);
     if (v.state === 'load' && l.paused) { if (v.timer >= 0.5) this.next(v); return; } // en pause : ne charge plus rien
     if (v.state === 'load') {
       // charge les ressources demandées à tour de rôle, tonne par tonne, jusqu'à remplir le véhicule
@@ -810,7 +821,7 @@ export class Sim {
         city.pop = Math.max(20, city.pop * (1 - Math.min(0.06, 0.3 * (1 - city.foodSat))));
       }
       let t = 0; for (let i = 0; i < TIERS.length; i++) if (city.pop >= TIERS[i].minPop) t = i;
-      if (t > city.tier) this.notify.toast(`${c.name} devient un${t >= 2 ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
+      if (t > city.tier) this.notify.toast(`${c.name} devient un${t >= 2 && !TIERS[t].name.startsWith('Bourg') ? 'e' : ''} ${TIERS[t].name.toLowerCase()} !`, 'good');
       city.tier = t;
       s.rp += RP_TIER[city.tier];   // recherche volontairement lente : chaque technologie se mérite
     }
@@ -819,6 +830,11 @@ export class Sim {
       if (!b.built || b.damaged) continue;
       const d = BUILD[b.type];
       if (d.effect?.rp) s.rp += d.effect.rp;
+      // halle et foire : droits de marché sur les habitants des villes proches
+      if (d.effect?.tax) {
+        const pop = cities(s).filter(c => Math.hypot(c.x - b.x, c.y - b.y) <= (d.effect!.range ?? 8)).reduce((a, c) => a + c.city!.pop, 0);
+        const g = pop * d.effect.tax; s.money += g; s.stats.income += g;
+      }
       if (d.wonder?.rp) s.rp += d.wonder.rp;
       if (d.wonder?.games) {
         const pop = cities(s).filter(c => Math.hypot(c.x - b.x, c.y - b.y) <= d.wonder!.range).reduce((a, c) => a + c.city!.pop, 0);
@@ -1027,7 +1043,7 @@ export function fallOfRome(s: GameState) {
   s.log.unshift({ day: s.day, text: 'Chute de Rome : les villes se vident, le commerce d\'outre-mer s\'arrête pour 50 ans et les routes ne sont plus entretenues.' });
 }
 /** Commerce d'outre-mer fermé (chute de Rome) */
-export const seaClosed = (s: GameState) => s.mods.some(m => m.kind === 'closed' && m.partner === 'mer' && m.until > s.day);
+export const seaClosed = (s: GameState) => !s.techs.includes('hanse') && s.mods.some(m => m.kind === 'closed' && m.partner === 'mer' && m.until > s.day);
 /** Au Moyen Âge, les routes s'abîment ; celles qu'un relais routier entretient (dans sa portée) sont remises en état */
 export function wearRoads(s: GameState) {
   if (s.era < 3) return;
@@ -1072,6 +1088,13 @@ export function localGrowth(s: GameState, c: Building) {
   return m;
 }
 /** Relais routiers : bonus de vitesse autour d'eux */
+/** Capacité d'un véhicule, avec les technologies (collier d'épaule, gouvernail d'étambot) */
+export function vehCap(s: GameState, t: VType) {
+  const d = VEH[t];
+  return Math.round(d.cap * (d.sea ? (s.techs.includes('gouvernail') ? 1.3 : 1) : !d.water && s.techs.includes('collier') ? 1.3 : 1));
+}
+/** Vitesse d'un véhicule, avec les technologies (coche d'eau) */
+export const vehSpeed = (s: GameState, t: VType) => VEH[t].speed * (VEH[t].water && !VEH[t].sea && s.techs.includes('coche_eau') ? 1.25 : 1);
 export function relaisMult(s: GameState, x: number, y: number) {
   for (const b of s.buildings) if (b.built && BUILD[b.type].effect?.speed && Math.hypot(b.x - x, b.y - y) <= (BUILD[b.type].effect!.range ?? 30)) return BUILD[b.type].effect!.speed!;
   return 1;

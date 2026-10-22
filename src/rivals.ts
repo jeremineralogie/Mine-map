@@ -166,7 +166,7 @@ function syncTechs(s: GameState, geo: Geo, f: Faction) {
         const outs = Object.keys(BUILD[b].recipe?.out ?? {}) as ResId[];
         if (outs.some(r => wanted.has(r))) sc += 25;
       }
-      const bias: Record<string, string[]> = { commercant: ['negoce', 'monnaie', 'negoce_maritime', 'peche', 'phares'], guerrier: ['metallurgie', 'forge', 'remparts', 'relais', 'charronnerie'], fidele: ['aqueduc', 'urbanisme', 'voie_romaine', 'thermes', 'spectacles'], opportuniste: ['navigation', 'negoce_maritime', 'viticulture', 'batellerie'] };
+      const bias: Record<string, string[]> = { commercant: ['negoce', 'monnaie', 'negoce_maritime', 'peche', 'phares', 'foires', 'lettre_change', 'hanse'], guerrier: ['metallurgie', 'forge', 'remparts', 'relais', 'charronnerie', 'chateaux_forts', 'haut_fourneau', 'collier'], fidele: ['aqueduc', 'urbanisme', 'voie_romaine', 'thermes', 'spectacles', 'monasteres', 'art_roman', 'chartes'], opportuniste: ['navigation', 'negoce_maritime', 'viticulture', 'batellerie', 'charrue', 'moulin_hydraulique', 'coche_eau'] };
       if (bias[f.character]?.includes(t.id)) sc += 10;
       return sc;
     };
