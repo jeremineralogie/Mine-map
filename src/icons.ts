@@ -138,7 +138,7 @@ function toImg(svg: string) {
 export const BICON = Object.fromEntries(Object.entries(SVG).map(([k, v]) => [k, toImg(v)])) as Record<BType, HTMLImageElement>;
 export const VICON = Object.fromEntries(Object.entries(VSVG).map(([k, v]) => [k, toImg(v)])) as Record<VType, HTMLImageElement>;
 /** Médaillons illustrés des villes, un par palier (Village → Capitale) */
-const CITY_URLS = [1, 2, 3, 4, 5, 6].map(i => `${import.meta.env.BASE_URL}icones/ville_${i}.png`);
+const CITY_URLS = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => `${import.meta.env.BASE_URL}icones/ville_${i}.png`);
 const CITY_IMG = CITY_URLS.map(u => { const img = new Image(); img.src = u; return img; });
 const tierIx = (tier = 0) => Math.max(0, Math.min(CITY_URLS.length - 1, tier));
 /** Image d'une ville selon son palier (l'icône dessinée tant que l'image n'est pas chargée) */
