@@ -164,6 +164,8 @@ const ART_FILES: Partial<Record<BType, string[]>> = {
   // Moyen Âge
   moulin_eau: ['moulin_eau_1', 'moulin_eau_2', 'moulin_eau_3'], moulin_vent: ['moulin_vent_1', 'moulin_vent_2', 'moulin_vent_3'],
   scierie: ['scierie_1', 'scierie_2', 'scierie_3'], carriere_granite: ['carriere_granite_1', 'carriere_granite_2', 'carriere_granite_3'],
+  ardoisiere: ['ardoisiere_1', 'ardoisiere_2', 'ardoisiere_3'], elevage: ['elevage_1', 'elevage_2', 'elevage_3'],
+  brasserie: ['brasserie_1', 'brasserie_2', 'brasserie_3'], mine_or: ['mine_or_1', 'mine_or_2', 'mine_or_3'],
   // une seule image pour l'instant (niveau 1), utilisée à tous les niveaux
   port_mer: ['port_mer'], comptoir: ['comptoir'], poste: ['poste'], phare: ['phare'], taverne: ['taverne'],
   // villa agricole : niveaux 1 à 3, puis grand domaine aux niveaux 4 à 6
