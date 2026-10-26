@@ -22,11 +22,27 @@ export interface TerritoryMap {
 
 let geo: Geo | null = null;
 let cache: TerritoryMap | null = null;
-let shapeCache: { key: string; camps: Shape[][] } | null = null;
+/** Formes de chaque camp, et index spatial (cases de BUCKET km) : pour un point, seules les formes proches comptent */
+let shapeCache: { key: string; camps: Shape[][]; grid: Map<number, [number, Shape][]> } | null = null;
+const BUCKET = 32;
+const bucketOf = (i: number, j: number) => (i + 1000) * 4096 + (j + 1000);
 export function setTerritoryGeo(g: Geo) { geo = g; cache = null; shapeCache = null; }
 function camps(s: GameState) {
   const key = keyOf(s);
-  if (shapeCache?.key !== key) shapeCache = { key, camps: shapes(s) };
+  if (shapeCache?.key !== key) {
+    const all = shapes(s), grid = new Map<number, [number, Shape][]>();
+    all.forEach((list, o) => {
+      for (const sh of list) {
+        const pad = sh.r + 3 * K;
+        const minx = sh.kind === 'c' ? sh.x - pad : Math.min(sh.ax, sh.bx) - pad, maxx = sh.kind === 'c' ? sh.x + pad : Math.max(sh.ax, sh.bx) + pad;
+        const miny = sh.kind === 'c' ? sh.y - pad : Math.min(sh.ay, sh.by) - pad, maxy = sh.kind === 'c' ? sh.y + pad : Math.max(sh.ay, sh.by) + pad;
+        for (let i = Math.floor(minx / BUCKET); i <= Math.floor(maxx / BUCKET); i++) for (let j = Math.floor(miny / BUCKET); j <= Math.floor(maxy / BUCKET); j++) {
+          const k = bucketOf(i, j); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push([o, sh]);
+        }
+      }
+    });
+    shapeCache = { key, camps: all, grid };
+  }
   return shapeCache;
 }
 const dist = (sh: Shape, x: number, y: number) => {
@@ -66,11 +82,14 @@ function shapes(s: GameState): Shape[][] {
   return out;
 }
 
+/** Empreinte de tout ce qui façonne les territoires (calcul numérique rapide : appelé très souvent) */
 function keyOf(s: GameState) {
-  let k = `${s.techs.includes('cite_prospere') ? 1 : 0}|${s.edges.length}|${s.nodes.length}|`;
-  for (const b of s.buildings) k += `${b.id}:${b.city?.tier ?? ''}:${b.built === false ? 0 : 1},`;
-  for (const f of s.factions ?? []) { k += `|${f.dead ? 'x' : ''}${f.roads.length}:`; for (const b of f.b) k += `${b.id}:${b.tier ?? ''},`; }
-  return k;
+  let h = 0x811c9dc5, g = 7;
+  const mix = (v: number) => { h = Math.imul(h ^ v, 0x01000193); g = Math.imul(g + v, 0x5bd1e995) ^ (g >>> 13); };
+  mix(s.techs.includes('cite_prospere') ? 1 : 0); mix(s.edges.length); mix(s.nodes.length);
+  for (const b of s.buildings) { mix(b.id); mix(b.city?.tier ?? -1); mix(b.built === false ? 0 : 1); }
+  for (const f of s.factions ?? []) { mix(f.dead ? -7 : -3); mix(f.roads.length); for (const b of f.b) { mix(b.id); mix(b.tier ?? -1); } }
+  return `${h >>> 0}-${g >>> 0}`;
 }
 
 /** Carte des territoires (mise en cache tant que rien ne change) */
@@ -154,18 +173,18 @@ function contour(owner: Int8Array, w: number, h: number, o: number, x0: number, 
 export function ownerAt(s: GameState, x: number, y: number): 'player' | Faction | null {
   if (!geo || geo.maskAt(x, y) === 0) return null;
   let best = -Infinity, who = -1;
-  camps(s).camps.forEach((list, o) => {
-    let sum = 0, core = false;
-    for (const sh of list) {
-      const d = dist(sh, x, y);
-      if (d > sh.r + 3 * K) continue;
-      sum += Math.exp((sh.r - d) / K);
-      if ((sh.kind === 's' || sh.core) && d <= sh.r) core = true;
-    }
-    if (sum <= 1) return;
-    const f = K * Math.log(sum) + (core ? CORE : 0);
+  const c = camps(s), sums = new Float64Array(c.camps.length), cores = new Uint8Array(c.camps.length);
+  for (const [o, sh] of c.grid.get(bucketOf(Math.floor(x / BUCKET), Math.floor(y / BUCKET))) ?? []) {
+    const d = dist(sh, x, y);
+    if (d > sh.r + 3 * K) continue;
+    sums[o] += Math.exp((sh.r - d) / K);
+    if ((sh.kind === 's' || sh.core) && d <= sh.r) cores[o] = 1;
+  }
+  for (let o = 0; o < sums.length; o++) {
+    if (sums[o] <= 1) continue;
+    const f = K * Math.log(sums[o]) + (cores[o] ? CORE : 0);
     if (f > best) { best = f; who = o; }
-  });
+  }
   if (who < 0) return null;
   return who === 0 ? 'player' : s.factions?.[who - 1] ?? null;
 }

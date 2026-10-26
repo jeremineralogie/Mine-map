@@ -1,10 +1,10 @@
 // Rivaux : grandes familles et cités romaines gérées par l'ordinateur.
 // Chacun a sa propre économie, simulée par le même moteur que le joueur (voir rivalai.ts).
-import { ALT_HOMES, ANCIENT, SPARE_NAMES, BUILD, MEDIEVAL, RES, RIVALS, TECHS, TIERS, type BType, type ResId } from './defs';
+import { ALT_HOMES, ANCIENT, COLONIES, SPARE_NAMES, BUILD, MEDIEVAL, RES, RIVALS, START_MONEY, TECHS, TIERS, WATER_RANGE, type BType, type ColonyDef, type ResId } from './defs';
 import type { DepositKm, Geo } from './geo';
 import type { Building, Faction, GameState } from './state';
 import { ownerAt, territoryReady } from './territory';
-import { alliedRivals, foundHome, newEco, nextRivalEra, rivalEra, rivalMonth, setPlacer, syncAllyRoads, syncLent } from './rivalai';
+import { alliedRivals, diffMult, foundHome, newEco, nextRivalEra, rivalEra, rivalMonth, setPlacer, syncAllyRoads, syncLent } from './rivalai';
 import { fallOfRome, year } from './sim';
 
 /** Rayon de territoire d'un bâtiment (km) : les villes rayonnent selon leur palier */
@@ -43,7 +43,7 @@ function cityName(s: GameState, geo: Geo, x: number, y: number) {
 
 /** Crée les quatre rivaux au moment où le joueur pose son entrepôt de départ */
 export function initRivals(s: GameState, geo: Geo, px: number, py: number) {
-  s.factions = [];
+  s.factions = []; s.colonies = [];
   const taken: [number, number][] = [[px, py]];
   const alts = ALT_HOMES.slice();
   // ressources à portée d'une capitale : distance au bord du gisement le plus proche (km)
@@ -74,14 +74,15 @@ export function initRivals(s: GameState, geo: Geo, px: number, py: number) {
   }
 }
 
+/** Un rival peut-il construire ici ? Chez un allié (le joueur ou un autre rival), il peut construire et exploiter les gisements */
+function free(s: GameState, geo: Geo, f: Faction, x: number, y: number) {
+  if (!land(geo, f, x, y) || (!f.alliance && inPlayerLand(s, x, y, 2)) || s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 4)) return false;
+  if ((s.factions ?? []).some(o => o !== f && o.b.some(b => Math.hypot(b.x - x, b.y - y) < 4))) return false;
+  const o = rivalAt(s, x, y); return !o || o === f || alliedRivals(f, o);
+}
 /** Où un rival peut construire : hors du territoire du joueur et des autres rivaux, sur la terre ferme */
 function initPlacer(s: GameState, geo: Geo) {
-  // chez un allié (le joueur ou un autre rival), il peut construire et exploiter les gisements
-  const free = (f: Faction, x: number, y: number) => {
-    if (!land(geo, f, x, y) || (!f.alliance && inPlayerLand(s, x, y, 2)) || s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 4)) return false;
-    if ((s.factions ?? []).some(o => o !== f && o.b.some(b => Math.hypot(b.x - x, b.y - y) < 4))) return false;
-    const o = rivalAt(s, x, y); return !o || o === f || alliedRivals(f, o);
-  };
+  const free_ = (f: Faction, x: number, y: number) => free(s, geo, f, x, y);
   /** Qui empêche ce rival d'exploiter ce gisement (null : personne) */
   const blocker = (f: Faction, d: DepositKm): 'player' | Faction | null => {
     if (!f.alliance && (s.buildings.some(b => b.dep === d.id) || inPlayerLand(s, d.x, d.y))) return 'player';
@@ -90,7 +91,7 @@ function initPlacer(s: GameState, geo: Geo) {
     return null;
   };
   setPlacer({
-    free,
+    free: free_,
     freeDeposits(f, res: ResId) {
       const out: { x: number; y: number; dep: number; name: string }[] = [];
       for (const d of geo.deposits as DepositKm[]) {
@@ -105,7 +106,7 @@ function initPlacer(s: GameState, geo: Geo) {
           const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 0.9;
           const x = d.x + Math.cos(a) * d.rx * r, y = d.y + Math.sin(a) * d.ry * r;
           if (geo.richness(res, x, y).dep?.id !== d.id) continue;
-          if (!free(f, x, y) || f.b.some(b => Math.hypot(b.x - x, b.y - y) < 3)) continue;
+          if (!free_(f, x, y) || f.b.some(b => Math.hypot(b.x - x, b.y - y) < 3)) continue;
           const dd = Math.min(Infinity, ...cities.map(c => Math.hypot(c.x - x, c.y - y)));
           if (!best || dd < best.dd) best = { x, y, dd };
         }
@@ -190,6 +191,61 @@ function advanceEra(s: GameState, geo: Geo, f: Faction) {
       if (m) { s.log.unshift({ day: s.day, text: `Les ${f.name} deviennent les ${m.name}.` }); f.name = m.name; f.short = m.short; }
     }
   }
+}
+
+// ---------- Colonies du chapitre I ----------
+const YEAR = 365.25;
+/** Fonde les colonies dont la date est arrivée (au chapitre I), ou toutes celles qui manquent une fois le chapitre I fini */
+export function monthlyColonies(s: GameState, geo: Geo, n: { event(title: string, text: string): void }) {
+  if (!s.colonies || !s.factions?.length) return;
+  const y = year(s);
+  for (const c of COLONIES) {
+    if (s.colonies.includes(c.id) || (s.era === 1 && y < c.year)) continue;
+    s.colonies.push(c.id);
+    const f = foundColony(s, geo, c);
+    const when = y < 0 ? `${-y} av. J.-C.` : String(y);
+    if (!f) { s.log.unshift({ day: s.day, text: `${c.capital} ne peut pas être fondée : toutes les terres alentour sont déjà prises.` }); continue; }
+    if (c.rp) s.rp += c.rp;
+    const where = f.capital !== c.capital ? ` (à ${f.capital}, le site de ${c.capital} étant déjà occupé)` : '';
+    s.log.unshift({ day: s.day, text: `Fondation de ${c.capital}${where} : les ${f.name} deviennent un nouveau rival.` });
+    n.event(`${when} — Fondation de ${c.capital}`, `${c.text}${where}${c.rp ? ` Les colons apportent aussi de nouveaux savoirs : +${c.rp} points de recherche.` : ''}`);
+  }
+}
+/** Une colonie s'installe sur son site historique, ou sur la terre libre la plus proche (à moins de 80 km) */
+function foundColony(s: GameState, geo: Geo, c: ColonyDef): Faction | null {
+  initPlacer(s, geo);
+  const others = (s.factions ?? []).filter(o => !o.dead && !o.raider);
+  // elle connaît ce que savent déjà les autres rivaux, et au moins le sel et la terre cuite
+  const techs = [...(others.sort((a, z) => (z.techs?.length ?? 0) - (a.techs?.length ?? 0))[0]?.techs ?? []), 'terre_cuite', 'salines'];
+  const f: Faction = { id: c.id, name: c.name, short: c.short, capital: c.capital, color: c.color, character: c.character, money: 0, b: [], roads: [], drive: 1,
+    techs: [...new Set(techs)].filter(t => TECHS.some(x => x.id === t)), era: s.era, boomUntil: s.day + 6 * YEAR };
+  const [hx, hy] = geo.proj(c.home[0], c.home[1]);
+  // Rome impose ses colonies, même sur les terres d'un rival ; jamais sur ton territoire, ni contre une autre ville ou un bâtiment
+  const clear = (x: number, y: number) => land(geo, f, x, y) && !inPlayerLand(s, x, y, 2)
+    && !s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 6) && !(s.factions ?? []).some(o => o.b.some(b => Math.hypot(b.x - x, b.y - y) < 6));
+  const ok = (x: number, y: number) => clear(x, y) && clear(x + 4, y + 3) && geo.waterDist(x, y) <= WATER_RANGE
+    && !(s.factions ?? []).some(o => o.b.some(b => b.type === 'village' && Math.hypot(b.x - x, b.y - y) < 25))
+    && !s.buildings.some(b => b.city && Math.hypot(b.x - x, b.y - y) < 40);
+  let at: [number, number] | null = ok(hx, hy) ? [hx, hy] : null;
+  for (let r = 5; !at && r <= 80; r += 5) for (let k = 0; k < 24 && !at; k++) {
+    const a = k / 24 * Math.PI * 2, x = hx + Math.cos(a) * r, y = hy + Math.sin(a) * r;
+    if (ok(x, y)) at = [x, y];
+  }
+  if (!at) return null;
+  if (Math.hypot(at[0] - hx, at[1] - hy) > 15) f.capital = cityName(s, geo, at[0], at[1]);
+  f.eco = newEco(s, f, (s.factions!.length + 1) * 10_000_000);
+  // les colons arrivent avec de quoi bâtir vite
+  f.eco.money = Math.round(START_MONEY * diffMult(s) * 3); f.money = f.eco.money;
+  s.factions!.push(f);
+  initPlacer(s, geo);
+  foundHome(s, geo, f, at[0], at[1], f.capital);
+  // déjà un bourg, fourni en sel et en tuiles
+  const city = f.eco.buildings.find(b => b.type === 'village'), store = f.eco.buildings.find(b => b.type === 'entrepot');
+  if (city?.city) { city.city.pop = 450; city.city.tier = 1; city.city.stock = { ...city.city.stock, cereales: 60, bois: 20, pierre: 10, sel: 10, briques: 15 }; }
+  if (store) for (const [r, q] of [['briques', 40], ['sel', 25], ['cereales', 80], ['bois', 40], ['pierre', 25]] as [ResId, number][]) store.stock[r] = (store.stock[r] ?? 0) + q;
+  // syncView via foundHome a été appelé avant ces réglages : la carte doit voir le bourg
+  const v = f.b.find(b => b.id === city?.id); if (v && city?.city) { v.pop = city.city.pop; v.tier = city.city.tier; }
+  return f;
 }
 
 /** Évolution mensuelle des rivaux : technologies, puis décisions de l'ordinateur sur leur économie */

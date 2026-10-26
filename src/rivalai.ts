@@ -732,7 +732,9 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   manageLines(f);
   // petites erreurs de gestion, comme un joueur : certains mois il est distrait (rien de neuf),
   // il réagit en retard sur ses lignes, ou ne choisit pas toujours le chantier le plus urgent
-  const distracted = Math.random() < 0.2;
+  // colonie récemment fondée : elle bâtit sans relâche, mène plus de chantiers et fonde vite d'autres villages
+  const boom = (f.boomUntil ?? 0) > s.day;
+  const distracted = !boom && Math.random() < 0.2;
   if (!distracted) manageVehicles(f);
   // chantiers : pas plus de deux à la fois (trois en mode ambitieux), comme un joueur prudent
   // amélioration bloquée (un matériau qu'il n'a pas, ou qui n'arrive pas depuis deux ans) : il y renonce,
@@ -755,7 +757,7 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   for (const b of eco.buildings) if (b.damaged && !b.repair && eco.money > repairCost(b).money + 500) startRepair(eco, b);
   const sites = eco.buildings.filter(b => !b.built || b.upgrading).length;
   // un rival riche mène plus de chantiers de front (jusqu'à quatre de plus) : son argent ne dort pas
-  const maxSites = (s.difficulty === 'ambitieux' ? 3 : 2) + Math.min(4, Math.floor(eco.money / 60000));
+  const maxSites = (s.difficulty === 'ambitieux' ? 3 : 2) + Math.min(4, Math.floor(eco.money / 60000)) + (boom ? 3 : 0);
   let started = 0;
   // Moyen Âge : un relais routier près de chaque ville entretient ses routes
   if (!distracted && eco.era >= 3 && eco.techs.includes('relais')) for (const c of cities(eco)) {
@@ -798,7 +800,8 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   }
   // nouvelle ville quand les existantes prospèrent
   const cs = cities(eco), big = Math.max(0, ...cs.map(c => c.city!.pop));
-  if (!distracted && started + sites < maxSites && cs.length < 6 && big >= 350 * cs.length && cs.every(c => c.city!.growing) && eco.money > 900 && Math.random() < 0.3) {
+  const expand = boom ? cs.length < 5 && Math.random() < 0.5 : big >= 350 * cs.length && cs.every(c => c.city!.growing) && Math.random() < 0.3;
+  if (!distracted && started + sites < maxSites && cs.length < 6 && expand && eco.money > 900) {
     const from = cs[Math.floor(Math.random() * cs.length)];
     for (let k = 0; k < 40; k++) {
       const a = Math.random() * 6.283, rr = 40 + Math.random() * 50, x = from.x + Math.cos(a) * rr, y = from.y + Math.sin(a) * rr;

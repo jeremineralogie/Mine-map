@@ -6,7 +6,7 @@ import {
 } from './defs';
 import type { Geo } from './geo';
 import { addNode, components, dijkstra, findPath, invalidate, nodeById, roadKm } from './roads';
-import { depOwner, monthlyRivals, rivalAt, rivalTooClose } from './rivals';
+import { depOwner, monthlyColonies, monthlyRivals, rivalAt, rivalTooClose } from './rivals';
 import { monthlyWar, warStep } from './war';
 import { stepRivals, syncView } from './rivalai';
 import { monthlyVikings } from './vikings';
@@ -879,6 +879,7 @@ export class Sim {
       return;
     }
     this.objectives();
+    monthlyColonies(s, this.geo, this.notify);
     monthlyRivals(s, this.geo);
     monthlyDiplomacy(s, this.notify);
     monthlyWar(s, this.notify);

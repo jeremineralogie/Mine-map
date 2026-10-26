@@ -555,7 +555,6 @@ export type EventEffect =
 export interface HistEvent { year: number; title: string; text: string; effects: EventEffect[]; era?: number; }
 export const EVENTS: HistEvent[] = [
   { year: -46, title: 'Triomphe de César', text: 'César célèbre à Rome sa victoire sur les Gaules. Rome réclame fer et outils : l\'Italie paie 50 % plus cher pendant 2 ans.', effects: [{ kind: 'partnerBoost', partner: 'italie', mult: 1.5, months: 24 }] },
-  { year: -43, title: 'Fondation de Lugdunum', text: 'Munatius Plancus fonde Lugdunum au confluent du Rhône et de la Saône. Les colons apportent de nouveaux savoirs.', effects: [{ kind: 'rp', amount: 6 }] },
   { year: -27, title: 'Auguste réorganise les Gaules', text: 'Les trois provinces (Aquitaine, Lyonnaise, Belgique) sont créées. L\'administration stimule la croissance des villes pendant 5 ans.', effects: [{ kind: 'growth', mult: 1.4, months: 60 }] },
   { year: -12, title: 'Autel des Trois Gaules', text: 'Drusus inaugure l\'autel fédéral de Lugdunum. Rome et les notables gaulois financent tes chantiers : constructions et améliorations coûtent 30 % de moins (argent et matériaux) pendant 3 ans.', effects: [{ kind: 'discount', mult: 0.7, months: 36 }] },
   { year: 9, title: 'Désastre de Varus', text: 'Trois légions sont anéanties en Germanie. Le commerce avec la Germanie est interrompu pendant 3 ans.', effects: [{ kind: 'partnerClosed', partner: 'germanie', months: 36 }] },
@@ -643,14 +642,31 @@ export const RIVALS: RivalDef[] = [
   { id: 'aedui', name: 'Éduens d\'Augustodunum', short: 'Éduens', capital: 'Augustodunum', home: [4.3, 46.95], color: '#2b8a3e', character: 'fidele', desc: 'Le plus fidèle allié de Rome en Gaule, riche de ses terres de Bourgogne.' },
   { id: 'narbo', name: 'Domitii de Narbo Martius', short: 'Narbonne', capital: 'Narbo Martius', home: [3.0, 43.18], color: '#1971c2', character: 'commercant', desc: 'Famille de la plus ancienne colonie romaine de Gaule, tournée vers la Méditerranée.' },
   { id: 'burdigala', name: 'Notables de Burdigala', short: 'Burdigala', capital: 'Burdigala', home: [-0.58, 44.84], color: '#7048e8', character: 'opportuniste', desc: 'Marchands du grand port de l\'Atlantique : vin, étain et commerce maritime.' },
-  { id: 'treveri', name: 'Trévires d\'Augusta Treverorum', short: 'Trévires', capital: 'Augusta Treverorum', home: [6.64, 49.75], color: '#c92a2a', character: 'guerrier', frontier: true, desc: 'Peuple de la frontière du Rhin, cavaliers redoutés, dont la capitale deviendra une résidence impériale.' },
+];
+/** Colonies romaines fondées pendant le chapitre I : chacune devient un nouveau rival indépendant.
+ *  Elle naît bourg (sel et tuiles déjà connus et livrés), riche, et s'étend très vite pendant ses premières années.
+ *  Si le chapitre I se termine avant leur date, celles qui manquent sont fondées au passage au chapitre II. */
+export interface ColonyDef extends RivalDef { year: number; text: string; rp?: number; }
+export const COLONIES: ColonyDef[] = [
+  { id: 'lugdunum', name: 'Colons de Lugdunum', short: 'Lugdunum', capital: 'Lugdunum', home: [4.83, 45.76], color: '#c92a2a', character: 'commercant', year: -43, rp: 6,
+    desc: 'Colonie fondée par Munatius Plancus au confluent du Rhône et de la Saône, bientôt capitale des Gaules.',
+    text: 'Munatius Plancus fonde Lugdunum au confluent du Rhône et de la Saône. Les colons, venus d\'Italie, bâtissent aussitôt leurs fermes, leurs carrières et leurs tuileries : un nouveau rival est né.' },
+  { id: 'remi', name: 'Rèmes de Durocortorum', short: 'Rèmes', capital: 'Durocortorum', home: [4.03, 49.26], color: '#8f5b2e', character: 'guerrier', year: -27,
+    desc: 'Les Rèmes, alliés de César, font de Durocortorum la capitale de la Gaule Belgique.',
+    text: 'Auguste fait de Durocortorum, la cité des Rèmes, la capitale de la nouvelle province de Gaule Belgique. La ville s\'étend vite vers le nord : un nouveau rival est né.' },
+  { id: 'nemausus', name: 'Colonie de Nemausus', short: 'Nemausus', capital: 'Nemausus', home: [4.36, 43.84], color: '#d4a017', character: 'fidele', year: -16,
+    desc: 'Colonie de vétérans d\'Auguste autour de la source sacrée de Nemausus.',
+    text: 'Auguste installe ses vétérans à Nemausus, autour de la source sacrée, et entoure la ville d\'une grande enceinte : un nouveau rival est né.' },
+  { id: 'riedones', name: 'Riedones de Condate', short: 'Riedones', capital: 'Condate', home: [-1.68, 48.11], color: '#343a40', character: 'opportuniste', year: -10,
+    desc: 'Les Riedones de l\'Armorique, au confluent de l\'Ille et de la Vilaine.',
+    text: 'Les Riedones fondent Condate (Rennes) au confluent de l\'Ille et de la Vilaine : la romanisation gagne l\'Armorique, et un nouveau rival est né.' },
 ];
 /** Régions de repli si le joueur s'installe trop près d'une capitale rivale */
 export const ALT_HOMES: { capital: string; home: [number, number] }[] = [
   { capital: 'Augustonemetum', home: [3.08, 45.78] }, { capital: 'Andematunnum', home: [5.33, 47.86] },
   { capital: 'Vesontio', home: [6.02, 47.24] }, { capital: 'Limonum', home: [0.34, 46.58] },
-  { capital: 'Autricum', home: [1.49, 48.45] }, { capital: 'Condate', home: [-1.68, 48.11] },
-  { capital: 'Tolosa', home: [1.44, 43.6] }, { capital: 'Durocortorum', home: [4.03, 49.26] },
+  { capital: 'Autricum', home: [1.49, 48.45] }, { capital: 'Tolosa', home: [1.44, 43.6] },
+  { capital: 'Divodurum', home: [6.18, 49.12] },
 ];
 /** Couleur du joueur (territoire, armées) */
 export const PLAYER_COLOR = '#e8590c';

@@ -1,5 +1,5 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
-import { CHARACTERS, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
+import { CHARACTERS, COLONIES, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
   BRANCHES, BUILD, ERAS, LAST_CHAPTER, LEVEL_MONEY, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, ROAD_WEAR_SLOW, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
@@ -110,7 +110,7 @@ export class Game {
         <li>Construis carrières, camps de bûcherons et villas agricoles sur les <b>gisements</b> (calque coloré).</li>
         <li>Crée des <b>lignes</b> de charrettes pour transporter et vendre ta production aux villes et aux partenaires étrangers.</li>
       </ol>
-      <h3>Tes rivaux</h3><p>Quatre grandes familles romaines développent aussi leurs cités : <b>${RIVALS.map(r => r.short).join(', ')}</b>. Elles se disputent les gisements et étendent leur territoire. Choisis leur ambition :</p>
+      <h3>Tes rivaux</h3><p>Trois grandes familles romaines développent aussi leurs cités : <b>${RIVALS.map(r => r.short).join(', ')}</b>. Au fil du chapitre I, Rome fonde de nouvelles colonies (<b>${COLONIES.map(c => c.capital).join(', ')}</b>) qui deviennent à leur tour des rivaux. Tous se disputent les gisements et étendent leur territoire. Choisis leur ambition :</p>
       <ul class="intro">${(Object.keys(DIFFICULTY) as Difficulty[]).map(k => `<li><b>${DIFFICULTY[k].name}</b> — ${DIFFICULTY[k].desc}</li>`).join('')}</ul>
       <p class="muted">À vitesse ×1, une heure de jeu équivaut à dix ans. La partie est sauvegardée automatiquement dans ce navigateur.</p>`,
       (Object.keys(DIFFICULTY) as Difficulty[]).map(k => ({ label: DIFFICULTY[k].name, primary: k === 'equilibre', fn: () => { this.s.difficulty = k; } })));
@@ -1044,7 +1044,7 @@ export class Game {
   private short(id: number) { const b = getB(this.s, id); return b ? b.name.split(' — ')[0] : '?'; }
   /** Présentation d'un rival (au Moyen Âge, les familles romaines sont devenues des seigneuries) */
   private rivalDesc(f: Faction) {
-    const r = RIVALS.find(x => x.id === f.id);
+    const r = [...RIVALS, ...COLONIES].find(x => x.id === f.id);
     if (f.id === 'vikings') return f.raider ? 'Pirates venus de Scandinavie : ils pillent les côtes et remontent les fleuves.' : 'Vikings installés sur la côte : ils ont fondé leur propre seigneurie.';
     if (this.s.era >= 3 && r) return `Seigneurie médiévale héritière de la famille romaine de ${r.capital}.`;
     return r?.desc ?? '';

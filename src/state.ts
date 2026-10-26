@@ -132,6 +132,8 @@ export interface Faction {
   dead?: boolean;
   /** Vikings : bandes de pillards sans ville (avant leur installation), nombre de raids, siège de Paris déjà lancé */
   raider?: boolean; raids?: number; paris?: boolean;
+  /** colonie récemment fondée : elle s'étend très vite jusqu'à ce jour */
+  boomUntil?: number;
   /** économie complète du rival (bâtiments, routes, lignes, véhicules), simulée comme celle du joueur */
   eco?: GameState;
 }
@@ -178,6 +180,8 @@ export interface GameState {
   armies?: Army[];
   tributes?: { f: string; amount: number; until: number }[];
   hadCity?: boolean;
+  /** colonies romaines du chapitre I (nouvelles parties) : déjà fondées ou passées */
+  colonies?: string[];
   /** économie d'un rival (gérée par l'ordinateur) ; rival frontalier qui peut bâtir hors de Gaule */
   ai?: boolean; abroad?: boolean;
   /** rival : sa capitale (l'entrepôt principal est le sien) */

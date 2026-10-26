@@ -171,9 +171,15 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
   et des briques, les mines avec du fer et de la pierre…).
 
 ## 10. Rivaux, diplomatie et guerre
-Nouvelles parties uniquement. Quatre grandes familles : **Éduens** (Augustodunum, fidèles),
-**Narbonne** (commerçants), **Burdigala** (opportunistes) et **Trévires** (guerriers, frontière du Rhin,
-peuvent bâtir hors de Gaule). Difficulté au lancement : Facile / Équilibré / Ambitieux
+Nouvelles parties uniquement. Trois grandes familles au départ : **Éduens** (Augustodunum, fidèles),
+**Narbonne** (commerçants) et **Burdigala** (opportunistes).
+**Colonies du chapitre I** : quatre nouveaux rivaux indépendants naissent aux dates historiques —
+**Lugdunum** (43 av. J.-C., commerçants, rouge), **Rèmes de Durocortorum** (27 av. J.-C., guerriers, brun),
+**Nemausus** (16 av. J.-C., fidèles, or), **Riedones de Condate** (10 av. J.-C., opportunistes, ardoise).
+Chacune naît bourg (sel et terre cuite connus, sel et tuiles livrés), avec trois fois l'argent de départ,
+et pendant 6 ans mène trois chantiers de plus et fonde vite ses villages. Rome l'impose sur son site, ou
+à moins de 80 km si le site est pris (jamais sur ton territoire). Si le chapitre I s'achève avant leur
+date, les colonies manquantes sont fondées au passage au chapitre II. Difficulté au lancement : Facile / Équilibré / Ambitieux
 (argent de départ et production −20 % / 0 / +20 % ; deux ou trois chantiers à la fois).
 
 - **Même économie que le joueur** : chaque rival a sa propre partie complète, simulée par le même moteur
