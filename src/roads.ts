@@ -50,7 +50,9 @@ export function roadKm(s: GameState) { return s.edges.reduce((t, e) => t + (e.al
 // ---- Graphe et plus court chemin (en temps de trajet) ----
 // un graphe par économie (joueur et chaque rival), reconstruit seulement après une modification du réseau
 let adjCache = new WeakMap<GameState, { n: number; m: Map<number, { to: number; e: Edge }[]> }>();
-export function invalidate() { adjCache = new WeakMap(); }
+/** Itinéraires déjà calculés (par économie, nœud de départ et type de route), oubliés à chaque modification du réseau */
+let treeCache = new WeakMap<GameState, { n: number; m: Map<string, ReturnType<typeof dijkstraRaw>> }>();
+export function invalidate() { adjCache = new WeakMap(); treeCache = new WeakMap(); }
 function adj(s: GameState) {
   const c = adjCache.get(s);
   if (c && c.n === s.edges.length) return c.m;
@@ -64,8 +66,16 @@ function adj(s: GameState) {
   return m;
 }
 
-/** Dijkstra depuis un nœud : distances (en jours-équivalents) et prédécesseurs */
+/** Dijkstra depuis un nœud : distances (en jours-équivalents) et prédécesseurs (mémorisé tant que le réseau ne change pas) */
 export function dijkstra(s: GameState, from: number, voieOnly = false) {
+  let c = treeCache.get(s);
+  if (!c || c.n !== s.edges.length) { c = { n: s.edges.length, m: new Map() }; treeCache.set(s, c); }
+  const k = `${from}|${voieOnly ? 1 : 0}`;
+  let r = c.m.get(k);
+  if (!r) { if (c.m.size > 300) c.m.clear(); r = dijkstraRaw(s, from, voieOnly); c.m.set(k, r); }
+  return r;
+}
+function dijkstraRaw(s: GameState, from: number, voieOnly: boolean) {
   const g = adj(s), dist = new Map<number, number>(), prev = new Map<number, { n: number; e: Edge }>();
   const heap: [number, number][] = [[0, from]]; dist.set(from, 0);
   while (heap.length) {
@@ -145,6 +155,7 @@ export function splitEdge(s: GameState, geo: Geo, edgeId: number, x: number, y: 
     const A = nodeById(s, u)!, B = nodeById(s, v)!;
     const half: Edge = { id: s.nextId++, a: u, b: v, type: e.type, len: Math.hypot(B.x - A.x, B.y - A.y), bridges: geo.riverCrossings(A.x, A.y, B.x, B.y).n };
     if (e.ally) { half.ally = e.ally; half.src = e.src; }   // une route alliée coupée reste alliée
+    if (e.wear) half.wear = e.wear;   // un carrefour ne remet pas la route à neuf
     s.edges.push(half);
   }
   invalidate();

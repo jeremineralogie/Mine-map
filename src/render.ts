@@ -3,7 +3,7 @@ import { BUILD, PLAYER_COLOR, RES, ROADS, VEH, WATER_RANGE, type BType, type Res
 import { depositShape, type DepositKm, type Geo } from './geo';
 import { bIcon, cityIcon, vIcon } from './icons';
 import { findPath } from './roads';
-import { workRange } from './sim';
+import { fmt as fmtN, workRange } from './sim';
 import { territories } from './territory';
 import { PLAYER, hostile, ownerColor, targetPos } from './war';
 import type { Building, GameState, Line } from './state';
@@ -170,26 +170,47 @@ export class Renderer {
     }
     ctx.closePath();
   }
+  /** Calque des gisements, dessiné une seule fois (flou compris) dans une image, puis simplement recopié à chaque image */
+  private depCache: { key: string; c: HTMLCanvasElement; x0: number; y0: number; w: number; h: number } | null = null;
+  private depositLayer(shown: DepositKm[], key: string) {
+    if (this.depCache?.key === key) return this.depCache;
+    const K = 1.25;   // pixels par km
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const d of shown) { x0 = Math.min(x0, d.x - d.rx * 1.6); y0 = Math.min(y0, d.y - d.ry * 1.6); x1 = Math.max(x1, d.x + d.rx * 1.6); y1 = Math.max(y1, d.y + d.ry * 1.6); }
+    if (!shown.length) { x0 = y0 = 0; x1 = y1 = 1; }
+    x0 -= 15; y0 -= 15; x1 += 15; y1 += 15;
+    const c = document.createElement('canvas'); c.width = Math.ceil((x1 - x0) * K); c.height = Math.ceil((y1 - y0) * K);
+    const g = c.getContext('2d')!, saved = this.ctx;
+    g.setTransform(K, 0, 0, K, -x0 * K, -y0 * K);
+    g.globalCompositeOperation = 'multiply';
+    this.ctx = g;   // depositPath dessine dans ce contexte
+    try {
+      for (const d of [...shown].sort((a, b) => b.rx * b.ry - a.rx * a.ry)) {
+        const col = DEP_COLOR[d.res] ?? RES[d.res].color, rare = !COMMON_DEP.has(d.res);
+        // les petits gisements et les ressources rares sont plus soutenus, pour ne pas se noyer dans une forêt
+        const boost = Math.min(2.2, Math.max(1, 900 / Math.max(80, d.rx * d.ry)) ** 0.35) * (rare ? 1.35 : 1);
+        g.filter = `blur(${(rare ? 5 : 7.5) * K}px)`;
+        g.fillStyle = col;
+        for (const [k, a] of [[1, 0.22], [0.75, 0.2], [0.45, 0.18]] as [number, number][]) {
+          this.depositPath(d, k); g.globalAlpha = Math.min(0.6, a * (0.8 + 0.25 * d.rich) * boost); g.fill();
+        }
+      }
+    } finally { this.ctx = saved; }
+    return this.depCache = { key, c, x0, y0, w: x1 - x0, h: y1 - y0 };
+  }
   private drawDeposits(s: GameState, v: View) {
     const ctx = this.ctx, showLabels = this.cam.scale > 1.3 && v.layers.depLabels !== false;
     // seuls les gisements de l'époque en cours (ou passées) sont visibles : les autres se découvrent plus tard
     const shown = this.geo.deposits.filter(d => RES[d.res].era <= s.era
       && (v.depositFilter === 'all' ? d.res !== 'cereales' : d.res === v.depositFilter)); // les terres fertiles ont leur propre filtre
     const fade = this.cam.scale > 4 ? 0.6 : 1; // plus discret quand on zoome, pour laisser voir le relief
-    // teinte fondue dans le relief, jamais sur la mer ; les grandes zones d'abord, les petites par-dessus
+    // teinte fondue dans le relief, jamais sur la mer
+    const L = this.depositLayer(shown, `${s.era}|${v.depositFilter}`);
     ctx.save();
     ctx.clip(this.land);
-    ctx.globalCompositeOperation = 'multiply';
-    for (const d of [...shown].sort((a, b) => b.rx * b.ry - a.rx * a.ry)) {
-      const col = DEP_COLOR[d.res] ?? RES[d.res].color, rare = !COMMON_DEP.has(d.res);
-      // les petits gisements et les ressources rares sont plus soutenus, pour ne pas se noyer dans une forêt
-      const boost = Math.min(2.2, Math.max(1, 900 / Math.max(80, d.rx * d.ry)) ** 0.35) * (rare ? 1.35 : 1);
-      ctx.filter = `blur(${Math.max(2, this.px(rare ? 6 : 9))}px)`;
-      ctx.fillStyle = col;
-      for (const [k, a] of [[1, 0.22], [0.75, 0.2], [0.45, 0.18]] as [number, number][]) {
-        this.depositPath(d, k); ctx.globalAlpha = Math.min(0.6, a * (0.8 + 0.25 * d.rich) * boost) * fade; ctx.fill();
-      }
-    }
+    ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = fade;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(L.c, L.x0, L.y0, L.w, L.h);
     ctx.restore();
     if (!showLabels) return;
     this.screen();
@@ -432,7 +453,7 @@ export class Renderer {
       ctx.moveTo(x - r * 0.45, y - r * 0.45); ctx.lineTo(x + r * 0.45, y + r * 0.45); ctx.moveTo(x + r * 0.45, y - r * 0.45); ctx.lineTo(x - r * 0.45, y + r * 0.45); ctx.stroke();
       if (a.state === 'fight' || a.state === 'siege') { ctx.beginPath(); ctx.arc(x, y, r + 5, 0, Math.PI * 2); ctx.strokeStyle = '#e03131'; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]); }
       ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'center';
-      halo(ctx, `${Math.round(a.men)} hommes`, x, y - r - 6, col);
+      halo(ctx, `${fmtN(a.men)} ${Math.round(a.men) > 1 ? 'hommes' : 'homme'}`, x, y - r - 6, col);
       const w = 30, hp = Math.max(0, Math.min(1, a.hp / 100));
       ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(x - w / 2, y + r + 4, w, 5);
       ctx.fillStyle = hp > 0.6 ? '#40c057' : hp > 0.3 ? '#fab005' : '#fa5252'; ctx.fillRect(x - w / 2, y + r + 4, w * hp, 5);
@@ -469,7 +490,7 @@ export class Renderer {
       }
       // vue d'ensemble : seulement les capitales ; en zoomant, toutes les villes puis les ateliers
       const capital = b === f.b[0], far = this.cam.scale < 1.1;
-      const label = b.type === 'village' ? (far ? (capital ? `${b.name} (${f.short})` : '') : `${b.name} · ${Math.round(b.pop ?? 0)} hab.`) : this.cam.scale > 2.5 ? b.name : '';
+      const label = b.type === 'village' ? (far ? (capital ? `${b.name} (${f.short})` : '') : `${b.name} · ${fmtN(b.pop ?? 0)} hab.`) : this.cam.scale > 2.5 ? b.name : '';
       if (label) { ctx.font = b.type === 'village' ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; ctx.textAlign = 'center'; halo(ctx, label, x, y + size / 2 + 12, f.color); }
       if (b.type === 'village' && !far && capital) { ctx.font = '600 10px system-ui, sans-serif'; ctx.textAlign = 'center'; halo(ctx, f.short, x, y - size / 2 - 6, f.color); }
     }
@@ -532,7 +553,7 @@ export class Renderer {
         ctx.fillStyle = fill >= 0.95 ? '#d92d20' : col; roundRect(ctx, gx, gy, Math.max(3, gw * Math.min(1, fill)), 5, 2.5); ctx.fill();
       }
       const foreign = !!b.partner || b.type === 'comptoir';
-      const label = b.city ? `${b.name} · ${Math.round(b.city.pop)} hab.` : foreign ? b.name : this.cam.scale > 2.5 ? b.name : '';
+      const label = b.city ? `${b.name} · ${fmtN(b.city.pop)} hab.` : foreign ? b.name : this.cam.scale > 2.5 ? b.name : '';
       if (label) { ctx.font = b.city || foreign ? '700 12px system-ui, sans-serif' : '11px system-ui, sans-serif'; halo(ctx, label, x, y + size / 2 + (b.built && this.cam.scale > 2 && (BUILD[b.type].recipe || b.type === 'entrepot') ? 18 : 12), b.type === 'comptoir' ? '#14406e' : b.partner ? '#7a1f2b' : '#1f1a14'); }
     }
     this.world();
@@ -597,20 +618,25 @@ export class Renderer {
     void s; this.world();
   }
 
+  /** Dernier geste au doigt : les zones à toucher sont plus larges */
+  touch = false;
   /** Objet sous le pointeur (coordonnées écran) */
   pick(s: GameState, sx: number, sy: number): View['selected'] {
-    const S = this.iconSize();
-    for (const a of s.armies ?? []) { const [x, y] = this.cam.toScreen(a.x, a.y); if (Math.hypot(x - sx, y - sy) < 16) return { kind: 'army', id: a.id }; }
-    for (const veh of s.vehicles) {
-      if (veh.at !== null && veh.state !== 'go') continue;
-      const [x, y] = this.cam.toScreen(veh.x, veh.y);
-      if (Math.hypot(x - sx, y - sy) < 12) return { kind: 'vehicle', id: veh.id };
-    }
-    let best: Building | null = null, bd = S * 0.6;
+    const S = this.iconSize(), k = this.touch ? 1.5 : 1;
+    for (const a of s.armies ?? []) { const [x, y] = this.cam.toScreen(a.x, a.y); if (Math.hypot(x - sx, y - sy) < 16 * k) return { kind: 'army', id: a.id }; }
+    let best: Building | null = null, bd = Math.max(S * 0.6, this.touch ? 22 : 0);
     for (const b of s.buildings) { const [x, y] = this.cam.toScreen(b.x, b.y), d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; best = b; } }
+    // un véhicule qui passe ne « vole » pas le toucher d'un bâtiment : il faut viser le véhicule de plus près que le bâtiment
+    let veh: number | null = null, vd = 12 * k;
+    for (const v of s.vehicles) {
+      if (v.at !== null && v.state !== 'go') continue;
+      const [x, y] = this.cam.toScreen(v.x, v.y), d = Math.hypot(x - sx, y - sy);
+      if (d < vd) { vd = d; veh = v.id; }
+    }
+    if (veh !== null && (!best || vd < bd * 0.6)) return { kind: 'vehicle', id: veh };
     if (best) return { kind: 'building', id: best.id };
     // bâtiments des rivaux
-    let rb: number | null = null; bd = S * 0.6;
+    let rb: number | null = null; bd = Math.max(S * 0.6, this.touch ? 22 : 0);
     for (const f of s.factions ?? []) for (const b of f.b) { const [x, y] = this.cam.toScreen(b.x, b.y), d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; rb = b.id; } }
     if (rb !== null) return { kind: 'rival', id: rb };
     const e = this.pickEdge(s, sx, sy);
@@ -618,7 +644,7 @@ export class Renderer {
   }
   pickEdge(s: GameState, sx: number, sy: number) {
     const nodes = new Map(s.nodes.map(n => [n.id, n]));
-    let best: number | null = null, bd = 9;
+    let best: number | null = null, bd = this.touch ? 14 : 9;
     for (const e of s.edges) {
       const a = nodes.get(e.a), b = nodes.get(e.b); if (!a || !b) continue;
       const [ax, ay] = this.cam.toScreen(a.x, a.y), [bx, by] = this.cam.toScreen(b.x, b.y);

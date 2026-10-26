@@ -6,7 +6,7 @@ import { BUILD, DIFFICULTY, IMPORT_MULT, LAST_CHAPTER, LEVEL_MULT, RES, START_MO
 import type { Geo } from './geo';
 import { addEdge, components, dijkstra, invalidate, quoteSegment } from './roads';
 import {
-  Sim, attachNode, buildMoney, buyVehicle, checkPlace, cities, cityNeeds, demolish, isStore, levelAllowed, place, sellVehicle, tierGoods, upgrade, upgradeCost, workRange,
+  Sim, attachNode, buildMoney, buyVehicle, checkPlace, cities, cityNeeds, demolish, isStore, levelAllowed, place, repairCost, sellVehicle, startRepair, tierGoods, upgrade, upgradeCost, workRange,
   type Notifier,
 } from './sim';
 import { cargoTotal, type Building, type Edge, type Faction, type GameState, type Line, type RBuilding, type Stock } from './state';
@@ -54,7 +54,7 @@ export function newEco(s: GameState, f: Faction, idBase: number): GameState {
 export function foundHome(s: GameState, geo: Geo, f: Faction, x: number, y: number, capital: string) {
   const eco = f.eco!;
   const city = place(eco, geo, 'village', x, y, capital, true);
-  city.built = true;
+  city.built = true; eco.hubCity = city.id;
   const store = place(eco, geo, 'entrepot', x + 4, y + 3, `Entrepôt ${f.short.toLowerCase().startsWith('é') ? 'des ' : 'de '}${f.short}`, true);
   store.stock = { ...START_STOCK };
   attachNode(eco, city); attachNode(eco, store);
@@ -234,7 +234,12 @@ export function transfer(from: GameState, to: GameState, ids: Set<number>, area:
   for (const l of movedLines) lend(to, 'to', fromTag, l);
   for (const l of from.lines) lend(from, 'from', toTag, l);
   // convois de chantier vers les bâtiments perdus : annulés ; véhicules en route : nouvel itinéraire
-  from.vehicles = from.vehicles.filter(v => !(v.line === -1 && (ids.has(v.target!) || ids.has(v.from!))));
+  const lost = from.vehicles.filter(v => v.line === -1 && (ids.has(v.target!) || ids.has(v.from!)));
+  // ce qu'ils apportaient n'arrivera plus : le chantier resté de ce côté le redemande
+  for (const v of lost) { const t = from.buildings.find(b => b.id === v.target); if (t) for (const [r, q] of Object.entries(v.cargo) as [ResId, number][]) t.incoming[r] = Math.max(0, (t.incoming[r] ?? 0) - q); }
+  from.vehicles = from.vehicles.filter(v => !lost.includes(v));
+  // chantiers conquis : plus rien n'est en route vers eux
+  for (const b of moved) b.incoming = {};
   for (const v of [...from.vehicles, ...to.vehicles]) if (v.state === 'go') { v.state = 'lost'; v.timer = 0; }
   invalidate();
   return moved.length;
@@ -309,7 +314,9 @@ export const spotName = (x: number, y: number) => placer?.cityName(x, y) ?? 'Vic
 
 /** Entrepôt principal : celui de la capitale (la plus ancienne de ses villes) */
 function hub(eco: GameState): Building | undefined {
-  const cap = cities(eco).sort((a, z) => a.id - z.id)[0];
+  // sa capitale (une ville prise au joueur ne le devient pas) ; perdue : sa plus grande ville
+  let cap = cities(eco).find(c => c.id === eco.hubCity);
+  if (!cap) { cap = cities(eco).sort((a, z) => z.city!.pop - a.city!.pop)[0]; if (cap) eco.hubCity = cap.id; }
   return (cap && localStore(eco, cap)) ?? eco.buildings.find(b => isStore(b) && b.built);
 }
 /** Un entrepôt par ville : celui qui est à moins de STORE_R km d'elle (le plus proche) */
@@ -372,7 +379,8 @@ function demand(eco: GameState): Stock {
 function capacity(eco: GameState): Stock {
   const cap: Stock = {};
   for (const b of eco.buildings) {
-    const rc = BUILD[b.type].recipe; if (!rc) continue;
+    // un atelier endommagé, ou un chantier bloqué depuis plus d'un an, ne produira pas de sitôt
+    const rc = BUILD[b.type].recipe; if (!rc || b.damaged || (!b.built && b.upSince !== undefined && eco.day - b.upSince > 365)) continue;
     for (const [r, q] of Object.entries(rc.out) as [ResId, number][]) cap[r] = (cap[r] ?? 0) + q * LEVEL_MULT[b.level];
   }
   return cap;
@@ -470,10 +478,12 @@ function tryBuild(s: GameState, f: Faction, geo: Geo, r: ResId, depth = 0): 'ok'
     for (const { p } of spots) {
       // trop loin de ses villes pour y trouver des ouvriers : il fonde d'abord un village à côté, dès qu'il en a les moyens
       if (!cs.some(c => dist(c, p) <= workRange(c, eco) - 2)) {
+        // pas de colonie à l'autre bout du pays : seulement à moins de 150 km de ses villes
+        if (!cs.some(c => dist(c, p) <= 150)) continue;
         if (eco.money < 1500) return 'wait';
         for (let k = 0; k < 25; k++) {
           const a = Math.random() * 6.283, rr = 6 + Math.random() * 14, x = p.x + Math.cos(a) * rr, y = p.y + Math.sin(a) * rr;
-          if (geo.waterDist(x, y) > WATER_RANGE || cs.some(c => dist(c, { x, y }) < 30)) continue;
+          if (geo.waterDist(x, y) > WATER_RANGE || eco.buildings.some(c => c.type === 'village' && dist(c, { x, y }) < 30)) continue;
           if (build(s, f, geo, 'village', x, y)) return 'ok';
         }
         continue;
@@ -529,7 +539,7 @@ function manageLines(f: Faction) {
   for (const b of eco.buildings) {
     if (!b.built || isStore(b)) continue;
     const d = BUILD[b.type], w = storeFor(eco, b, linked, h);
-    if (!w) continue;
+    if (!w && !b.city) continue;
     if (b.city) {
       // deux lignes par ville : les céréales d'un côté, les autres marchandises de l'autre
       // (un chariot plein de blé que la ville a déjà ne bloque pas le bois et la pierre)
@@ -537,13 +547,17 @@ function manageLines(f: Faction) {
       // ce qui manque le plus à la ville passe en tête du chargement (le chariot est plein avant la fin de la liste)
       const fill = (r: ResId) => (b.city!.stock[r] ?? 0) / Math.max(0.05, cityNeeds(b)[r] ?? 0.05);
       for (const group of [['cereales'] as ResId[], goods.filter(r => r !== 'cereales').sort((a, z) => fill(a) - fill(z))]) {
-        const res = group.filter(r => goods.includes(r)); if (!res.length) continue;
+        // la ville ne reçoit que ce dont elle a moins de quatre mois de réserve : le reste (les briques…) sert aux chantiers
+        const res = group.filter(r => goods.includes(r) && (r === 'cereales' || fill(r) < 4)); if (!res.length) continue;
+        // l'entrepôt de la ville, dès qu'il a de quoi la servir (chaque ligne pour son compte), sinon l'entrepôt principal
+        const wl = localStore(eco, b), w = wl && linked(wl, b) && (wl === h || res.some(r => (wl.stock[r] ?? 0) >= 2)) ? wl : linked(h, b) ? h : wl && linked(wl, b) ? wl : undefined;
+        if (!w) continue;
         // le chariot revient déposer à l'entrepôt ce que la ville n'a pas pris, puis repart avec un chargement frais
         const l = lineOf(eco, x => x.stops.length === 3 && x.stops[1].bid === b.id && !!byId(x.stops[0].bid) && isStore(byId(x.stops[0].bid)!) && (x.stops[0].res[0] === 'cereales') === (res[0] === 'cereales'));
         if (l) { if (l.stops[0].bid !== w.id) repoint(l, l.stops[0].bid, w); l.stops[0].res = res; }
         else if (res.some(r => (w.stock[r] ?? 0) >= 2)) addLine(eco, [{ bid: w.id, action: 'load', res }, { bid: b.id, action: 'unload', res: [] }, { bid: w.id, action: 'unload', res: [] }]);
       }
-    } else if (d.recipe) {
+    } else if (d.recipe && w) {
       const mine = eco.lines.filter(l => l.stops.some(st => st.bid === b.id));
       if (mine.length) {
         for (const l of mine) for (const id of [...new Set(l.stops.map(st => st.bid))]) { const o = byId(id); if (o && isStore(o) && o !== w) repoint(l, id, w); }
@@ -594,7 +608,7 @@ function manageVehicles(f: Faction) {
       const q = (r: ResId) => Math.max(0.3, cityNeeds(target)[r] ?? 0);
       more = l.stops[0].res.some(r => (target.city!.stock[r] ?? 0) < q(r) * 2 && (first.stock[r] ?? 0) >= 4) && idle === 0;
       less = idle >= 2;
-    } else if (isStore(target)) {
+    } else if (isStore(target) && l.stops.length >= 3) {
       // entrepôt principal ↔ entrepôt d'une ville : il manque quelque chose là-bas, ou le surplus s'y entasse
       level = l.stops[2].res.reduce((a, r) => a + (target.stock[r] ?? 0), 0);
       const full = Object.values(target.stock).reduce((a, q) => a + (q ?? 0), 0) >= BUILD[target.type].storage * target.level * 0.8;
@@ -608,6 +622,8 @@ function manageVehicles(f: Faction) {
       less = idle >= 2;
     }
     memo.last = level;
+    // une ligne sans véhicule (achat refusé faute d'argent, ligne reprise vide) en reçoit un dès que possible
+    if (!vs.length) more = true;
     if (more && vs.length < MAX_VEH_PER_LINE && fleet < fleetMax && eco.money > VEH[l.vtype].price + 300) { if (!buyVehicle(eco, l.id)) fleet++; }
     else if (less && vs.length > 1) { const v = vs.find(x => x.state === 'load' && cargoTotal(x.cargo) < 1); if (v) { sellVehicle(eco, v); fleet--; } }
   }
@@ -621,6 +637,16 @@ function manageStock(f: Faction, need: Stock) {
   for (const r of ROME_SELLS) {
     const lack = Math.ceil((want[r] ?? 0) - (h.stock[r] ?? 0)), price = RES[r].price * IMPORT_MULT;
     const q = Math.min(lack, Math.floor(eco.money * 0.25 / price), Math.floor(room()));
+    if (q >= 1) { h.stock[r] = (h.stock[r] ?? 0) + q; eco.money -= q * price; eco.stats.expenses += q * price; }
+  }
+  // biens rares que ni ses ateliers ni ses voisins ne fournissent (vin, huile, sel… sans gisement) :
+  // des marchands en apportent un peu, au triple du prix
+  for (const r of Object.keys(need) as ResId[]) {
+    if (ROME_SELLS.includes(r) || RES[r].era > eco.era || (need[r] ?? 0) <= 0) continue;
+    if (eco.buildings.some(b => BUILD[b.type].recipe?.out[r]) || (eco.inbound ?? []).some(x => x.r === r)) continue;
+    if (!producersOf(eco, r).every(t => BUILD[t].deposit)) continue;
+    const price = RES[r].price * 3, lack = Math.ceil((need[r] ?? 0) * 3 - (h.stock[r] ?? 0));
+    const q = Math.min(lack, Math.floor(eco.money * 0.1 / price), Math.floor(room()));
     if (q >= 1) { h.stock[r] = (h.stock[r] ?? 0) + q; eco.money -= q * price; eco.stats.expenses += q * price; }
   }
   // il exporte son surplus (ce qui dépasse six mois de besoins et la réserve de chantier),
@@ -685,6 +711,21 @@ function rivalTrade(s: GameState, f: Faction, need: Stock) {
 export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   const eco = f.eco; if (!eco) return;
   eco.techs = f.techs ?? []; eco.era = rivalEra(f); eco.money = f.money;
+  // plus aucun entrepôt (ville prise sans le sien) : sans entrepôt, aucun chantier ne peut être livré ;
+  // il en installe un d'office près de sa plus grande ville, avec une petite réserve, comme à sa fondation
+  if (!eco.buildings.some(b => isStore(b) && b.built)) {
+    const c = cities(eco).sort((a, z) => z.city!.pop - a.city!.pop)[0];
+    for (let k = 0; c && k < 30; k++) {
+      const a = Math.random() * 6.283, rr = 3 + Math.random() * 5, x = c.x + Math.cos(a) * rr, y = c.y + Math.sin(a) * rr;
+      if (!placer?.free(f, x, y) || !checkPlace(eco, geo, 'entrepot', x, y, true).ok) continue;
+      const w = place(eco, geo, 'entrepot', x, y, `Entrepôt de ${c.name}`, true);
+      w.built = true; w.stock = { ...START_STOCK };
+      attachNode(eco, w); attachNode(eco, c);
+      const q = quoteSegment(geo, c.x, c.y, w.x, w.y, 'chemin', !!f.frontier);
+      if (!q.error) addEdge(eco, c.node!, w.node!, 'chemin', q.len, q.bridges);
+      break;
+    }
+  }
   const need = demand(eco);
   rivalTrade(s, f, need);
   manageStock(f, need);
@@ -696,14 +737,25 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
   // chantiers : pas plus de deux à la fois (trois en mode ambitieux), comme un joueur prudent
   // amélioration bloquée (un matériau qu'il n'a pas, ou qui n'arrive pas depuis deux ans) : il y renonce,
   // sinon elle occuperait pour toujours une de ses places de chantier
+  for (const b of eco.buildings) if (b.built && !b.upgrading) b.upSince = undefined;
   for (const b of eco.buildings) {
     if (!b.upgrading || b.repair) continue;
     b.upSince ??= s.day;
     const waiting = (Object.keys(b.need) as ResId[]).filter(r => (b.need[r] ?? 0) - (b.incoming[r] ?? 0) > 0.5);
     if (waiting.length && (waiting.some(r => !canGet(eco, r)) || s.day - b.upSince > 2 * 365)) { b.upgrading = false; b.need = {}; b.incoming = {}; b.work = 0; b.upSince = undefined; }
   }
+  // chantier neuf bloqué (matériau introuvable, ou rien de livré depuis deux ans) : il l'abandonne
+  for (const b of [...eco.buildings]) {
+    if (b.built || b.type === 'village') continue;
+    b.upSince ??= s.day;
+    const waiting = (Object.keys(b.need) as ResId[]).filter(r => (b.need[r] ?? 0) - (b.incoming[r] ?? 0) > 0.5);
+    if (waiting.length && (waiting.some(r => !canGet(eco, r)) || s.day - b.upSince > 2 * 365)) demolish(eco, b);
+  }
+  // bâtiments endommagés (pillage, conquête) : il les répare quand il en a les moyens
+  for (const b of eco.buildings) if (b.damaged && !b.repair && eco.money > repairCost(b).money + 500) startRepair(eco, b);
   const sites = eco.buildings.filter(b => !b.built || b.upgrading).length;
-  const maxSites = s.difficulty === 'ambitieux' ? 3 : 2;
+  // un rival riche mène plus de chantiers de front (jusqu'à quatre de plus) : son argent ne dort pas
+  const maxSites = (s.difficulty === 'ambitieux' ? 3 : 2) + Math.min(4, Math.floor(eco.money / 60000));
   let started = 0;
   // Moyen Âge : un relais routier près de chaque ville entretient ses routes
   if (!distracted && eco.era >= 3 && eco.techs.includes('relais')) for (const c of cities(eco)) {
@@ -750,7 +802,7 @@ export function rivalMonth(s: GameState, geo: Geo, f: Faction) {
     const from = cs[Math.floor(Math.random() * cs.length)];
     for (let k = 0; k < 40; k++) {
       const a = Math.random() * 6.283, rr = 40 + Math.random() * 50, x = from.x + Math.cos(a) * rr, y = from.y + Math.sin(a) * rr;
-      if (geo.waterDist(x, y) > WATER_RANGE || cs.some(c => dist(c, { x, y }) < 35)) continue;
+      if (geo.waterDist(x, y) > WATER_RANGE || eco.buildings.some(c => c.type === 'village' && dist(c, { x, y }) < 35)) continue;
       if (build(s, f, geo, 'village', x, y)) break;
     }
   }

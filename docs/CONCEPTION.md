@@ -58,6 +58,19 @@ les bâtiments sans remparts près du Rhin ; réparation = 30 % du prix (argent 
   le nord, Crécy, Poitiers (rançon), Azincourt, Jeanne d'Arc. **Peste noire** (1347) : −35 % d'habitants
   (−20 % près d'un hôtel-Dieu). Aussi : Clovis, Charlemagne, Hugues Capet. Ces événements touchent aussi les
   rivaux (habitants).
+- *Corrections (après l'analyse complète)* : fenêtres en file d'attente (aucune décision perdue), fin de partie
+  prioritaire même en avance rapide, sauvegardes vérifiées (import confirmé, sauvegarde abîmée mise de côté, alerte si
+  la mémoire est pleine). Guerre : siège remis à zéro à chaque cible, pas de pillage en paix ni deux fois dans l'année,
+  garnisons égales (2,5 % des habitants, ×1,5 dès le bourg au chapitre II), armées rivales levées parmi leurs habitants
+  (1 500 hommes au plus) et dispersées en paix, guerres entre rivaux qui finissent, guerres plus espacées au Moyen Âge
+  (après 500), remparts efficaces contre les Vikings. Rivaux : chantiers bloqués abandonnés après deux ans,
+  bâtiments endommagés réparés, villes servies par leur propre entrepôt, biens rares apportés par des marchands
+  (au triple du prix), plus de chantiers de front quand ils sont riches, pas de nouveau village à plus de 150 km
+  de leurs villes, un entrepôt installé d'office s'ils n'en ont plus. Économie : un seul bâtiment de service par
+  ville (thermes, basilique, hôtel-Dieu), un amphithéâtre par 40 km, un monastère par 50 km (sans ouvriers) ; effets
+  des bâtiments de service proportionnels à leur équipe ; exhaure limitée aux mines et carrières ; usure jugée sur
+  tout le tronçon ; l'or s'achète en Hispanie et à Carthage ; les produits médiévaux se vendent à l'étranger ;
+  7 objectifs facultatifs au chapitre III ; l'art gothique ajoute +0,2 point par basilique et monastère.
 - *Étape 4* : Notre-Dame de Paris, merveille de fin de chapitre (avec l'arbre complet et la date ≥ 1403).
 
 ## 3. Carte

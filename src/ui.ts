@@ -1,6 +1,6 @@
 // Interface : outils, panneaux, gestes (souris et tactile), sauvegarde.
 import { CHARACTERS, DIFFICULTY, PLAYER_COLOR, RIVALS, type Difficulty, RP_TIER,
-  BRANCHES, BUILD, ERAS, LEVEL_MONEY, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, ROAD_WEAR_SLOW, TECHS, TIERS, VEH, WORK_RANGE,
+  BRANCHES, BUILD, ERAS, LAST_CHAPTER, LEVEL_MONEY, START_YEAR, LEVEL_MULT, OBJECTIVES, PARTNERS, SEA_PARTNERS, RES, ROADS, ROAD_WEAR_SLOW, TECHS, TIERS, VEH, WORK_RANGE,
   type BType, type ResId, type RoadType, type VType,
 } from './defs';
 import type { Geo } from './geo';
@@ -9,14 +9,14 @@ import { IC, LABELS } from './uiicons';
 import { Camera, DEP_COLOR, Renderer, type View } from './render';
 import { factionPop, findRival, initRivals, playerPop } from './rivals';
 import { rivalWorkRange } from './rivalai';
-import { MERC, PLAYER, RECRUIT, declareWar, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
+import { MERC, PLAYER, RECRUIT, declareWar, peaceTerms, disband, hireMercs, hostile, ownerColor, ownerName, proposePeace, recruit, rivalGarrison, strength, targetPos, warAllowed } from './war';
 import { SPY_COST, THRESHOLD, breakTreaty, buyFromRival, factionBuys, factionSells, giftMoney, giftRes, hasTavern, notePlayerBuild, propose, relLabel, relOf, rivalImportPrice, rivalPrice, rivalVolume, spy, storeTotal, tavernes, tradeFaction, linkedTraders, TRADE_LINK_KM } from './diplomacy';
-import { addEdge, addNode, findPath, nodeById, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
-import { cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
+import { addEdge, addNode, findPath, invalidate, nodeById, firstCrossing, projectOnEdge, quoteSegment, removeEdge, splitEdge } from './roads';
+import { ERA_END, cityShortages, tierGoods, chapterConditions, startEra, startRepair, repairCost, wonderProdMult, missingNextGoods, foodReserve, RESERVE_TO_GROW,
   DAYS_PER_SEC, Sim, activeMods, attachNode, buildMoney, buildingStatus, costMult, scaleStock, upgradeCost, workRange, seaPrice, seaImportPrice, seaVolume, buySea, buyImport, importPrice, isStore, localPrice, partnerClosed, partnerVolume, sellLocal, buyVehicle, checkPlace, cityNeeds, dateLabel, demolish, fmt, getB,
-  hasTech, levelAllowed, relaisMult, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year, vehCap, vehSpeed,
+  hasTech, levelAllowed, edgeKept, partnerMods, seaClosed, newGame, place, priceAt, sellVehicle, startingCamp, suggestName, upgrade, year, vehCap, vehSpeed,
 } from './sim';
-import { SAVE_KEY, cargoTotal, migrate, type Building, type Edge, type GameState, type Line, type RNode, type Stock } from './state';
+import { SAVE_KEY, cargoTotal, migrate, type Building, type Edge, type Faction, type GameState, type Line, type RNode, type Stock } from './state';
 
 /** Point d'accroche d'une route : bâtiment, carrefour, milieu d'une route existante, ou terrain libre */
 interface Snap { node: RNode | null; x: number; y: number; bid?: number; edge?: number; }
@@ -58,15 +58,23 @@ export class Game {
   private saveTimer = 0;
 
   constructor(public geo: Geo) {
+    try { if (localStorage.getItem('mine-map-bigtext')) document.documentElement.classList.add('big'); } catch { /* stockage indisponible */ }
     const canvas = $<HTMLCanvasElement>('map');
     this.ren = new Renderer(canvas, geo, this.cam);
     this.ren.resize();
-    window.addEventListener('resize', () => this.ren.resize());
+    window.addEventListener('resize', () => { this.ren.resize(); this.dirty = true; });
+    for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'click', 'change']) window.addEventListener(ev, () => { this.dirty = true; }, { capture: true, passive: true });
     this.bindInput(canvas);
     this.bindChrome();
     const saved = this.readSave();
-    if (saved) this.load(saved);
-    else this.fresh();
+    let broken = false;
+    if (saved) { try { this.load(saved); this.sim.step(0.01); } catch (err) { console.error(err); broken = true; } }
+    if (!saved || broken) {
+      // sauvegarde abîmée : elle est mise de côté (récupérable) et une nouvelle partie commence
+      if (broken) try { localStorage.setItem(SAVE_KEY + '-abimee', localStorage.getItem(SAVE_KEY) ?? ''); } catch { /* stockage plein */ }
+      this.fresh();
+      if (broken) setTimeout(() => this.toast('Ta sauvegarde était abîmée : une nouvelle partie commence.', 'bad'), 500);
+    }
     requestAnimationFrame(t => this.frame(t));
     setInterval(() => this.refresh(), 400);
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.save(); });
@@ -80,11 +88,14 @@ export class Game {
       event: (title: string, text: string) => this.ffwd ? void this.ffwd.push(title) : this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Continuer', primary: true }]),
       ask: (title: string, text: string, yes: () => void) => { if (this.ffwd) { this.ffwd.push(title + ' (sans réponse)'); return; } this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, [{ label: 'Refuser' }, { label: 'Accepter', primary: true, fn: () => { yes(); this.toast('Accord conclu.', 'good'); } }]); },
       chapter: () => { if (this.ffwd) this.endFfwd(() => this.chapterModal()); else this.chapterModal(); },
-      gameOver: (text?: string) => this.modal(`<h2>${text ? 'Défaite' : 'Faillite'}</h2><p>${text ?? 'Ta trésorerie est restée négative pendant 6 mois. Tes créanciers saisissent tes biens.'}</p>`, [{ label: 'Nouvelle partie', primary: true, fn: () => this.fresh() }]),
-      choose: (title: string, text: string, options: { label: string; fn: () => void }[]) => this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, options.map((o, i) => ({ label: o.label, primary: i === 0, fn: o.fn }))),
+      // la fin de partie interrompt l'avance rapide et remplace toutes les fenêtres en attente
+      gameOver: (text?: string) => { this.endFfwd(); this.modalQueue = []; this.modal(`<h2>${text ? 'Défaite' : 'Faillite'}</h2><p>${esc(text ?? 'Ta trésorerie est restée négative pendant 6 mois. Tes créanciers saisissent tes biens.')}</p>`, [{ label: 'Nouvelle partie', primary: true, fn: () => { this.fresh(); this.save(); } }], true); },
+      // un choix (après une victoire) demande une réponse : il interrompt l'avance rapide
+      choose: (title: string, text: string, options: { label: string; fn: () => void }[]) => { this.endFfwd(); this.modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p>`, options.map((o, i) => ({ label: esc(o.label), primary: i === 0, fn: o.fn }))); },
     };
   }
   fresh() {
+    this.modalQueue = []; this.ffwd = null;
     this.s = newGame(this.geo);
     this.sim = new Sim(this.s, this.geo, this.notifier());
     this.centerOn(0, -20, Math.min(this.cam.w, this.cam.h) / 1150);
@@ -105,9 +116,12 @@ export class Game {
       (Object.keys(DIFFICULTY) as Difficulty[]).map(k => ({ label: DIFFICULTY[k].name, primary: k === 'equilibre', fn: () => { this.s.difficulty = k; } })));
   }
   load(s: GameState) {
+    this.modalQueue = []; this.ffwd = null;
     this.s = s = migrate(s);
     this.sim = new Sim(s, this.geo, this.notifier());
-    if (s.chapterDone && (s.era === 1 || s.era === 2)) setTimeout(() => this.chapterModal(), 300);
+    // partie terminée (faillite ou défaite) : on ne peut que recommencer
+    if (s.over) setTimeout(() => this.notifier().gameOver('Cette partie est terminée.'), 300);
+    else if (s.chapterDone && (s.era === 1 || s.era === 2)) setTimeout(() => this.chapterModal(), 300);
     const camp = s.buildings.find(b => b.type === 'entrepot');
     if (camp) this.centerOn(camp.x, camp.y, 6); else this.centerOn(0, -20, Math.min(this.cam.w, this.cam.h) / 1150);
     this.setMode(camp ? { kind: 'select' } : { kind: 'start' });
@@ -189,13 +203,35 @@ export class Game {
   }
   centerOn(x: number, y: number, scale?: number) { this.cam.cx = x; this.cam.cy = y; if (scale) this.cam.scale = scale; }
 
-  save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.s)); } catch { /* stockage indisponible */ } }
+  /** Enregistre la partie ; renvoie false si le navigateur a refusé (stockage plein ou indisponible) */
+  save(): boolean {
+    try { localStorage.setItem(SAVE_KEY, saveText(this.s)); this.saveFailed = false; return true; }
+    catch {
+      // prévenu une seule fois tant que l'enregistrement échoue
+      if (!this.saveFailed) this.toast('Sauvegarde impossible : la mémoire du navigateur est pleine. Exporte ta partie depuis le Menu.', 'bad');
+      this.saveFailed = true; return false;
+    }
+  }
+  private saveFailed = false;
   private readSave(): GameState | null {
-    try { const t = localStorage.getItem(SAVE_KEY); return t ? JSON.parse(t) as GameState : null; } catch { return null; }
+    try { const t = localStorage.getItem(SAVE_KEY); if (!t) return null; const st = JSON.parse(t); return validSave(st) ? st : null; } catch { return null; }
   }
 
   // ---------- Boucle ----------
   private frame(t: number) {
+    // une erreur ne doit pas arrêter la boucle : elle est signalée (une fois) et le jeu continue
+    try { this.tick(t); }
+    catch (err) {
+      console.error(err);
+      if (!this.crashed) { this.crashed = true; this.speed = 0; this.toast('Une erreur est survenue : le jeu est mis en pause. Exporte ta partie depuis le Menu par précaution.', 'bad'); }
+    }
+    requestAnimationFrame(x => this.frame(x));
+  }
+  private crashed = false;
+  /** quelque chose a changé à l'écran (geste, clic, touche) : la carte doit être redessinée */
+  private dirty = true;
+  private lastDraw = 0;
+  private tick(t: number) {
     const dt = Math.min(0.25, (t - this.last) / 1000); this.last = t;
     if (this.ffwd) {
       // avance rapide : autant de jours que possible en ~14 ms par image (une dizaine d'années par seconde)
@@ -203,6 +239,7 @@ export class Game {
       for (let i = 0; i < 2000 && this.ffwd && performance.now() - t0 < 14; i++) this.sim.step(1);
       if (this.ffwd && (!end || chapterConditions(this.s).date || this.s.over)) this.endFfwd();
     } else if (this.mode.kind !== 'start' && this.speed > 0 && !this.s.over && $('modal').hidden) {
+      this.crashed = false;
       let days = dt * DAYS_PER_SEC * this.speed;
       while (days > 0) { const d = Math.min(0.5, days); this.sim.step(d); days -= d; }
     }
@@ -210,8 +247,9 @@ export class Game {
     if (this.saveTimer > 20) { this.saveTimer = 0; this.save(); }
     this.view.showLines = this.visibleLines();
     this.view.status ??= b => buildingStatus(this.sim, b);
-    this.ren.draw(this.s, this.view, t);
-    requestAnimationFrame(x => this.frame(x));
+    // jeu en pause et rien ne bouge (ni la carte, ni le pointeur) : la carte n'est redessinée que deux fois par seconde
+    const moving = !!this.ffwd || (this.speed > 0 && this.mode.kind !== 'start' && !this.s.over && $('modal').hidden);
+    if (moving || this.dirty || t - this.lastDraw > 500) { this.dirty = false; this.lastDraw = t; this.ren.draw(this.s, this.view, t); }
   }
 
   /** Lignes tracées sur la carte : la ligne ouverte, toutes les lignes dans leur panneau, ou celles du bâtiment sélectionné */
@@ -259,6 +297,9 @@ export class Game {
     document.querySelectorAll<HTMLElement>('[data-ic]').forEach(e => { e.innerHTML = IC[e.dataset.ic!]; });
     $('rpBtn').onclick = () => this.openTree();
     $('treeView').addEventListener('click', e => this.treeClick(e));
+    // pendant un appui, l'arbre n'est pas redessiné (sinon le bouton touché disparaît avant le clic)
+    $('treeView').addEventListener('pointerdown', () => { this.treeHold = true; });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('treeView').addEventListener(ev, () => { setTimeout(() => { this.treeHold = false; }, 300); });
     document.querySelectorAll<HTMLButtonElement>('#speed button').forEach(b => b.onclick = () => { this.speed = Number(b.dataset.s); this.refresh(); });
     // téléphone : un seul bouton qui fait défiler les vitesses
     $('speedCycle').onclick = () => { const v = [1, 2, 4, 8]; this.speed = v[(v.indexOf(this.speed) + 1) % v.length] || 1; this.refresh(); };
@@ -280,7 +321,7 @@ export class Game {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === ' ') { this.speed = this.speed ? 0 : 1; e.preventDefault(); this.refresh(); }
       else if (e.key >= '1' && e.key <= '4') { this.speed = [1, 2, 4, 8][Number(e.key) - 1]; this.refresh(); }
-      else if (e.key === 'Escape') { if (!$('treeView').hidden) this.closeTree(); else this.cancel(); }
+      else if (e.key === 'Escape') { if (this.escapeModal()) return; if (!$('treeView').hidden) this.closeTree(); else this.cancel(); }
       else if (e.key === 'r') this.tool('road');
       else if (e.key === 'b') this.tool('build');
       else if (e.key === 'Enter' && this.mode.kind === 'road') this.endRoad();
@@ -344,11 +385,14 @@ export class Game {
   }
 
   // ---------- Entrées ----------
+  /** dernier geste fait au doigt (ou au stylet) plutôt qu'à la souris */
+  private touchInput = false;
   private bindInput(c: HTMLCanvasElement) {
     const ptrs = new Map<number, { x: number; y: number }>();
     let downAt: { x: number; y: number } | null = null, dragged = false, pinch = 0;
     c.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse' && e.button !== 0) return; // seul le bouton gauche agit sur la carte
+      this.touchInput = this.ren.touch = e.pointerType !== 'mouse';
       c.setPointerCapture(e.pointerId);
       ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
       if (ptrs.size === 1) { downAt = { x: e.offsetX, y: e.offsetY }; dragged = false; }
@@ -436,7 +480,15 @@ export class Game {
       const e = this.ren.pickEdge(s, sx, sy);
       const p = this.ren.pick(s, sx, sy);
       if (p?.kind === 'building') { this.askDemolish(getB(s, p.id)!); return; }
-      if (e !== null) { removeEdge(s, e); this.rerouteAll(); this.toast('Route démolie.'); }
+      if (e !== null) {
+        const ed = s.edges.find(x => x.id === e);
+        // route d'un allié, ou empruntée par une ligne (conquête) : elle appartient à un autre camp
+        if (ed?.ally) { this.toast('Cette route appartient à un autre camp : tu ne peux pas la démolir.', 'bad'); return; }
+        const del = () => { removeEdge(s, e); this.rerouteAll(); this.toast('Route démolie.'); };
+        // au doigt, un toucher imprécis ne démolit rien sans confirmation
+        if (this.touchInput) this.modal('<h2>Démolir cette route ?</h2><p>Les lignes qui l\'empruntent chercheront un autre itinéraire.</p>', [{ label: 'Annuler' }, { label: 'Démolir', primary: true, fn: del }]);
+        else del();
+      }
       return;
     }
     if (m.kind === 'target') {
@@ -655,8 +707,8 @@ export class Game {
   private armyPanel(id: number): string {
     const s = this.s, a = (s.armies ?? []).find(x => x.id === id); if (!a) return '<p class="muted">Cette armée n\'existe plus.</p>';
     const mine = a.owner === PLAYER, col = ownerColor(s, a.owner), t = targetPos(s, a.target ?? null);
-    const tname = a.target ? (a.target.kind === 'army' ? 'une armée ennemie' : a.target.kind === 'b' ? getB(s, a.target.id)?.name : findRival(s, a.target.id)?.b.name) : '';
-    const st = { idle: 'Au repos', march: `En marche vers ${tname}`, fight: 'Au combat !', siege: `Assiège ${tname}` }[a.state];
+    const tname = a.target ? (a.target.kind === 'army' ? 'une armée ennemie' : a.target.kind === 'b' ? getB(s, a.target.id)?.name : findRival(s, a.target.id)?.b.name) ?? '' : ''; const tn = esc(tname);
+    const st = { idle: 'Au repos', march: `En marche vers ${tn}`, fight: 'Au combat !', siege: `Assiège ${tn}` }[a.state];
     let h = `<h2 class="ph"><span class="army-dot" style="background:${col}"></span>${mine ? (a.merc ? 'Mercenaires' : 'Ton armée') : `Armée des ${esc(ownerName(s, a.owner))}`}</h2>
       ${this.kpis([[fmt(a.men), 'hommes'], [`${Math.round(a.leg * 100)} %`, 'légionnaires'], [`${Math.round(a.hp)} %`, 'vie et moral', a.hp > 60 ? 'good' : a.hp > 30 ? 'warn' : 'bad'], [fmt(strength(a)), 'force']])}
       <div class="gauge"><i style="width:${a.hp}%;background:${a.hp > 60 ? '#40c057' : a.hp > 30 ? '#fab005' : '#fa5252'}"></i></div>
@@ -680,7 +732,7 @@ export class Game {
         : `<p><span class="pill ${(b.short ?? []).includes('cereales') ? 'bad' : 'warn'}">${(b.short ?? []).includes('cereales') ? 'Famine' : 'Stagne'}</span></p>`;
       if (b.short?.length) h += `<p class="muted">Manque : ${b.short.map(r => RES[r].name.toLowerCase()).join(', ')}.</p>`;
     } else if (BUILD[b.type].recipe) h += `<p class="muted">Produit : ${Object.keys(BUILD[b.type].recipe!.out).map(r => RES[r as ResId].name.toLowerCase()).join(', ')}.</p>`;
-    h += `<h3>${esc(f.name)}</h3><p class="muted">${esc(RIVALS.find(x => x.id === f.id)?.desc ?? '')}</p>
+    h += `<h3>${esc(f.name)}</h3><p class="muted">${esc(this.rivalDesc(f))}</p>
       <p><b>Caractère :</b> ${CHARACTERS[f.character as keyof typeof CHARACTERS] ?? ''}</p>
       <p><b>Technologies :</b> ${(f.techs ?? []).length ? (f.techs ?? []).map(id => TECHS.find(t => t.id === id)?.name ?? id).join(', ') : '<span class="muted">aucune pour l\'instant</span>'}</p>
       ${this.kpis([[`${cities.length}`, `ville${cities.length > 1 ? 's' : ''}`], [fmt(pop), 'habitants'], [`${f.b.length - cities.length}`, 'autres bâtiments']])}
@@ -713,7 +765,7 @@ export class Game {
     if (e.ally) { const f = s.factions?.find(x => x.id === e.ally); return `<h2>${ROADS[e.type].name}</h2><p>Route alliée des <b>${esc(f?.name ?? '?')}</b> : tes véhicules peuvent l'emprunter et tu peux y raccorder tes routes.</p><p class="muted">Elle disparaît de ton réseau si l'alliance est rompue.</p>`; }
     const up = e.type === 'chemin' && hasTech(s, 'voie_romaine');
     const upCost = Math.round(e.len * (ROADS.voie.perKm - ROADS.chemin.perKm) * 1.3);
-    const wear = e.wear ?? 0, kept = relaisMult(s, (nodeById(s, e.a)!.x + nodeById(s, e.b)!.x) / 2, (nodeById(s, e.a)!.y + nodeById(s, e.b)!.y) / 2) > 1;
+    const wear = e.wear ?? 0, kept = edgeKept(s, nodeById(s, e.a)!, nodeById(s, e.b)!);
     const state = s.era >= 3 ? `<p>État : <b>${Math.round((1 - wear) * 100)} %</b>${wear > 0.01 ? ` · vitesse ${Math.round((1 - ROAD_WEAR_SLOW * wear) * 100)} %` : ''}</p>
       <p class="hint ${kept ? 'good' : wear > 0.5 ? 'bad' : 'warn'}">${kept ? 'Entretenue par un relais routier : elle se répare peu à peu.' : 'Personne ne l\'entretient : elle s\'abîme. Construis un relais routier à moins de 30 km pour la réparer.'}</p>` : '';
     return `<h2>${ROADS[e.type].name}</h2><p>Longueur : <b>${e.len.toFixed(1)} km</b>${e.bridges ? ` · ${e.bridges} pont(s)` : ''}</p><p>Vitesse : ×${ROADS[e.type].speed}</p>${state}
@@ -797,7 +849,7 @@ export class Game {
       h += `<div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>`;
       if (!ports.length) h += `<p class="hint warn">Construis un port de commerce sur la côte ${b.sea === 'mediterranee' ? 'méditerranéenne' : 'atlantique ou de la Manche'} pour y envoyer des navires.</p>`;
       h += `<h3>Ils achètent <small class="muted">— livre-leur avec un navire marchand (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.filter(r => RES[r].era <= s.era).map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${seaPrice(s, b, p, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
-      h += `<h3>Ils vendent <small class="muted">— les achats attendent ici qu'un navire vienne les charger</small></h3><div class="stocks">${p.sells.map(r => {
+      h += `<h3>Ils vendent <small class="muted">— les achats attendent ici qu'un navire vienne les charger</small></h3><div class="stocks">${p.sells.filter(r => RES[r].era <= s.era).map(r => {
         const pr = seaImportPrice(s, b, p, r);
         return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${pr.toFixed(1)} <small class="muted">sest./t</small></b></div>
           <div class="buy"><button data-act="importmer" data-id="${b.id}" data-p="${p.id}" data-r="${r}" data-q="10">Acheter 10 t (${fmt(pr * 10)})</button><button data-act="importmer" data-id="${b.id}" data-p="${p.id}" data-r="${r}" data-q="20">20 t (${fmt(pr * 20)})</button></div></div></div>`;
@@ -813,7 +865,7 @@ export class Game {
       h += this.kpis([[`${fmt(sold)} / ${vol} t`, 'vendu ce mois'], [`${fmt(s.stats.sold[p.id] ?? 0)} t`, 'vendu au total']]);
       h += `<div class="gauge"><i style="width:${Math.min(100, sold / vol * 100)}%"></i></div>`;
       h += `<h3>Ils achètent <small class="muted">— livre-leur avec une ligne (arrêt « Décharger »)</small></h3><div class="stocks">${p.buys.filter(r => RES[r].era <= s.era).map(r => `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${priceAt(s, b, r).toFixed(1)} <small class="muted">sest./t</small></b></div></div></div>`).join('')}</div>`;
-      h += `<h3>Ils vendent <small class="muted">— les achats arrivent dans ce poste</small></h3><div class="stocks">${p.sells.map(r => {
+      h += `<h3>Ils vendent <small class="muted">— les achats arrivent dans ce poste</small></h3><div class="stocks">${p.sells.filter(r => RES[r].era <= s.era).map(r => {
         const pr = importPrice(s, b, r);
         return `<div class="srow">${resIcon(r, 'ri big')}<div class="sinfo"><div class="sline"><span>${RES[r].name}</span><b>${pr.toFixed(1)} <small class="muted">sest./t</small></b></div>
           <div class="buy"><button data-act="import" data-id="${b.id}" data-r="${r}" data-q="5" ${closed ? 'disabled' : ''}>Acheter 5 t (${fmt(pr * 5)})</button><button data-act="import" data-id="${b.id}" data-r="${r}" data-q="20" ${closed ? 'disabled' : ''}>20 t (${fmt(pr * 20)})</button></div></div></div>`;
@@ -877,7 +929,7 @@ export class Game {
           <small>${fmt(c.stock.cereales ?? 0)} t de céréales · mange ${perMonth(fq)}${got !== undefined ? ` · reçu le mois dernier : ${fmt(got)} t` : ''}</small>
           <small>${why}</small></div></div>`;
       }
-      h += `<p class="muted">Recherche : <b>+${String(RP_TIER[c.tier]).replace('.', ',')} point/mois</b> (palier ${TIERS[c.tier].name.toLowerCase()})${next ? ` · ${String(RP_TIER[c.tier + 1]).replace('.', ',')} en devenant ${next.name.toLowerCase()}` : ''}</p>`;
+      h += `<p class="muted">Recherche : <b>+${String(RP_TIER[c.tier]).replace('.', ',')} point${RP_TIER[c.tier] >= 2 ? 's' : ''}/mois</b> (palier ${TIERS[c.tier].name.toLowerCase()})${next ? ` · ${String(RP_TIER[c.tier + 1]).replace('.', ',')} en devenant ${next.name.toLowerCase()}` : ''}</p>`;
       if ((c.needMult ?? 1) < 1) h += `<p class="hint good">Merveille à proximité : consommation −${Math.round((1 - c.needMult!) * 100)} %.</p>`;
       if (next) h += `<p class="muted">Prochain palier : <b>${next.name}</b> à ${fmt(next.minPop)} habitants</p><div class="gauge"><i style="width:${Math.min(100, (c.pop - TIERS[c.tier].minPop) / (next.minPop - TIERS[c.tier].minPop) * 100)}%"></i></div>`;
       h += `<h3>Besoins et réserves</h3><div class="stocks">${(Object.entries(needs) as [ResId, number][]).map(([r, q]) => {
@@ -922,7 +974,7 @@ export class Game {
         const sold = s.stats.soldMonth['mer:' + p.id] ?? 0, vol = seaVolume(s, p);
         return `<div class="seap"><div class="seap-h"><b>${esc(p.name)}</b><small class="muted">${route ? `${fmt(route.len)} km · ${Math.max(1, Math.round(route.len / sp))} j de mer` : 'inaccessible'}</small></div>
           <div class="seap-row"><small class="muted">Achète :</small>${p.buys.filter(r => RES[r].era <= s.era).map(r => `<span class="res">${resIcon(r)}${RES[r].name} <b>${seaPrice(s, c, p, r).toFixed(1)}</b></span>`).join('')}</div>
-          <div class="seap-row"><small class="muted">Vend :</small>${p.sells.map(r => `<span class="res">${resIcon(r)}${RES[r].name}</span>`).join('')}</div>
+          <div class="seap-row"><small class="muted">Vend :</small>${p.sells.filter(r => RES[r].era <= s.era).map(r => `<span class="res">${resIcon(r)}${RES[r].name}</span>`).join('')}</div>
           <div class="seap-row"><small class="muted">${fmt(sold)} / ${vol} t vendues ce mois</small><span class="grow"></span>${route ? `<button class="primary" data-act="sealine" data-id="${b.id}" data-c="${c.id}">+ Ligne de navire</button>` : ''}<button data-act="goto" data-id="${c.id}">Voir</button></div></div>`;
       }).join('') || '<p class="muted">Aucun comptoir sur cette mer.</p>';
     }
@@ -990,6 +1042,13 @@ export class Game {
   }
   /** Nom court d'un bâtiment (sans le nom du gisement) */
   private short(id: number) { const b = getB(this.s, id); return b ? b.name.split(' — ')[0] : '?'; }
+  /** Présentation d'un rival (au Moyen Âge, les familles romaines sont devenues des seigneuries) */
+  private rivalDesc(f: Faction) {
+    const r = RIVALS.find(x => x.id === f.id);
+    if (f.id === 'vikings') return f.raider ? 'Pirates venus de Scandinavie : ils pillent les côtes et remontent les fleuves.' : 'Vikings installés sur la côte : ils ont fondé leur propre seigneurie.';
+    if (this.s.era >= 3 && r) return `Seigneurie médiévale héritière de la famille romaine de ${r.capital}.`;
+    return r?.desc ?? '';
+  }
   lineLabel(l: Line) {
     if (l.name) return l.name;
     if (!l.stops.length) return 'Nouvelle ligne';
@@ -1027,8 +1086,8 @@ export class Game {
   /** Ressources proposées en priorité pour un arrêt de chargement */
   /** Ce qu'un partenaire étranger (poste-frontière ou comptoir) vend ; null pour un bâtiment ordinaire */
   private foreignSells(b: Building): ResId[] | null {
-    if (b.partner) return PARTNERS.find(p => p.id === b.partner)!.sells;
-    if (b.type === 'comptoir') return SEA_PARTNERS.find(p => p.id === b.sp)?.sells ?? [];
+    if (b.partner) return PARTNERS.find(p => p.id === b.partner)!.sells.filter(r => RES[r].era <= this.s.era);
+    if (b.type === 'comptoir') return (SEA_PARTNERS.find(p => p.id === b.sp)?.sells ?? []).filter(r => RES[r].era <= this.s.era);
     if (b.type === 'taverne') { const f = tradeFaction(this.s, b); return f ? factionSells(f) : null; }
     return null;
   }
@@ -1056,6 +1115,8 @@ export class Game {
       } else if (b && water) { if (!this.geo.nearestNav(b.x, b.y, 8)) warn = '<small class="warn">trop loin d\'un fleuve navigable (plus de 8 km) : les barges ne peuvent pas y accoster</small>'; else if (i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && !this.geo.riverPath(p.x, p.y, b.x, b.y)) warn = '<small class="warn">fleuves non reliés</small>'; } }
       else if (b && b.node === null) warn = '<small class="warn">non relié par la route</small>';
       else if (b && i > 0) { const p = getB(s, l.stops[i - 1].bid); if (p && p.node !== null && b.node !== null && !findPath(s, p.node, b.node, VEH[l.vtype].voie)) warn = `<small class="warn">aucun itinéraire${VEH[l.vtype].voie ? ' par voie romaine' : ''} depuis l'arrêt précédent</small>`; }
+      if (b && b.type === 'comptoir' && (seaClosed(s) || partnerMods(s, 'mer:' + b.sp).closed)) warn += ' <small class="warn">comptoir fermé : les navires y passent sans rien vendre ni acheter (mets la ligne en pause)</small>';
+      if (b?.partner && partnerClosed(s, b.partner)) warn += ' <small class="warn">frontière fermée : les véhicules y passent sans rien vendre ni acheter</small>';
       if (b && st.action === 'unload' && loaded.length && !b.city && !b.partner && !isStore(b) && b.type !== 'taverne') {
         const ok = b.type === 'comptoir' ? loaded.filter(r => SEA_PARTNERS.find(p => p.id === b.sp)!.buys.includes(r)) : loaded.filter(r => BUILD[b.type].recipe?.in[r]);
         if (!ok.length) warn += ' <small class="warn">ce bâtiment n\'accepte aucun de ces matériaux</small>';
@@ -1086,7 +1147,7 @@ export class Game {
         what = `<div class="chips sel"><small class="muted">Décharger :</small> ${st.res.map(r => `<button class="reschip" data-act="delres" data-i="${i}" data-r="${r}" title="Retirer">${resChip(r)} ✕</button>`).join('') || '<small><b>toutes les ressources</b></small>'}</div>
           ${offer.length ? `<select data-field="addres" data-i="${i}"><option value="">${st.res.length ? '+ Décharger aussi…' : '+ Ne décharger que…'}</option>${offer.map(r => `<option value="${r}">${RES[r].name}</option>`).join('')}</select>` : ''}`;
         what += `<label class="share">Déposer <select data-field="share" data-i="${i}">${[100, 75, 66, 50, 33, 25, 10].map(p => `<option value="${p}" ${sh === p ? 'selected' : ''}>${p === 100 ? 'tout le reste' : p + ' % du chargement'}</option>`).join('')}</select></label>
-          <small class="muted">${b?.city || b?.partner || b?.type === 'comptoir' ? 'Vente' : 'Dépôt'}${sh < 100 ? ` de ${sh} % de ce qui a été chargé au départ ; le reste continue vers l'arrêt suivant` : ' de tout ce que le bâtiment accepte'}.</small>`;
+          <small class="muted">${b?.city || b?.partner || b?.type === 'comptoir' || b?.type === 'taverne' ? 'Vente' : 'Dépôt'}${sh < 100 ? ` de ${sh} % de ce qui a été chargé au départ ; le reste continue vers l'arrêt suivant` : ' de tout ce que le bâtiment accepte'}.</small>`;
       }
       return `<div class="stop" data-i="${i}"><span class="handle" data-i="${i}" title="Glisser pour changer l'ordre des arrêts">⠿</span><span class="n" style="background:${l.color}">${i + 1}</span><span class="grow">${role} <b>${esc(b?.name ?? '?')}</b> ${warn}<br>
         <select data-field="action" data-i="${i}"><option value="load" ${st.action === 'load' ? 'selected' : ''}>Charger</option><option value="unload" ${st.action === 'unload' ? 'selected' : ''}>Décharger</option></select>
@@ -1207,10 +1268,12 @@ export class Game {
     else if (a === 'next') { this.closeTree(); this.chapterModal(); }
     this.treeKey = ''; this.renderTree(); this.refresh();
   }
+  private treeHold = false;
   private renderTree() {
     const s = this.s, techs = TECHS.filter(t => t.era === s.era);
+    // seuls les changements visibles redessinent l'arbre : technologies, sélection, et points (affichés à l'unité)
     const key = `${s.techs.join(',')}|${Math.floor(s.rp)}|${this.treeSel}|${s.era}`;
-    if (key === this.treeKey) return;
+    if (key === this.treeKey || (this.treeHold && this.treeKey)) return;
     this.treeKey = key;
     if (!techs.length) {
       // chapitre dont l'arbre n'est pas encore disponible
@@ -1317,7 +1380,7 @@ export class Game {
         <svg class="tv-edges" width="${W}" height="${H}">${edges}</svg>${nodes}${pop}</div></div>
         <aside class="tv-detail">${detail}</aside></div>
       <footer class="tv-legend"><span class="lg done"></span>Découverte <span class="lg ready"></span>Disponible <span class="lg avail"></span>Points insuffisants <span class="lg locked"></span>Verrouillée <span class="lg sel"></span>Sélectionnée
-        <small class="muted">Choisis ton ordre de recherche ; l'époque suivante s'ouvre quand tout l'arbre est découvert${s.era >= 2 ? ', la merveille construite et la date atteinte' : ''}.</small></footer></div>`;
+        <small class="muted">Choisis ton ordre de recherche ; ${s.era >= LAST_CHAPTER ? 'la suite du chapitre arrive dans une prochaine version' : `l'époque suivante s'ouvre quand tout l'arbre est découvert${ERA_END[s.era] ? ', la merveille construite et la date atteinte' : ''}`}.</small></footer></div>`;
     // la vue ne bouge pas quand l'arbre se met à jour (touche, points gagnés)
     const sc = $('treeView').querySelector<HTMLElement>('.tv-scroll');
     if (sc && keep) { sc.scrollLeft = keep[0]; sc.scrollTop = keep[1]; }
@@ -1356,7 +1419,7 @@ export class Game {
     const cond = (ok: boolean, t: string) => `<li class="${ok ? 'ok' : ''}">${ok ? IC.check : IC.lock}<span>${t}</span></li>`;
     const ffwdBtn = end && cc.techs && cc.wonder && !cc.date ? `<div class="actions top"><button class="primary" data-act="ffwd">⏩ Avancer jusqu'en ${end.year - 50}</button></div><p class="muted">Le temps défile très vite ; les événements sont résumés à la fin.</p>` : '';
     return `<h2 class="ph">${IC.objectives}Chapitre ${ROMAN[s.era]} · ${ERAS[s.era]}</h2>
-      <h3>Pour terminer le chapitre</h3><ul class="conds">
+      <h3>Pour terminer le chapitre</h3>${s.era >= LAST_CHAPTER ? `<p class="hint info">La fin du chapitre ${ROMAN[s.era]} arrive dans une prochaine version (avec Notre-Dame de Paris). D'ici là, développe ton royaume : l'arbre de recherche et les objectifs restent à découvrir.</p>` : ''}<ul class="conds">
         ${cond(cc.techs, `Arbre de recherche complet (${techN} / ${techT})`)}
         ${end ? cond(cc.wonder, `Construire ${BUILD[end.wonder].name}`) : ''}
         ${end ? cond(cc.date, `Atteindre l'an ${end.year - 50} (fin de l'époque : ${end.year}, à 50 ans près)`) : ''}</ul>
@@ -1418,7 +1481,7 @@ export class Game {
       const p = PARTNERS.find(x => x.id === b.partner)!, st = buildingStatus(this.sim, b);
       return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#7a1f2b"><span class="lc-head"><b>${esc(p.name)}</b><span class="pill ${st.level}">${st.label}</span></span>
         <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
-        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
+        <span class="chips"><small class="muted">Vend :</small> ${p.sells.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span></button>`;
     }).join('')}<p class="muted">Relie un poste-frontière par la route, puis livre-lui des marchandises avec une ligne, ou achète-lui des ressources depuis sa fiche.</p>`;
     // partenaires d'outre-mer : ouverts avec le négoce maritime
     const seaOpen = s.techs.includes('negoce_maritime');
@@ -1427,7 +1490,7 @@ export class Game {
       const p = SEA_PARTNERS.find(x => x.id === b.sp)!, st = buildingStatus(this.sim, b);
       return `<button class="linecard" data-act="goto" data-id="${b.id}" style="--lc:#14406e"><span class="lc-head"><b>${esc(p.name)}</b><small class="muted">${b.sea === 'mediterranee' ? 'Méditerranée' : 'Atlantique'}</small><span class="pill ${st.level}">${st.label}</span></span>
         <span class="chips"><small class="muted">Achète :</small> ${p.buys.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span>
-        <span class="chips"><small class="muted">Vend :</small> ${p.sells.map(r => resChip(r)).join(' ')}</span></button>`;
+        <span class="chips"><small class="muted">Vend :</small> ${p.sells.filter(r => RES[r].era <= s.era).map(r => resChip(r)).join(' ')}</span></button>`;
     }).join('') + '<p class="muted">Construis un port de commerce sur la côte, puis envoie des navires marchands vers ces comptoirs.</p>'
       : `<p class="muted">Recherche le négoce maritime pour ouvrir des routes vers ${SEA_PARTNERS.map(p => p.name.split(' (')[0]).join(', ')}.</p>`;
 
@@ -1489,7 +1552,8 @@ export class Game {
       <button class="primary" data-act="new">Recommencer la partie</button>
       <button data-act="save">Sauvegarder maintenant</button>
       <button data-act="export">Exporter la sauvegarde (fichier)</button>
-      <button data-act="loadfile">Importer une sauvegarde</button></div>
+      <button data-act="loadfile">Importer une sauvegarde</button>
+      <button data-act="bigtext">${document.documentElement.classList.contains('big') ? 'Texte normal' : 'Agrandir le texte'}</button></div>
       ${this.layersPanel()}
       <h3>Commandes</h3><ul class="log">
       <li>Glisser : déplacer la carte · molette ou pincement : zoom</li>
@@ -1510,7 +1574,7 @@ export class Game {
       case 'delroad': if (!s.edges.find(x => x.id === id)?.ally) { removeEdge(s, id); this.rerouteAll(); this.closePanel(); } break;
       case 'paveroad': {
         const e = s.edges.find(x => x.id === id), cost = Number(t.dataset.cost);
-        if (e && s.money >= cost) { e.type = 'voie'; s.money -= cost; s.stats.expenses += cost; this.rerouteAll(); } else this.toast('Pas assez d\'argent.', 'bad');
+        if (e && s.money >= cost) { e.type = 'voie'; e.wear = 0; invalidate(); s.money -= cost; s.stats.expenses += cost; this.rerouteAll(); } else this.toast('Pas assez d\'argent.', 'bad');
         break;
       }
       case 'sealine': {
@@ -1546,9 +1610,11 @@ export class Game {
       case 'buyv': { const err = buyVehicle(s, this.view.selectedLine!); if (err) this.toast(err, 'bad'); break; }
       case 'sellv': { const v = s.vehicles.find(x => x.id === id); if (v) sellVehicle(s, v); if (this.view.selected?.kind === 'vehicle') this.closePanel(); break; }
       case 'delline': {
-        const lid = this.view.selectedLine!;
-        for (const v of s.vehicles.filter(x => x.line === lid)) sellVehicle(s, v);
-        s.lines = s.lines.filter(x => x.id !== lid); this.view.selectedLine = null; this.setMode({ kind: 'select' });
+        const lid = this.view.selectedLine!, l = s.lines.find(x => x.id === lid), n = s.vehicles.filter(x => x.line === lid).length;
+        this.modal(`<h2>Supprimer la ligne ?</h2><p>${esc(l ? 'La ligne « ' + this.lineLabel(l) + ' »' : 'Cette ligne')} sera supprimée${n ? ` et ses ${n} véhicule${n > 1 ? 's' : ''} revendu${n > 1 ? 's' : ''} à moitié prix` : ''}.</p>`, [{ label: 'Annuler' }, { label: 'Supprimer', primary: true, fn: () => {
+          for (const v of s.vehicles.filter(x => x.line === lid)) sellVehicle(s, v);
+          s.lines = s.lines.filter(x => x.id !== lid); this.view.selectedLine = null; this.setMode({ kind: 'select' }); this.panelKey = ''; this.refresh();
+        } }]);
         break;
       }
       case 'research': this.sim.research(t.dataset.id!); break;
@@ -1568,7 +1634,16 @@ export class Game {
       }
       case 'war': case 'peace': {
         const f = s.factions?.find(x => x.id === t.dataset.f); if (!f) break;
-        if (t.dataset.act === 'war') this.toast(declareWar(s, f), 'bad'); else this.toast(proposePeace(s, f, !!t.dataset.pay));
+        if (t.dataset.act === 'war') { this.toast(declareWar(s, f), 'bad'); break; }
+        const terms = peaceTerms(s, f);
+        // paiement : le montant est annoncé avant d'être versé (et rien n'est payé si la paix est gratuite)
+        if (t.dataset.pay && !terms.free) {
+          this.modal(f.raider ? `<h2>Payer le Danegeld ?</h2><p>Les Vikings demandent <b>${fmt(terms.cost)} sesterces</b> pour épargner tes villes pendant 5 ans.</p>`
+            : `<h2>Paix contre indemnité ?</h2><p>Les ${esc(f.name)} acceptent la paix (pacte de non-agression de 5 ans) contre <b>${fmt(terms.cost)} sesterces</b>.</p>`,
+          [{ label: 'Annuler' }, { label: `Payer ${fmt(terms.cost)}`, primary: true, fn: () => { const r = proposePeace(s, f, true); this.toast(r, s.money >= 0 && !f.war ? 'good' : 'bad'); this.panelKey = ''; this.refresh(); } }]);
+          break;
+        }
+        this.toast(proposePeace(s, f, !!t.dataset.pay));
         break;
       }
       case 'recruit': { const b = getB(s, id)!; const err = recruit(s, b, t.dataset.k as 'leg' | 'aux'); this.toast(err ?? 'Troupes recrutées.', err ? 'bad' : 'good'); break; }
@@ -1594,9 +1669,14 @@ export class Game {
       case 'importmer': { const b = getB(s, id)!; const err = buySea(s, b, t.dataset.p!, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? 'Cargaison livrée au port.', err ? 'bad' : 'good'); break; }
       case 'import': { const b = getB(s, id)!; const err = buyImport(s, b, t.dataset.r as ResId, Number(t.dataset.q)); this.toast(err ?? `Achat livré au poste ${b.name}.`, err ? 'bad' : 'good'); break; }
       case 'goto': { const b = getB(s, id); if (b) { this.centerOn(b.x, b.y, Math.max(this.cam.scale, 3)); this.select({ kind: 'building', id }); } return; }
-      case 'save': this.save(); this.toast('Partie sauvegardée.', 'good'); break;
+      case 'bigtext': {
+        const on = document.documentElement.classList.toggle('big');
+        try { localStorage.setItem('mine-map-bigtext', on ? '1' : ''); } catch { /* stockage indisponible */ }
+        break;
+      }
+      case 'save': if (this.save()) this.toast('Partie sauvegardée.', 'good'); break;
       case 'export': {
-        const blob = new Blob([JSON.stringify(this.s)], { type: 'application/json' });
+        const blob = new Blob([saveText(this.s)], { type: 'application/json' });
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
         a.download = `mine-map-${year(s)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         break;
@@ -1604,8 +1684,16 @@ export class Game {
       case 'loadfile': {
         const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
         inp.onchange = async () => {
-          try { const st = JSON.parse(await inp.files![0].text()) as GameState; if (!st.version || !st.buildings) throw new Error(); this.load(st); this.closePanel(); this.toast('Sauvegarde chargée.', 'good'); }
-          catch { this.toast('Fichier de sauvegarde invalide.', 'bad'); }
+          let st: GameState;
+          try { st = JSON.parse(await inp.files![0].text()); if (!validSave(st)) throw new Error(); }
+          catch { this.toast('Fichier de sauvegarde invalide.', 'bad'); return; }
+          this.modal(`<h2>Charger cette sauvegarde ?</h2><p>Partie de ${esc(dateLabel(st))}. La partie en cours sera remplacée : pense à l'exporter avant si tu veux la garder.</p>`, [
+            { label: 'Annuler' }, { label: 'Charger', primary: true, fn: () => {
+              const before = this.s;
+              try { this.load(st); this.sim.step(0.01); }
+              catch (err) { console.error(err); this.load(before); this.toast('Cette sauvegarde est abîmée : elle n\'a pas été chargée.', 'bad'); return; }
+              this.closePanel(); this.save(); this.toast('Sauvegarde chargée.', 'good');
+            } }]);
         };
         inp.click(); break;
       }
@@ -1659,17 +1747,63 @@ export class Game {
 
   // ---------- Notifications ----------
   toast(text: string, kind: 'info' | 'good' | 'bad' = 'info') {
+    const box = $('toasts');
+    // le même message n'est pas répété : il reste affiché plus longtemps
+    const same = [...box.children].find(c => c.textContent === text) as HTMLElement | undefined;
+    if (same) same.remove();
     const el = document.createElement('div'); el.className = 'toast ' + kind; el.textContent = text;
-    $('toasts').prepend(el);
-    setTimeout(() => el.classList.add('out'), 4500); setTimeout(() => el.remove(), 5000);
-    while ($('toasts').children.length > (window.innerWidth < 760 ? 2 : 4)) $('toasts').lastElementChild!.remove();
+    el.setAttribute('role', kind === 'bad' ? 'alert' : 'status');
+    box.prepend(el);
+    // un message d'erreur reste plus longtemps
+    const life = kind === 'bad' ? 7000 : 4500;
+    setTimeout(() => el.classList.add('out'), life); setTimeout(() => el.remove(), life + 500);
+    // sur téléphone, les messages d'erreur restent prioritaires sur les simples informations
+    const max = window.innerWidth < 760 ? 3 : 4;
+    while (box.children.length > max) {
+      const info = [...box.children].reverse().find(c => !c.classList.contains('bad') && c !== el);
+      (info ?? box.lastElementChild!).remove();
+    }
   }
-  modal(html: string, buttons: { label: string; primary?: boolean; fn?: () => void }[]) {
+  /** Fenêtres en attente : une seule s'affiche à la fois, les suivantes attendent qu'elle soit fermée */
+  modalQueue: { html: string; buttons: { label: string; primary?: boolean; fn?: () => void }[] }[] = [];
+  private modalLocked = false;
+  /** `lock` : fenêtre de fin de partie, que rien ne peut remplacer */
+  modal(html: string, buttons: { label: string; primary?: boolean; fn?: () => void }[], lock = false) {
     const m = $('modal');
-    m.innerHTML = `<div class="box">${html}<div class="actions">${buttons.map((b, i) => `<button data-i="${i}" class="${b.primary ? 'primary' : ''}">${b.label}</button>`).join('')}</div></div>`;
+    if (this.modalLocked && !lock) return;
+    if (!m.hidden && !lock) { this.modalQueue.push({ html, buttons }); return; }
+    this.modalLocked = lock;
+    m.innerHTML = `<div class="box" role="dialog" aria-modal="true">${html}<div class="actions">${buttons.map((b, i) => `<button data-i="${i}" class="${b.primary ? 'primary' : ''}">${b.label}</button>`).join('')}</div></div>`;
     m.hidden = false;
-    m.querySelectorAll<HTMLButtonElement>('button[data-i]').forEach(btn => btn.onclick = () => { m.hidden = true; buttons[Number(btn.dataset.i)].fn?.(); });
+    (m.querySelector<HTMLButtonElement>('button.primary') ?? m.querySelector<HTMLButtonElement>('button'))?.focus({ preventScroll: true });
+    m.querySelectorAll<HTMLButtonElement>('button[data-i]').forEach(btn => btn.onclick = () => {
+      m.hidden = true; this.modalLocked = false;
+      buttons[Number(btn.dataset.i)].fn?.();
+      // fenêtre suivante (sauf si l'action vient d'en ouvrir une)
+      const next = m.hidden ? this.modalQueue.shift() : undefined;
+      if (next) this.modal(next.html, next.buttons);
+    });
   }
+  /** Échap : ferme la fenêtre avec son premier bouton (Annuler, Refuser, Continuer) quand il est sans conséquence */
+  escapeModal() {
+    const m = $('modal');
+    if (m.hidden || this.modalLocked) return false;
+    const btns = m.querySelectorAll<HTMLButtonElement>('button[data-i]');
+    if (btns.length === 1 || /^(Annuler|Refuser|Continuer|Fermer)$/.test(btns[0]?.textContent ?? '')) { btns[0].click(); return true; }
+    return false;
+  }
+}
+
+/** Texte de la sauvegarde : nombres arrondis au millième (près de 20 % plus léger, sans effet sur la partie) */
+const saveText = (s: GameState) => JSON.stringify(s, (_k, v) => typeof v === 'number' && !Number.isInteger(v) ? Math.round(v * 1000) / 1000 : v);
+/** Vérifie qu'une sauvegarde a la forme attendue (fichier importé ou mémoire du navigateur) */
+export function validSave(st: unknown): st is GameState {
+  const g = st as GameState;
+  const arr = (v: unknown) => Array.isArray(v);
+  return !!g && typeof g === 'object' && typeof g.version === 'number' && Number.isFinite(g.day) && Number.isFinite(g.money)
+    && arr(g.buildings) && arr(g.nodes) && arr(g.edges) && arr(g.lines) && arr(g.vehicles) && arr(g.techs) && !!g.stats && typeof g.era === 'number'
+    && g.buildings.every(b => b && typeof b.type === 'string' && b.type in BUILD && Number.isFinite(b.x) && Number.isFinite(b.y) && typeof b.name === 'string')
+    && g.lines.every(l => l && arr(l.stops));
 }
 
 function yearOf(day: number) { const y = START_YEAR + Math.floor(day / 365.25); const yy = y >= 0 ? y + 1 : y; return yy < 0 ? `${-yy} av. J.-C.` : String(yy); }

@@ -143,6 +143,7 @@ export interface Army {
   merc?: boolean;                // mercenaires (solde double)
   target?: { kind: 'b' | 'rb' | 'army'; id: number } | null;
   siege?: number;                // garnison restante de la ville assiégée
+  siegeOn?: number;              // ville assiégée (le siège repart de zéro sur une autre cible)
   state: 'idle' | 'march' | 'fight' | 'siege';
   /** itinéraire par la terre (virages restants), point visé quand il a été calculé, jour du calcul */
   route?: { x: number; y: number }[]; routeTo?: { x: number; y: number; k?: string }; routeDay?: number;
@@ -179,6 +180,8 @@ export interface GameState {
   hadCity?: boolean;
   /** économie d'un rival (gérée par l'ordinateur) ; rival frontalier qui peut bâtir hors de Gaule */
   ai?: boolean; abroad?: boolean;
+  /** rival : sa capitale (l'entrepôt principal est le sien) */
+  hubCity?: number;
   /** rival : marchandises achetées à un autre rival, en route vers son entrepôt */
   inbound?: { r: ResId; q: number; day: number; from: string }[];
 }

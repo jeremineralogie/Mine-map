@@ -233,6 +233,8 @@ export interface BDef {
   effect?: { growth?: number; range?: number; rp?: number; protect?: number; speed?: number; seaVolume?: number; tax?: number };
   /** un seul par ville */
   perCity?: boolean;
+  /** distance minimale entre deux bâtiments de ce type (km) */
+  spacing?: number;
 }
 
 export const BUILD: Record<BType, BDef> = {
@@ -275,10 +277,10 @@ export const BUILD: Record<BType, BDef> = {
   mine_cuivre: { name: 'Mine de cuivre', desc: 'Extrait le minerai de cuivre.', era: 2, tech: 'bronze', cost: { bois: 20, pierre: 10 }, money: 180, days: 20, workers: 7, deposit: 'cuivre', recipe: { in: {}, out: { cuivre: 3 } }, storage: 50, maxLevel: 3, upgrade: { fer: 4, pierre: 12 } },
   mine_etain: { name: 'Mine d\'étain', desc: 'Extrait l\'étain, rare et précieux.', era: 2, tech: 'bronze', cost: { bois: 20, pierre: 10 }, money: 180, days: 20, workers: 7, deposit: 'etain', recipe: { in: {}, out: { etain: 2 } }, storage: 50, maxLevel: 3, upgrade: { fer: 4, pierre: 12 } },
   fonderie: { name: 'Fonderie de bronze', desc: 'Allie le cuivre et l\'étain : statues, monnaie, objets de luxe.', era: 2, tech: 'bronze', cost: { pierre: 20, briques: 15 }, money: 250, days: 25, workers: 5, recipe: { in: { cuivre: 3, etain: 1, bois: 2 }, out: { bronze: 2 } }, storage: 40, maxLevel: 3, upgrade: { pierre: 15, briques: 12 } },
-  thermes: { name: 'Thermes', desc: 'Bains publics : la ville voisine grandit 25 % plus vite. Se construit près d\'une ville, avec de l\'eau.', era: 2, tech: 'thermes', cost: { pierre: 40, briques: 20, chaux: 10 }, money: 400, days: 40, workers: 4, needsWater: true, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.25, range: 8 } },
-  amphitheatre: { name: 'Amphithéâtre', desc: 'Jeux et spectacles : les villes à moins de 40 km grandissent 20 % plus vite.', era: 2, tech: 'spectacles', cost: { pierre: 80, chaux: 20 }, money: 700, days: 60, workers: 4, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.2, range: 40 } },
+  thermes: { name: 'Thermes', desc: 'Bains publics : la ville voisine grandit 25 % plus vite. Se construit près d\'une ville, avec de l\'eau. Un par ville.', era: 2, tech: 'thermes', cost: { pierre: 40, briques: 20, chaux: 10 }, money: 400, days: 40, workers: 4, needsWater: true, storage: 0, maxLevel: 1, city: true, perCity: true, effect: { growth: 1.25, range: 8 } },
+  amphitheatre: { name: 'Amphithéâtre', desc: 'Jeux et spectacles : les villes à moins de 40 km grandissent 20 % plus vite. Un seul dans un rayon de 40 km.', era: 2, tech: 'spectacles', cost: { pierre: 80, chaux: 20 }, money: 700, days: 60, workers: 4, storage: 0, maxLevel: 1, city: true, spacing: 40, effect: { growth: 1.2, range: 40 } },
   remparts: { name: 'Remparts', desc: 'Murailles de la cité : protègent des invasions tous les bâtiments à moins de 20 km.', era: 2, tech: 'remparts', cost: { pierre: 60, chaux: 15 }, money: 500, days: 50, workers: 0, storage: 0, maxLevel: 1, city: true, effect: { protect: 20 } },
-  basilique: { name: 'Basilique', desc: 'Lieu de culte et de savoir : +0,3 point de recherche par mois.', era: 2, tech: 'christianisme', cost: { pierre: 40, marbre: 5, chaux: 10 }, money: 400, days: 40, workers: 2, storage: 0, maxLevel: 1, city: true, effect: { rp: 0.3 } },
+  basilique: { name: 'Basilique', desc: 'Lieu de culte et de savoir : +0,3 point de recherche par mois. Une par ville.', era: 2, tech: 'christianisme', cost: { pierre: 40, marbre: 5, chaux: 10 }, money: 400, days: 40, workers: 2, storage: 0, maxLevel: 1, city: true, perCity: true, effect: { rp: 0.3 } },
   relais: { name: 'Relais routier (mutatio)', desc: 'Chevaux frais : les véhicules roulent 25 % plus vite à moins de 30 km.', era: 2, tech: 'relais', cost: { pierre: 15, bois: 10 }, money: 120, days: 12, workers: 2, storage: 0, maxLevel: 1, effect: { speed: 1.25, range: 30 } },
   phare: { name: 'Phare', desc: 'Guide les navires : volume du commerce maritime +25 % (jusqu\'à deux phares).', era: 2, tech: 'phares', cost: { pierre: 40, chaux: 10 }, money: 350, days: 30, workers: 2, coast: true, storage: 0, maxLevel: 1, effect: { seaVolume: 0.25 } },
   arenes: { name: 'Arènes de Nîmes', desc: 'Le grand amphithéâtre de Nemausus, symbole de l\'âge d\'or de la Gaule romaine. Merveille du chapitre II, nécessaire pour le terminer. Une fois construites : +30 % de croissance pour les villes à moins de 60 km, +1 point de recherche par mois et un revenu des jeux.', era: 2, tech: 'spectacles', cost: { pierre: 300, chaux: 40, marbre: 15 }, money: 2500, days: 120, workers: 0, storage: 0, maxLevel: 1, unique: true, site: [4.359, 43.835],
@@ -292,10 +294,10 @@ export const BUILD: Record<BType, BDef> = {
   elevage: { name: 'Élevage', desc: 'Bœufs et porcs nourris au grain : de la viande pour les villes. N\'importe où.', era: 3, tech: 'assolement', cost: { bois: 15, pierre: 5 }, money: 100, days: 12, workers: 3, recipe: { in: { cereales: 2 }, out: { viande: 4 } }, storage: 60, maxLevel: 3, upgrade: { bois: 10, planches: 8 } },
   brasserie: { name: 'Brasserie', desc: 'Brasse la bière avec les céréales, comme dans les abbayes. A besoin d\'eau.', era: 3, tech: 'monasteres', cost: { pierre: 15, planches: 10 }, money: 180, days: 20, workers: 4, needsWater: true, recipe: { in: { cereales: 4 }, out: { biere: 3 } }, storage: 50, maxLevel: 3, upgrade: { pierre: 10, planches: 10 } },
   mine_or: { name: 'Mine d\'or et d\'argent', desc: 'Extrait l\'or et l\'argent de la monnaie (Salsigne, Le Châtelet). Rare et très précieux.', era: 3, tech: 'lettre_change', cost: { bois: 25, pierre: 15, outils: 3 }, money: 400, days: 30, workers: 10, deposit: 'or', recipe: { in: {}, out: { or: 1 } }, storage: 30, maxLevel: 3, upgrade: { planches: 15, outils: 3 } },
-  monastere: { name: 'Monastère', desc: 'Abbaye où les moines copient les livres : +0,4 point de recherche par mois. N\'importe où, même loin des villes.', era: 3, tech: 'monasteres', cost: { pierre: 40, bois: 20, briques: 10 }, money: 400, days: 40, workers: 2, storage: 0, maxLevel: 1, effect: { rp: 0.4 } },
+  monastere: { name: 'Monastère', desc: 'Abbaye où les moines copient les livres : +0,4 point de recherche par mois. N\'importe où, même loin des villes (les moines n\'ont pas besoin d\'ouvriers), mais à plus de 50 km d\'un autre monastère.', era: 3, tech: 'monasteres', cost: { pierre: 40, bois: 20, briques: 10 }, money: 400, days: 40, workers: 0, storage: 0, maxLevel: 1, spacing: 50, effect: { rp: 0.4 } },
   chateau_fort: { name: 'Château fort', desc: 'Donjon et murailles de granite : protège des invasions tous les bâtiments à moins de 30 km.', era: 3, tech: 'chateaux_forts', cost: { pierre: 40, granite: 40, bois: 20 }, money: 700, days: 60, workers: 0, storage: 0, maxLevel: 1, city: true, effect: { protect: 30 } },
   halle: { name: 'Halle', desc: 'Marché couvert de la ville : chaque mois, les droits de marché rapportent 1 sesterce pour 100 habitants. Une par ville.', era: 3, tech: 'chartes', cost: { bois: 25, planches: 20, pierre: 10 }, money: 300, days: 25, workers: 2, storage: 0, maxLevel: 1, city: true, perCity: true, effect: { tax: 0.01, range: 8 } },
-  hotel_dieu: { name: 'Hôtel-Dieu', desc: 'Hôpital tenu par les religieux : la ville voisine grandit 20 % plus vite, et perd beaucoup moins d\'habitants lors des épidémies (peste noire).', era: 3, tech: 'chartes', cost: { pierre: 40, planches: 15 }, money: 400, days: 35, workers: 3, storage: 0, maxLevel: 1, city: true, effect: { growth: 1.2, range: 8 } },
+  hotel_dieu: { name: 'Hôtel-Dieu', desc: 'Hôpital tenu par les religieux : la ville voisine grandit 20 % plus vite, et perd beaucoup moins d\'habitants lors des épidémies (peste noire). Un par ville.', era: 3, tech: 'chartes', cost: { pierre: 40, planches: 15 }, money: 400, days: 35, workers: 3, storage: 0, maxLevel: 1, city: true, perCity: true, effect: { growth: 1.2, range: 8 } },
   foire: { name: 'Foire de Champagne', desc: 'La grande foire où les marchands de toute l\'Europe se retrouvent : chaque mois, elle rapporte 1 sesterce pour 200 habitants de toutes tes villes à moins de 200 km. Une seule.', era: 3, tech: 'foires', cost: { bois: 40, planches: 30, pierre: 30 }, money: 1200, days: 60, workers: 4, storage: 0, maxLevel: 1, city: true, unique: true, effect: { tax: 0.005, range: 200 } },
   // ---- Rivaux : diplomatie et guerre ----
   taverne: { name: 'Taverne', desc: 'Lieu de rencontre des marchands et des émissaires : ouvre la diplomatie avec les rivaux et le commerce avec ceux qui ont signé un accord. Une par ville ; plus elles sont proches d\'un rival, plus les relations progressent.', era: 1, cost: { bois: 20, pierre: 10 }, money: 200, days: 15, workers: 2, storage: 100, maxLevel: 1, city: true },
@@ -329,7 +331,7 @@ export const RP_TIER = [0.12, 0.2, 0.35, 0.6, 0.8, 1.0, 1.3, 1.6, 2.0];
 export const CITY_BUILD_RANGE = 8;
 /** Cours du Rhin, frontière de l'Empire (lon, lat), pour les invasions */
 export const RHINE: [number, number][] = [[7.59, 47.56], [7.55, 48.0], [7.8, 48.58], [8.1, 48.97], [8.45, 49.5], [8.3, 50.0], [7.6, 50.35], [7.0, 50.9], [6.2, 51.8]];
-export const WORK_RANGE = 35;   // km (village) ; le rayon grandit avec la ville
+export const WORK_RANGE = 30;   // km (village) ; le rayon grandit avec la ville
 /** Rayon de main-d'œuvre selon le palier de la ville (village, bourg, ville, cité) */
 export const WORK_RANGES = [30, 40, 55, 70, 80, 90, 100, 110, 120];
 export const WATER_RANGE = 6;   // km d'un fleuve, lac ou de la côte
@@ -378,22 +380,22 @@ export type Sea = 'atlantique' | 'mediterranee';
 export interface SeaPartner { id: string; name: string; seas: Sea[]; buys: ResId[]; sells: ResId[]; mult: number; volume: number; to: Partial<Record<Sea, [number, number]>>; }
 export const SEA_PARTNERS: SeaPartner[] = [
   // Atlantique, Manche et mer du Nord
-  { id: 'britannia', name: 'Bretagne insulaire (Dubris)', seas: ['atlantique'], buys: ['sel', 'outils', 'briques', 'fer', 'vin', 'sigillee', 'verre', 'huile'], sells: ['plomb', 'cereales', 'bois'], mult: 1.5, volume: 40, to: { atlantique: [1.2, 50.95] } },
+  { id: 'britannia', name: 'Bretagne insulaire (Dubris)', seas: ['atlantique'], buys: ['sel', 'outils', 'briques', 'fer', 'vin', 'sigillee', 'verre', 'huile', 'ardoise', 'planches'], sells: ['plomb', 'cereales', 'bois', 'laine'], mult: 1.5, volume: 40, to: { atlantique: [1.2, 50.95] } },
   { id: 'hibernia', name: 'Hibernie (Irlande)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer', 'vin', 'tissus'], sells: ['bois', 'plomb'], mult: 1.45, volume: 20, to: { atlantique: [-6.6, 49.9] } },
-  { id: 'frisia', name: 'Frise (Germanie, mer du Nord)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer', 'cereales', 'vin', 'verre', 'sigillee'], sells: ['bois', 'minerai_fer'], mult: 1.4, volume: 25, to: { atlantique: [3.2, 51.55] } },
-  { id: 'hispania_mer', name: 'Hispanie (Brigantium, Tarraco)', seas: ['atlantique', 'mediterranee'], buys: ['outils', 'fer', 'briques', 'sel', 'tissus', 'sigillee'], sells: ['plomb', 'minerai_fer', 'sel'], mult: 1.45, volume: 40, to: { atlantique: [-5.8, 43.75], mediterranee: [2.6, 41.4] } },
+  { id: 'frisia', name: 'Frise (Germanie, mer du Nord)', seas: ['atlantique'], buys: ['sel', 'outils', 'fer', 'cereales', 'vin', 'verre', 'sigillee', 'biere', 'farine', 'viande'], sells: ['bois', 'minerai_fer'], mult: 1.4, volume: 25, to: { atlantique: [3.2, 51.55] } },
+  { id: 'hispania_mer', name: 'Hispanie (Brigantium, Tarraco)', seas: ['atlantique', 'mediterranee'], buys: ['outils', 'fer', 'briques', 'sel', 'tissus', 'sigillee', 'planches'], sells: ['plomb', 'minerai_fer', 'sel', 'or'], mult: 1.45, volume: 40, to: { atlantique: [-5.8, 43.75], mediterranee: [2.6, 41.4] } },
   // Méditerranée
   { id: 'sardaigne', name: 'Sardaigne (Turris Libisonis)', seas: ['mediterranee'], buys: ['cereales', 'outils', 'briques', 'vin', 'tissus'], sells: ['plomb', 'sel'], mult: 1.5, volume: 30, to: { mediterranee: [8.4, 41.15] } },
-  { id: 'italie_mer', name: 'Italie (Ostie, port de Rome)', seas: ['mediterranee'], buys: ['fer', 'outils', 'plomb', 'briques', 'cereales', 'vin', 'garum', 'tissus', 'sigillee'], sells: ['outils', 'fer', 'briques'], mult: 1.55, volume: 50, to: { mediterranee: [10.2, 42.85] } },
-  { id: 'afrique', name: 'Afrique (Carthage)', seas: ['mediterranee'], buys: ['outils', 'fer', 'briques', 'plomb', 'verre', 'tissus', 'sigillee'], sells: ['cereales', 'sel'], mult: 1.5, volume: 40, to: { mediterranee: [6.0, 41.3] } },
+  { id: 'italie_mer', name: 'Italie (Ostie, port de Rome)', seas: ['mediterranee'], buys: ['fer', 'outils', 'plomb', 'briques', 'cereales', 'vin', 'garum', 'tissus', 'sigillee', 'farine', 'granite'], sells: ['outils', 'fer', 'briques'], mult: 1.55, volume: 50, to: { mediterranee: [10.2, 42.85] } },
+  { id: 'afrique', name: 'Afrique (Carthage)', seas: ['mediterranee'], buys: ['outils', 'fer', 'briques', 'plomb', 'verre', 'tissus', 'sigillee', 'planches'], sells: ['cereales', 'sel', 'or'], mult: 1.5, volume: 40, to: { mediterranee: [6.0, 41.3] } },
   { id: 'grece', name: 'Grèce et Orient (Athènes, Alexandrie)', seas: ['mediterranee'], buys: ['plomb', 'outils', 'fer', 'sel', 'vin', 'garum', 'bronze'], sells: ['outils', 'fer', 'briques'], mult: 1.6, volume: 35, to: { mediterranee: [10.4, 41.5] } },
 ];
 export const PARTNERS: Partner[] = [
   { id: 'italie', name: 'Italie (Rome)', lon: 6.62, lat: 44.92, buys: ['fer', 'outils', 'plomb', 'sel', 'briques', 'sigillee', 'tissus', 'marbre'], sells: ['outils', 'fer', 'briques'], mult: 1.4, volume: 25 },
-  { id: 'hispanie', name: 'Hispanie', lon: 2.86, lat: 42.48, buys: ['outils', 'cereales', 'fer', 'plomb', 'sigillee', 'verre'], sells: ['plomb', 'sel', 'minerai_fer'], mult: 1.3, volume: 25 },
-  { id: 'germanie', name: 'Germanie', lon: 7.76, lat: 48.6, buys: ['outils', 'fer', 'sel', 'briques', 'cereales', 'vin', 'sigillee', 'verre', 'bronze'], sells: ['bois', 'minerai_fer'], mult: 1.35, volume: 25 },
-  { id: 'helvetie', name: 'Helvétie', lon: 6.05, lat: 46.18, buys: ['sel', 'cereales', 'pierre', 'bois', 'vin', 'huile'], sells: ['bois', 'fer'], mult: 1.2, volume: 20 },
-  { id: 'belgique', name: 'Gaule Belgique (Rhénanie)', lon: 6.1, lat: 49.45, buys: ['sel', 'cereales', 'briques', 'fer', 'vin', 'tissus', 'verre'], sells: ['cereales', 'argile', 'bois'], mult: 1.25, volume: 20 },
+  { id: 'hispanie', name: 'Hispanie', lon: 2.86, lat: 42.48, buys: ['outils', 'cereales', 'fer', 'plomb', 'sigillee', 'verre', 'planches', 'viande'], sells: ['plomb', 'sel', 'minerai_fer', 'or'], mult: 1.3, volume: 25 },
+  { id: 'germanie', name: 'Germanie', lon: 7.76, lat: 48.6, buys: ['outils', 'fer', 'sel', 'briques', 'cereales', 'vin', 'sigillee', 'verre', 'bronze', 'farine', 'viande', 'ardoise'], sells: ['bois', 'minerai_fer'], mult: 1.35, volume: 25 },
+  { id: 'helvetie', name: 'Helvétie', lon: 6.05, lat: 46.18, buys: ['sel', 'cereales', 'pierre', 'bois', 'vin', 'huile', 'biere', 'granite'], sells: ['bois', 'fer'], mult: 1.2, volume: 20 },
+  { id: 'belgique', name: 'Gaule Belgique (Rhénanie)', lon: 6.1, lat: 49.45, buys: ['sel', 'cereales', 'briques', 'fer', 'vin', 'tissus', 'verre', 'biere', 'planches', 'farine'], sells: ['cereales', 'argile', 'bois'], mult: 1.25, volume: 20 },
 ];
 
 // ---- Véhicules ----
@@ -489,7 +491,7 @@ export const TECHS: Tech[] = [
   { id: 'hanse', name: 'Hanse', desc: 'La ligue des marchands du Nord : rouvre aussitôt le commerce d\'outre-mer et augmente son volume de 50 %.', era: 3, cost: 150, req: ['lettre_change', 'gouvernail'], branch: 'commerce' },
   { id: 'monasteres', name: 'Monastères', desc: 'Abbayes (+0,4 point de recherche par mois) et brasseries.', era: 3, cost: 85, req: [], branch: 'culture' },
   { id: 'art_roman', name: 'Art roman', desc: 'Les églises se couvrent d\'ardoise : ardoisières.', era: 3, cost: 105, req: ['monasteres'], branch: 'culture' },
-  { id: 'art_gothique', name: 'Art gothique', desc: 'Voûtes d\'ogives et vitraux : les grandes cathédrales (Notre-Dame de Paris arrive dans une prochaine version).', era: 3, cost: 140, req: ['art_roman', 'chartes'], branch: 'culture' },
+  { id: 'art_gothique', name: 'Art gothique', desc: 'Voûtes d\'ogives et vitraux : chaque basilique et chaque monastère donne +0,2 point de recherche par mois de plus. Prépare les grandes cathédrales (Notre-Dame de Paris, prochaine étape).', era: 3, cost: 140, req: ['art_roman', 'chartes'], branch: 'culture' },
 ];
 
 // ---- Objectifs du chapitre I ----
@@ -512,6 +514,13 @@ export const OBJECTIVES: Objective[] = [
   { id: 'remparts2', name: 'Cité fortifiée', desc: 'Construis des remparts.', era: 2, money: 500, rp: 5 },
   { id: 'capitale2', name: 'Capitale des Gaules', desc: 'Fais grandir une ville jusqu\'à 15 000 habitants.', era: 2, money: 2000, rp: 15 },
   { id: 'arenes', name: 'Les Arènes de Nîmes', desc: 'Construis les Arènes de Nîmes (nécessaire pour finir le chapitre).', era: 2, money: 3000, rp: 15 },
+  { id: 'farine3', name: 'Le pain des villes', desc: 'Produis 150 t de farine.', era: 3, money: 600, rp: 6 },
+  { id: 'monastere3', name: 'L\'abbaye', desc: 'Construis un monastère.', era: 3, money: 500, rp: 5 },
+  { id: 'halle3', name: 'Jour de marché', desc: 'Construis une halle.', era: 3, money: 400, rp: 4 },
+  { id: 'biere3', name: 'La bière des moines', desc: 'Produis 100 t de bière.', era: 3, money: 500, rp: 5 },
+  { id: 'chateau3', name: 'Le château fort', desc: 'Construis un château fort.', era: 3, money: 700, rp: 6 },
+  { id: 'foire3', name: 'Les foires de Champagne', desc: 'Construis la foire de Champagne.', era: 3, money: 1500, rp: 10 },
+  { id: 'eveche3', name: 'Cité épiscopale', desc: 'Fais grandir une ville jusqu\'à 40 000 habitants.', era: 3, money: 2500, rp: 15 },
 ];
 
 export const ERAS = [

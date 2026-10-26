@@ -29,7 +29,8 @@ const inPlayerLand = (s: GameState, x: number, y: number, margin = 0) => territo
   : s.buildings.some(b => !b.partner && b.type !== 'comptoir' && Math.hypot(b.x - x, b.y - y) <= playerRadius(b) + margin);
 const land = (geo: Geo, f: Faction, x: number, y: number) => { const m = geo.maskAt(x, y); return m === 1 || (m === 2 && !!f.frontier); };
 
-function usedNames(s: GameState) { return new Set([...s.buildings.map(b => b.name), ...(s.factions ?? []).flatMap(f => f.b.map(b => b.name))]); }
+// (y compris les chantiers du mois en cours, pas encore visibles sur la carte)
+function usedNames(s: GameState) { return new Set([...s.buildings.map(b => b.name), ...(s.factions ?? []).flatMap(f => [...f.b, ...(f.eco?.buildings ?? [])].map(b => b.name))]); }
 function cityName(s: GameState, geo: Geo, x: number, y: number) {
   const used = usedNames(s);
   let best = '', bd = 70;

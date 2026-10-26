@@ -55,11 +55,12 @@ export function attachNode(s: GameState, b: Building) {
 }
 
 export const year = (s: GameState) => { const y = START_YEAR + Math.floor(s.day / YEAR); return y >= 0 ? y + 1 : y; };
+const MONTHS_SHORT = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 export function dateLabel(s: GameState, short = false) {
   const y = year(s), m = Math.floor((s.day % YEAR) / (YEAR / 12));
-  const mo = short && MONTHS[m].length > 5 ? MONTHS[m].slice(0, MONTHS[m] === 'juillet' ? 5 : 4) + '.' : MONTHS[m];
-  return `${mo} ${y < 0 ? -y + (short ? ' av. J.C.' : ' av. J.-C.') : y + (short ? '' : ' apr. J.-C.')}`;
+  const mo = short ? MONTHS_SHORT[m] : MONTHS[m];
+  return `${mo} ${y < 0 ? -y + ' av. J.-C.' : y + (short ? '' : ' apr. J.-C.')}`;
 }
 export const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
 
@@ -94,7 +95,9 @@ export function checkPlace(s: GameState, geo: Geo, type: BType, x: number, y: nu
   }
   if (d.unique && s.buildings.some(b => b.type === type)) return { ok: false, reason: `${d.name} : il n'y en a qu'une, déjà construite.` };
   if (d.perCity && s.buildings.some(b => b.type === type && Math.hypot(b.x - x, b.y - y) < 2 * CITY_BUILD_RANGE))
-    return { ok: false, reason: `${d.name} : une seule par ville, il y en a déjà une tout près.` };
+    return { ok: false, reason: `${d.name} : un seul bâtiment de ce type par ville, il y en a déjà un tout près.` };
+  if (d.spacing && s.buildings.some(b => b.type === type && Math.hypot(b.x - x, b.y - y) < d.spacing!))
+    return { ok: false, reason: `${d.name} : il y en a déjà un à moins de ${d.spacing} km.` };
   if (s.buildings.some(b => Math.hypot(b.x - x, b.y - y) < 2.5) || rivalTooClose(s, x, y)) return { ok: false, reason: 'Trop près d\'un autre bâtiment.' };
   // territoire d'un rival : on ne peut pas y construire (sauf alliance, plus tard à la taverne)
   const owner = rivalAt(s, x, y);
@@ -239,7 +242,7 @@ export function sellVehicle(s: GameState, v: Vehicle) {
 }
 
 // ---------- Prix ----------
-function partnerMods(s: GameState, pid: string) {
+export function partnerMods(s: GameState, pid: string) {
   let closed = false, mult = 1;
   for (const m of s.mods) if (m.partner === pid && m.until > s.day) { if (m.kind === 'closed') closed = true; if (m.kind === 'boost') mult *= m.mult; }
   return { closed, mult };
@@ -301,7 +304,8 @@ export function accepts(s: GameState, b: Building, res: ResId): number {
     const future = nextQ && !tierGoods(b.city.tier, era).includes(res) ? nextQ * b.city.pop / 100 : 0;
     if (need + future <= 0) return 0;
     // réserve d'un an au plus, mais toujours de quoi recevoir au moins deux chargements complets
-    const cap = Math.max((need + future) * 12, CITY_MIN_STOCK);
+    // (les rivaux gardent moins de réserve : leurs entrepôts servent aussi leurs chantiers)
+    const cap = Math.max((need + future) * (s.ai ? 4 : 12), CITY_MIN_STOCK);
     return Math.max(0, cap - (b.city.stock[res] ?? 0));
   }
   if (b.partner) {
@@ -381,6 +385,7 @@ export function importPrice(s: GameState, b: Building, res: ResId) {
 /** Achète des marchandises à l'étranger : elles arrivent dans le stock du poste-frontière */
 export function buyImport(s: GameState, b: Building, res: ResId, qty: number): string | null {
   if (partnerClosed(s, b.partner!)) return 'Frontière fermée pour le moment.';
+  if (RES[res].era > s.era || !PARTNERS.find(p => p.id === b.partner)?.sells.includes(res)) return 'Ils ne vendent pas cette marchandise.';
   const room = BUILD.poste.storage - Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
   qty = Math.min(qty, Math.floor(room));
   if (qty <= 0) return 'Le poste-frontière est plein : fais d\'abord enlever les marchandises.';
@@ -425,7 +430,7 @@ export function seaPartnersOf(s: GameState, b: Building): SeaPartner[] {
   void s; return SEA_PARTNERS.filter(p => p.seas.includes(sea));
 }
 export function seaVolume(s: GameState, p: SeaPartner) {
-  const phares = Math.min(2, s.buildings.filter(b => b.type === 'phare' && b.built).length);
+  const phares = Math.min(2, s.buildings.filter(b => b.type === 'phare' && b.built && !b.damaged).reduce((a, b) => a + svc(b), 0));
   return Math.round(p.volume * (s.techs.includes('monnaie') ? 2 : 1) * (1 + 0.25 * phares) * (s.techs.includes('hanse') ? 1.5 : 1));
 }
 export function seaPrice(s: GameState, b: Building, p: SeaPartner, res: ResId) {
@@ -440,6 +445,7 @@ export function buySea(s: GameState, b: Building, pid: string, res: ResId, qty: 
   const p = SEA_PARTNERS.find(x => x.id === pid)!;
   if (seaClosed(s)) return 'Le commerce d\'outre-mer est interrompu depuis la chute de Rome.';
   if (partnerMods(s, 'mer:' + p.id).closed) return 'Ce comptoir est fermé pour le moment (guerre).';
+  if (RES[res].era > s.era || !p.sells.includes(res)) return 'Ils ne vendent pas cette marchandise.';
   const room = BUILD[b.type].storage * b.level - Object.values(b.stock).reduce((a, q) => a + (q ?? 0), 0);
   qty = Math.min(qty, Math.floor(room));
   if (qty <= 0) return b.type === 'comptoir' ? 'Le comptoir est plein : envoie un navire chercher les marchandises.' : 'Le port est plein.';
@@ -455,6 +461,7 @@ export function buySea(s: GameState, b: Building, pid: string, res: ResId, qty: 
 export class Sim {
   s: GameState;
   private dispatchTimer = 0;
+  private staffKey = '';
   constructor(state: GameState, public geo: Geo, public notify: Notifier) { this.s = state; ensureComptoirs(state, geo); }
 
   step(dtDays: number) {
@@ -462,7 +469,9 @@ export class Sim {
     if (s.over) return;
     const m0 = Math.floor(s.day / MONTH);
     s.day += dtDays;
-    this.staffing();
+    // main-d'œuvre : recalculée deux fois par jour, ou dès qu'un bâtiment apparaît ou disparaît
+    const sk = `${Math.floor(s.day * 2)}|${s.buildings.length}`;
+    if (sk !== this.staffKey) { this.staffKey = sk; this.staffing(); }
     this.construction(dtDays);
     this.production(dtDays);
     this.consumption(dtDays);
@@ -570,8 +579,8 @@ export class Sim {
   depositFactor(b: Building) {
     // pas d'épuisement, même rendement partout (fermes comprises, sur toutes les terres)
     if (b.dep === null) return 1;
-    const exhaure = this.s.techs.includes('exhaure');
-    return exhaure && BUILD[b.type].deposit !== 'cereales' && BUILD[b.type].deposit !== 'bois' ? 1.3 : 1;
+    // l'exhaure pompe les galeries : mines et carrières seulement (pas les vignes, salines ni bergeries)
+    return this.s.techs.includes('exhaure') && MINES.has(BUILD[b.type].deposit!) ? 1.3 : 1;
   }
   rate(b: Building) {
     const d = BUILD[b.type];
@@ -828,14 +837,16 @@ export class Sim {
       s.rp += RP_TIER[city.tier];   // recherche volontairement lente : chaque technologie se mérite
     }
     // bâtiments de culture et merveilles : points de recherche, revenus des jeux
+    // (un bâtiment de service rend à proportion de son équipe ; deux du même type trop proches ne comptent qu'une fois)
+    const gothic = s.techs.includes('art_gothique') ? 0.2 : 0;
     for (const b of s.buildings) {
       if (!b.built || b.damaged) continue;
       const d = BUILD[b.type];
-      if (d.effect?.rp) s.rp += d.effect.rp;
+      if (d.effect?.rp && !shadowed(s, b)) s.rp += (d.effect.rp + gothic) * svc(b);
       // halle et foire : droits de marché sur les habitants des villes proches
-      if (d.effect?.tax) {
+      if (d.effect?.tax && !shadowed(s, b)) {
         const pop = cities(s).filter(c => Math.hypot(c.x - b.x, c.y - b.y) <= (d.effect!.range ?? 8)).reduce((a, c) => a + c.city!.pop, 0);
-        const g = pop * d.effect.tax; s.money += g; s.stats.income += g;
+        const g = pop * d.effect.tax * svc(b); s.money += g; s.stats.income += g;
       }
       if (d.wonder?.rp) s.rp += d.wonder.rp;
       if (d.wonder?.games) {
@@ -900,6 +911,13 @@ export class Sim {
       case 'remparts2': return s.buildings.some(b => b.type === 'remparts' && b.built);
       case 'capitale2': return cities(s).some(c => c.city!.pop >= 15000);
       case 'arenes': return s.buildings.some(b => b.type === 'arenes' && b.built);
+      case 'farine3': return (s.stats.produced.farine ?? 0) >= 150;
+      case 'biere3': return (s.stats.produced.biere ?? 0) >= 100;
+      case 'monastere3': return s.buildings.some(b => b.type === 'monastere' && b.built);
+      case 'halle3': return s.buildings.some(b => b.type === 'halle' && b.built);
+      case 'chateau3': return s.buildings.some(b => b.type === 'chateau_fort' && b.built);
+      case 'foire3': return s.buildings.some(b => b.type === 'foire' && b.built);
+      case 'eveche3': return cities(s).some(c => c.city!.pop >= 40000);
       case 'via': {
         const comp = components(s);
         for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) {
@@ -1078,14 +1096,12 @@ export const seaClosed = (s: GameState) => !s.techs.includes('hanse') && s.mods.
 /** Au Moyen Âge, les routes s'abîment ; celles qu'un relais routier entretient (dans sa portée) sont remises en état */
 export function wearRoads(s: GameState) {
   if (s.era < 3) return;
-  const relais = s.buildings.filter(b => b.built && !b.damaged && BUILD[b.type].effect?.speed);
   const nodes = new Map(s.nodes.map(n => [n.id, n]));
   let changed = false;
   for (const e of s.edges) {
     if (e.ally) continue;
     const a = nodes.get(e.a), b = nodes.get(e.b); if (!a || !b) continue;
-    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    const kept = relais.some(r => Math.hypot(r.x - mx, r.y - my) <= (BUILD[r.type].effect!.range ?? 30));
+    const kept = edgeKept(s, a, b);
     const w0 = e.wear ?? 0, w = kept ? Math.max(0, w0 - 0.05) : Math.min(1, w0 + 1 / (ROAD_WEAR_YEARS * 12));
     if (w !== w0) { e.wear = w; changed = true; }
   }
@@ -1109,15 +1125,31 @@ export function startRepair(s: GameState, b: Building): string | null {
 }
 /** Croissance propre à une ville : thermes, amphithéâtres et merveilles proches */
 export function localGrowth(s: GameState, c: Building) {
-  let m = 1;
+  // un seul bâtiment de chaque type compte (le meilleur) : quatre hôtels-Dieu ne font pas mieux qu'un
+  const best = new Map<string, number>();
   for (const b of s.buildings) {
     if (!b.built || b.damaged) continue;
     const d = BUILD[b.type], dist = Math.hypot(b.x - c.x, b.y - c.y);
-    if (d.effect?.growth && dist <= (d.effect.range ?? 8)) m *= d.effect.growth;
-    if (d.wonder?.growth && dist <= d.wonder.range) m *= d.wonder.growth;
+    let g = 1;
+    if (d.effect?.growth && dist <= (d.effect.range ?? 8)) g = 1 + (d.effect.growth - 1) * svc(b);
+    if (d.wonder?.growth && dist <= d.wonder.range) g = d.wonder.growth;
+    if (g > (best.get(b.type) ?? 1)) best.set(b.type, g);
   }
+  let m = 1; for (const g of best.values()) m *= g;
   return m;
 }
+/** Bâtiment de service : part de son effet, selon son équipe (1 = équipe complète, ou sans ouvriers nécessaires) */
+export function svc(b: Building) {
+  const w = BUILD[b.type].workers;
+  return w ? Math.min(1, b.staff / w) : 1;
+}
+/** Un autre bâtiment du même type (plus ancien) est trop proche : seul le premier compte (anciennes parties) */
+function shadowed(s: GameState, b: Building) {
+  const d = BUILD[b.type], r = d.spacing ?? (d.perCity ? 2 * CITY_BUILD_RANGE : 0);
+  return r > 0 && s.buildings.some(o => o !== b && o.type === b.type && o.built && !o.damaged && o.id < b.id && Math.hypot(o.x - b.x, o.y - b.y) < r);
+}
+/** Mines et carrières (gisements que l'exhaure améliore) */
+const MINES = new Set<ResId>(['pierre', 'argile', 'minerai_fer', 'plomb', 'calcaire', 'marbre', 'cuivre', 'etain', 'granite', 'ardoise', 'or', 'sable']);
 /** Relais routiers : bonus de vitesse autour d'eux */
 /** Capacité d'un véhicule, avec les technologies (collier d'épaule, gouvernail d'étambot) */
 export function vehCap(s: GameState, t: VType) {
@@ -1127,8 +1159,28 @@ export function vehCap(s: GameState, t: VType) {
 /** Vitesse d'un véhicule, avec les technologies (coche d'eau) */
 export const vehSpeed = (s: GameState, t: VType) => VEH[t].speed * (VEH[t].water && !VEH[t].sea && s.techs.includes('coche_eau') ? 1.25 : 1);
 export function relaisMult(s: GameState, x: number, y: number) {
-  for (const b of s.buildings) if (b.built && BUILD[b.type].effect?.speed && Math.hypot(b.x - x, b.y - y) <= (BUILD[b.type].effect!.range ?? 30)) return BUILD[b.type].effect!.speed!;
-  return 1;
+  let m = 1;
+  for (const b of relaisOf(s)) if (Math.hypot(b.x - x, b.y - y) <= (BUILD[b.type].effect!.range ?? 30)) m = Math.max(m, 1 + (BUILD[b.type].effect!.speed! - 1) * svc(b));
+  return m;
+}
+/** Relais en état de marche (mémorisés pour le pas de temps en cours) */
+const relaisCache = new WeakMap<GameState, { day: number; n: number; list: Building[] }>();
+export function relaisOf(s: GameState) {
+  const c = relaisCache.get(s);
+  if (c && c.day === s.day && c.n === s.buildings.length) return c.list;
+  const list = s.buildings.filter(b => b.built && !b.damaged && BUILD[b.type].effect?.speed);
+  relaisCache.set(s, { day: s.day, n: s.buildings.length, list });
+  return list;
+}
+/** Distance d'un point à un tronçon de route */
+export function segDist(px: number, py: number, a: { x: number; y: number }, b: { x: number; y: number }) {
+  const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy;
+  const t = L > 0 ? Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / L)) : 0;
+  return Math.hypot(a.x + dx * t - px, a.y + dy * t - py);
+}
+/** Un tronçon est-il entretenu par un relais (à portée d'un point quelconque du tronçon) ? */
+export function edgeKept(s: GameState, a: { x: number; y: number }, b: { x: number; y: number }) {
+  return relaisOf(s).some(r => svc(r) > 0 && segDist(r.x, r.y, a, b) <= (BUILD[r.type].effect!.range ?? 30));
 }
 
 function lineMoved(l: { moved?: { cur: Record<number, Stock>; prev: Record<number, Stock>; total?: Record<number, Stock> } }, i: number, r: ResId, q: number) {
@@ -1175,16 +1227,17 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     if (partnerMods(s, 'mer:' + p.id).closed) return { label: 'Fermé (guerre)', level: 'bad', hint: 'La guerre de Cent Ans coupe ce commerce jusqu\'à la paix.' };
     return sold >= seaVolume(s, p) ? { label: 'Volume du mois atteint', level: 'info' } : { label: 'Route maritime ouverte', level: 'good' };
   }
+  if (b.repair) {
+    const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
+    if (b.paused) return { label: 'Réparation en pause', level: 'info' };
+    return { label: left > 0 ? 'Réparation : livraison' : 'Réparation en cours', level: 'info', hint: 'Les matériaux de réparation arrivent par convoi depuis un entrepôt.' };
+  }
   if ((!b.built || b.upgrading) && b.paused) return { label: 'Chantier en pause', level: 'info', hint: 'Les livraisons et les travaux sont suspendus.' };
   if (!b.built || b.upgrading) {
     if (b.node === null && d.river) return { label: 'Chantier : livraison par bateau', level: 'info', hint: 'Sans route, les matériaux arrivent par le fleuve depuis un entrepôt ou un port au bord de l\'eau.' };
     if (b.node === null) return { label: 'Chantier non relié', level: 'warn', hint: 'Trace une route jusqu\'à un entrepôt pour livrer les matériaux.' };
     const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
     return { label: left > 0 ? (b.upgrading ? 'Amélioration : livraison' : 'Chantier : livraison') : (b.upgrading ? 'Amélioration en cours' : 'Travaux en cours'), level: 'info' };
-  }
-  if (b.repair) {
-    const left = Object.values(b.need).reduce((a, q) => a + (q ?? 0), 0);
-    return { label: left > 0 ? 'Réparation : livraison' : 'Réparation en cours', level: 'info', hint: 'Les matériaux de réparation arrivent par convoi depuis un entrepôt.' };
   }
   if (b.damaged) return { label: 'Endommagé', level: 'bad', hint: 'Pillé lors d\'une invasion : il ne produit plus. Répare-le (bouton en haut de la fiche) ; des remparts proches le protégeront à l\'avenir.' };
   if (b.halted && b.halted > s.day) return { label: b.haltWhy === 'révolte' ? 'Arrêt (révolte des Bagaudes)' : 'Arrêt (éboulement)', level: 'bad' };
@@ -1194,6 +1247,10 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
     if (c.foodSat < 0.5) return { label: 'Famine', level: 'bad', hint: 'Livre des céréales à la ville.' };
     if (c.foodSat < 0.9) return { label: 'Mal nourrie', level: 'warn', hint: 'La ville manque de céréales.' };
     if (c.foodSat < 0.98) return { label: 'Un peu juste', level: 'warn', hint: 'Il manque un peu de céréales : quelques habitants partent.' };
+    // palier suivant fermé : il faut une technologie, ou une nouvelle époque
+    const next = TIERS[c.tier + 1];
+    if (next && c.pop >= next.minPop * 0.94 && !tierAllowed(s, c.tier + 1))
+      return { label: 'Bloquée avant le palier', level: 'warn', hint: c.tier + 1 >= 6 && s.era < 3 ? `${next.name} : ce palier arrive au Moyen Âge (chapitre III).` : `${next.name} : il faut d'abord découvrir la technologie ${TECHS.find(t => t.id === 'capitales')?.name ?? 'des capitales'}.` };
     const miss = missingNextGoods(b);
     if (miss.length) return { label: 'Bloquée avant le palier', level: 'warn', hint: manque(cityShortages(b)) };
     if (foodReserve(b) < RESERVE_TO_GROW) return { label: 'Stable', level: 'info', hint: 'La ville est nourrie mais ne grandit pas : il lui faut au moins un mois de céréales en réserve.' };
@@ -1209,14 +1266,18 @@ export function buildingStatus(sim: Sim, b: Building): BStatus {
   }
   if (d.recipe) {
     const need = sim.workersNeeded(b);
-    if (b.staff === 0) return { label: 'Sans ouvriers', level: 'bad', hint: `Fonde une ville à moins de ${WORK_RANGE} km.` };
+    if (b.staff === 0) return { label: 'Sans ouvriers', level: 'bad', hint: `Fonde une ville à proximité (${WORK_RANGES[0]} km pour un village, davantage pour une grande ville).` };
     const outs = Object.keys(d.recipe.out) as ResId[];
     if (outs.some(r => (b.stock[r] ?? 0) >= d.storage * b.level - 0.5)) return { label: 'Stock plein', level: 'warn', hint: 'La production est arrêtée : crée une ligne pour évacuer la production.' };
     const ins = Object.keys(d.recipe.in) as ResId[];
     if (ins.some(r => (b.stock[r] ?? 0) < d.recipe!.in[r]! / outs.length / (Object.values(d.recipe!.out)[0]!) )) return { label: 'Attend des matières', level: 'warn', hint: 'Livre les matières premières avec une ligne.' };
-    if (b.staff < need) return { label: 'Manque d\'ouvriers', level: 'warn', hint: `Fais grandir une ville proche (rayon ${WORK_RANGE} km).` };
+    if (b.staff < need) return { label: 'Manque d\'ouvriers', level: 'warn', hint: 'Fais grandir une ville proche : son rayon de recrutement grandit avec elle.' };
     return { label: 'En production', level: 'good' };
   }
+  // bâtiment de service : son effet dépend de son équipe
+  if (d.effect && d.workers && b.staff < d.workers) return b.staff === 0
+    ? { label: 'Sans ouvriers : sans effet', level: 'bad', hint: 'Il faut une ville à proximité pour le faire fonctionner.' }
+    : { label: 'Manque d\'ouvriers : effet réduit', level: 'warn', hint: `${Math.round(svc(b) * 100)} % de son effet.` };
   if (b.node === null && b.type !== 'pont_du_gard') return { label: 'Non relié', level: 'info' };
   return { label: 'Opérationnel', level: 'good' };
 }

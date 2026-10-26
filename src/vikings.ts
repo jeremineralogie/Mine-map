@@ -4,9 +4,9 @@
 // fondent leur propre ville sur la côte. Une fois installés, ils deviennent un rival comme les autres, avec leur économie.
 import { TECHS } from './defs';
 import type { Geo } from './geo';
-import { cityDomain, ecoBuilding, foundHome, newEco, settleSpot, spotName, syncAllyRoads, syncLent, syncView, transfer } from './rivalai';
+import { cityDomain, ecoBuilding, foundHome, newEco, settleSpot, spotName, syncAllyRoads, syncView, transfer } from './rivalai';
 import type { Army, Building, Faction, GameState, RBuilding } from './state';
-import { PLAYER, armies, makePeace, playerGarrison, recentlyPillaged, rivalGarrison, type WarNotify } from './war';
+import { PLAYER, armies, killFaction, makePeace, playerGarrison, recentlyPillaged, rivalGarrison, type WarNotify } from './war';
 
 export const VIKINGS = 'vikings';
 /** Premiers raids, premières installations possibles, installation de force (traité de Saint-Clair-sur-Epte) */
@@ -62,15 +62,15 @@ function raid(s: GameState, geo: Geo, f: Faction, n: WarNotify, paris = false) {
   if (paris) {
     // siège de Paris (845) : la ville la plus proche de Lutèce
     const [px, py] = geo.proj(2.35, 48.85), d = (c: { x: number; y: number }) => Math.hypot(c.x - px, c.y - py);
-    const all = [...mine.map(c => ({ kind: 'b' as const, c, g: playerGarrison(s, c) })), ...theirs.map(x => ({ kind: 'rb' as const, c: x.c, o: x.o, g: rivalGarrison(s, x.c) }))];
+    const all = [...mine.map(c => ({ kind: 'b' as const, c, g: playerGarrison(s, c, false) })), ...theirs.map(x => ({ kind: 'rb' as const, c: x.c, o: x.o, g: rivalGarrison(s, x.c) }))];
     t = all.sort((a, z) => d(a.c) - d(z.c))[0] ?? null;
   } else if (mine.length && (Math.random() < 1 / 3 || !theirs.length)) {
-    const c = mine[Math.floor(Math.random() * mine.length)]; t = { kind: 'b', c, g: playerGarrison(s, c) };
+    const c = mine[Math.floor(Math.random() * mine.length)]; t = { kind: 'b', c, g: playerGarrison(s, c, false) };
   } else if (theirs.length) {
     const x = theirs[Math.floor(Math.random() * theirs.length)]; t = { kind: 'rb', c: x.c, o: x.o, g: rivalGarrison(s, x.c) };
   }
   if (!t) return;
-  const at = landing(geo, t.c), men = Math.round(Math.min(paris ? 600 : 400, Math.max(60, t.g * (paris ? 1.8 : 1.4) + 30)));
+  const at = landing(geo, t.c), men = Math.round(Math.min(paris ? 600 : 400, Math.max(60, t.g * (paris ? 1.6 : 1.2) + 20)));
   const a: Army = { id: s.nextId++, owner: VIKINGS, x: at.x, y: at.y, men, leg: 0.6, hp: 100, state: 'march', target: { kind: t.kind, id: t.c.id } };
   armies(s).push(a);
   const how = geo.nearSea(at.x, at.y, 3) ? 'abordent la côte' : 'remontent le fleuve';
@@ -101,8 +101,10 @@ export const settleNow = (s: GameState, f: Faction) => !!f.raider && year(s) >= 
 
 /** Économie des Vikings installés : les techniques des chapitres I et II, et le butin des raids */
 function ensureEco(s: GameState, f: Faction) {
-  f.techs = TECHS.filter(t => t.era <= 2).map(t => t.id);
-  if (!f.eco) { f.eco = newEco(s, f, (s.factions!.indexOf(f) + 1) * 10_000_000); f.eco.era = 3; }
+  // une seule fois, à leur installation : leurs techniques et un premier trésor (le butin des raids)
+  if (f.eco) return;
+  f.techs = [...new Set([...TECHS.filter(t => t.era <= 2).map(t => t.id), ...(f.techs ?? [])])];
+  f.eco = newEco(s, f, (s.factions!.indexOf(f) + 1) * 10_000_000); f.eco.era = 3;
   f.money = Math.max(f.money, 4000); f.eco.money = f.money;
 }
 
@@ -133,9 +135,7 @@ export function takeRivalCity(s: GameState, geo: Geo, f: Faction, o: Faction, c:
   syncView(s, o); syncView(s, f);
   s.log.unshift({ day: s.day, text: `Les Vikings prennent ${c.name} aux ${o.name}.` });
   if (!o.b.some(b => b.type === 'village')) {
-    o.dead = true; o.b = []; o.roads = []; o.trade = false; o.alliance = false; o.eco = undefined; syncLent(s);
-    s.armies = armies(s).filter(x => x.owner !== o.id);
-    for (const q of s.factions ?? []) q.foes = (q.foes ?? []).filter(id => id !== o.id);
+    killFaction(s, o);
     s.log.unshift({ day: s.day, text: `Les ${o.name} n'ont plus aucune ville.` });
   }
   settled(s, geo, f, c, n, false);

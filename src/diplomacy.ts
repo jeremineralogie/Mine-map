@@ -105,6 +105,7 @@ export function giftRes(s: GameState, f: Faction, r: ResId, q: number): string {
 }
 export function propose(s: GameState, f: Faction, kind: 'trade' | 'pact' | 'alliance'): { ok: boolean; msg: string } {
   const need = THRESHOLD[kind][ch(f)], r = relOf(f);
+  if (f.war) return { ok: false, msg: `Vous êtes en guerre : signe d'abord la paix (Guerre et paix).` };
   if (kind === 'alliance' && !f.trade) return { ok: false, msg: 'Une alliance demande d\'abord un accord commercial.' };
   if (r < need) { changeRel(f, -2); return { ok: false, msg: `Refusé : il faut une relation d'au moins ${need} (actuellement ${Math.round(r)}).` }; }
   if (kind === 'trade') { f.trade = true; changeRel(f, 4); return { ok: true, msg: `Accord commercial signé avec les ${f.name} : relie une taverne par une route à l'une de leurs villes pour commercer.` }; }
@@ -205,7 +206,7 @@ export function monthlyDiplomacy(s: GameState, n: DiploNotify) {
       if (n.ask && !f.alliance && !f.war) n.ask(`Les ${f.name} demandent une alliance`, `Ils veulent exploiter le gisement « ${dep} », que tu exploites déjà ou qui est sur ton territoire. Une alliance (avec un accord commercial) partage gisements et territoires : ils pourront y construire, et toi chez eux.`, () => { f.trade = true; f.alliance = true; changeRel(f, Math.max(6, 40 - relOf(f))); syncAllyRoads(s); });
     }
     // propositions spontanées des rivaux
-    if (n.ask && hasTavern(s)) {
+    if (n.ask && hasTavern(s) && !f.war) {
       const r = relOf(f);
       if (!f.trade && r >= THRESHOLD.trade[ch(f)] + 15 && Math.random() < 0.05)
         n.ask(`Proposition des ${f.name}`, `Les ${f.name} te proposent un accord commercial : vos tavernes pourront échanger leurs marchandises.`, () => { f.trade = true; changeRel(f, 4); });
